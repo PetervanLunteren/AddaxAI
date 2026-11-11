@@ -244,8 +244,12 @@ export function useSaveOutputsForm({
 
   // The media card, shared with the project image copies dialog. Its
   // state is seeded from the same last-used record the export options
-  // below read.
-  const media = useMediaOptions({ projectId: runId });
+  // below read. Its confidence follows the threshold above, the one on
+  // screen, until the user moves it.
+  const media = useMediaOptions({
+    projectId: runId,
+    projectThreshold: countingThreshold,
+  });
   const [persisted] = useState(loadLastUsedSaveOutputs);
 
   const [exportOpts, setExportOpts] = useState<ExportState>(() => ({

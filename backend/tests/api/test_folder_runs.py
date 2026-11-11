@@ -763,7 +763,7 @@ def test_save_outputs_marks_media_subdir_not_output_root(
 
     resp = client.post(
         f"/api/folder-runs/{run_id}/save-outputs",
-        json={"output_dir": str(source), "separate_folders": True},
+        json={"media_threshold": 0.5, "output_dir": str(source), "separate_folders": True},
     )
     assert resp.status_code == 200
     job_id = resp.json()["job_id"]
@@ -796,7 +796,7 @@ def test_save_outputs_leaves_foreign_media_dir_alone(
 
     resp = client.post(
         f"/api/folder-runs/{run_id}/save-outputs",
-        json={"output_dir": str(source), "separate_folders": True},
+        json={"media_threshold": 0.5, "output_dir": str(source), "separate_folders": True},
     )
     assert resp.status_code == 200
 
@@ -816,7 +816,7 @@ def test_save_outputs_data_only_creates_no_media_dir(client, tmp_path):
 
     resp = client.post(
         f"/api/folder-runs/{run_id}/save-outputs",
-        json={"output_dir": str(source), "csv": True},
+        json={"media_threshold": 0.5, "output_dir": str(source), "csv": True},
     )
     assert resp.status_code == 200
 
@@ -854,6 +854,7 @@ def test_unticking_run_details_does_not_write_the_run_info_file(
     resp = client.post(
         f"/api/folder-runs/{run_id}/save-outputs",
         json={
+            "media_threshold": 0.5,
             "output_dir": str(source),
             "recognition_json": True,
             "run_readme": False,
@@ -876,7 +877,7 @@ def test_ticking_run_details_still_writes_the_run_info_file(
 
     resp = client.post(
         f"/api/folder-runs/{run_id}/save-outputs",
-        json={"output_dir": str(source), "run_readme": True},
+        json={"media_threshold": 0.5, "output_dir": str(source), "run_readme": True},
     )
     assert resp.status_code == 200
     _run_save_worker(db, monkeypatch, resp.json()["job_id"])
@@ -904,6 +905,7 @@ def test_save_outputs_job_payload_carries_the_whole_request(
     resp = client.post(
         f"/api/folder-runs/{run_id}/save-outputs",
         json={
+            "media_threshold": 0.5,
             "output_dir": str(source),
             # Two of the file filters shared with the project image copies
             # export: they are plain MediaOptions fields, so a folder run

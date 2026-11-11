@@ -9,7 +9,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.core.confidence import DEFAULT_COUNTING_THRESHOLD
 from app.ml.postprocessing_outputs.separate_folders import SeparateGroupBy
 
 
@@ -48,9 +47,7 @@ class MediaOptions(BaseModel):
     # left out of the separated copies, drawn boxes, blurs, and EXIF
     # tags. Data exports (CSV / XLSX / recognition JSON) ignore it: they
     # are always the complete record of the run.
-    media_threshold: float = Field(
-        DEFAULT_COUNTING_THRESHOLD, ge=0.0, le=1.0
-    )
+    media_threshold: float = Field(..., ge=0.0, le=1.0)
     # How media copies are grouped at the output root. ``taxonomic``
     # nests Class/Order/Family/Genus/species; ``flat`` is one folder
     # per species label; ``none`` copies everything flat at the root.

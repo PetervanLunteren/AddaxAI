@@ -200,6 +200,7 @@ export function MediaBody({ form }: { form: MediaFormHandles }) {
     showDeploymentPicker,
     dateBounds,
   } = form;
+  const mediaThreshold = separate.mediaThreshold ?? form.projectThreshold;
   // Grouping only makes sense once there are species subfolders; with
   // "No subfolders" every file lands flat at the root.
   const showGrouping = separate.groupBy !== "none";
@@ -240,26 +241,19 @@ export function MediaBody({ form }: { form: MediaFormHandles }) {
           caption="Detections below this score are left out of the copies, except ones you verified."
         >
           <ConfidenceSlider
-            value={separate.mediaThreshold}
+            value={mediaThreshold}
             onChange={(vals) =>
               setSeparate({ ...separate, mediaThreshold: vals[0] })
             }
             adviseBelow={DETECTION_CONFIDENCE_ADVICE}
             valueLabel={
               <span className="min-w-[3rem] shrink-0 text-right text-sm font-medium">
-                {formatConfidencePct(separate.mediaThreshold)}
+                {formatConfidencePct(mediaThreshold)}
               </span>
             }
-            onReset={() =>
-              setSeparate({
-                ...separate,
-                mediaThreshold: DEFAULT_COUNTING_THRESHOLD,
-              })
-            }
-            resetDisabled={
-              Math.abs(separate.mediaThreshold - DEFAULT_COUNTING_THRESHOLD) <
-              1e-6
-            }
+            // Back to following the project's threshold.
+            onReset={() => setSeparate({ ...separate, mediaThreshold: null })}
+            resetDisabled={separate.mediaThreshold === null}
           />
         </SettingRow>
 

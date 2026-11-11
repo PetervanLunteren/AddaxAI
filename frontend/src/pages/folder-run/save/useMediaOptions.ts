@@ -2,7 +2,8 @@
  * The media copies form: one hook for the folder-run Save step and the
  * project image copies dialog.
  *
- * Owns the option state (seeded from the last-used choices), the lookups
+ * Owns the option state (seeded from the last-used choices, except the
+ * media confidence, which follows the project), the lookups
  * the rows need (label tree, deployment count, date bounds), the request
  * fields both the preview and the save send, and the preview query
  * itself. The two surfaces compose this with their own output folder and
@@ -40,6 +41,9 @@ export interface UseMediaOptionsParams {
   /** The project the copies come from. A folder run passes its run id,
    * which is its project id. */
   projectId: string;
+  /** The project's detection threshold, which the media confidence
+   * follows until the user moves it. Undefined while the project loads. */
+  projectThreshold: number | undefined;
   /** The dialog has no master toggle for the media card: the copies are
    * the whole point of it. The folder-run card can be off. */
   alwaysEnabled?: boolean;
@@ -51,6 +55,9 @@ export interface MediaFormHandles {
   projectId: string;
   separate: SeparateState;
   setSeparate: (s: SeparateState) => void;
+  /** What the media confidence reads while `separate.mediaThreshold` is
+   * null, and what its reset goes back to. */
+  projectThreshold: number;
   visualise: VisualiseState;
   setVisualise: (s: VisualiseState) => void;
   anonymise: AnonymiseState;
@@ -87,8 +94,10 @@ export interface MediaFormHandles {
 
 export function useMediaOptions({
   projectId,
+  projectThreshold: loadedThreshold,
   alwaysEnabled = false,
 }: UseMediaOptionsParams): MediaFormHandles {
+  const projectThreshold = loadedThreshold ?? DEFAULT_COUNTING_THRESHOLD;
   // Seed from the last-used choices (persisted on save), falling back to
   // the defaults. Loaded once on mount. The filters and the picks are
   // not persisted: they describe one export.
@@ -100,7 +109,7 @@ export function useMediaOptions({
     groupEvents: persisted?.groupEvents ?? true,
     speciesLast: persisted?.speciesLast ?? false,
     copyEmpties: persisted?.copyEmpties ?? false,
-    mediaThreshold: persisted?.mediaThreshold ?? DEFAULT_COUNTING_THRESHOLD,
+    mediaThreshold: null,
     includedLabelIds: [],
     likedOnly: false,
     verifiedOnly: false,
@@ -142,6 +151,7 @@ export function useMediaOptions({
     anonymise,
     allLabelIds,
     getSpeciesNameMode(),
+    projectThreshold,
   );
 
   // One preview call per burst of changes: a slider drag, a quick run
@@ -183,7 +193,6 @@ export function useMediaOptions({
       groupEvents: separate.groupEvents,
       speciesLast: separate.speciesLast,
       copyEmpties: separate.copyEmpties,
-      mediaThreshold: separate.mediaThreshold,
       drawBoxes: visualise.enabled,
       blur: anonymise.enabled,
     });
@@ -193,6 +202,7 @@ export function useMediaOptions({
     projectId,
     separate,
     setSeparate,
+    projectThreshold,
     visualise,
     setVisualise,
     anonymise,

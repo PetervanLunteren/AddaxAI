@@ -2944,7 +2944,7 @@ def test_media_prepare_refuses_an_empty_deployment_list(client, db, tmp_path):
     project, _ = _two_camera_project(db, tmp_path)
     resp = client.post(
         f"/api/projects/{project.id}/export/media/prepare",
-        json={"output_dir": str(tmp_path / "out"), "deployment_ids": []},
+        json={"media_threshold": 0.5, "output_dir": str(tmp_path / "out"), "deployment_ids": []},
     )
     assert resp.status_code == 422
     assert "No deployments" in resp.json()["detail"]
@@ -2952,7 +2952,7 @@ def test_media_prepare_refuses_an_empty_deployment_list(client, db, tmp_path):
     assert (
         client.post(
             "/api/projects/nope/export/media/prepare",
-            json={"output_dir": str(tmp_path / "out")},
+            json={"media_threshold": 0.5, "output_dir": str(tmp_path / "out")},
         ).status_code
         == 404
     )
@@ -3024,7 +3024,7 @@ def test_output_preview_endpoint_returns_counts(client, db):
 
     resp = client.post(
         f"/api/projects/{project.id}/export/media/preview",
-        json={"separate_group_by": "taxonomic"},
+        json={"media_threshold": 0.5, "separate_group_by": "taxonomic"},
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -3063,7 +3063,7 @@ def test_output_preview_honours_excluded_label_ids(client, db):
 
     resp = client.post(
         f"/api/projects/{project.id}/export/media/preview",
-        json={"excluded_label_ids": ["dog"]},
+        json={"media_threshold": 0.5, "excluded_label_ids": ["dog"]},
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -3096,11 +3096,13 @@ def test_output_preview_anonymise_reaches_the_estimate(client, db, tmp_path):
     )
     url = f"/api/projects/{project.id}/export/media/preview"
 
-    whole = client.post(url, json={"include_empty": True})
+    whole = client.post(url, json={"media_threshold": 0.5, "include_empty": True})
     assert whole.status_code == 200
     assert whole.json()["in_scope_bytes"] == 5000
 
-    blurred = client.post(url, json={"include_empty": True, "anonymise": True})
+    blurred = client.post(
+        url, json={"media_threshold": 0.5, "include_empty": True, "anonymise": True}
+    )
     assert blurred.status_code == 200
     assert blurred.json()["in_scope_bytes"] == 100
 
@@ -3373,6 +3375,16 @@ def test_camtrap_lists_an_excluded_only_photo_without_calling_it_blank(client, d
     by_media = {o["mediaID"]: o for o in obs}
     assert rat_photo.id not in by_media
     assert by_media[empty_photo.id]["observationType"] == "blank"
+
+
+def test_the_media_threshold_has_no_default(client, db):
+    """The copies follow the project's own threshold unless the form says
+    otherwise, and only the form knows which. A default here was a second
+    opinion: 50% for a project that counts from 20%."""
+    project, _site, _deployment = _build_simple_project(db)
+    resp = client.post(f"/api/projects/{project.id}/export/media/preview", json={})
+    assert resp.status_code == 422
+    assert resp.json()["detail"][0]["loc"] == ["body", "media_threshold"]
 
 
 def test_camtrap_calls_a_video_blank_when_its_only_excluded_box_is_no_card(client, db):

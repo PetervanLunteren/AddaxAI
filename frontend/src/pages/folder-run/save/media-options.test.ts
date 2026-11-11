@@ -16,7 +16,7 @@ function separate(overrides: Partial<SeparateState> = {}): SeparateState {
     groupEvents: true,
     speciesLast: false,
     copyEmpties: false,
-    mediaThreshold: 0.2,
+    mediaThreshold: null,
     includedLabelIds: [],
     likedOnly: false,
     verifiedOnly: false,
@@ -81,6 +81,7 @@ describe("mediaRequestFields", () => {
       off,
       ALL,
       "scientific",
+      0.2,
     );
     expect(fields).toEqual({
       media_threshold: 0.2,
@@ -101,7 +102,7 @@ describe("mediaRequestFields", () => {
   });
 
   it("omits the deployment list when every deployment is in", () => {
-    const fields = mediaRequestFields(separate(), off, off, ALL, "common");
+    const fields = mediaRequestFields(separate(), off, off, ALL, "common", 0.5);
     expect(fields.deployment_ids).toBeUndefined();
     expect(fields.date_from).toBeUndefined();
     expect(fields.favorited_only).toBe(false);
@@ -115,10 +116,21 @@ describe("mediaRequestFields", () => {
       on,
       ALL,
       "common",
+      0.5,
     );
     expect(fields.draw_bboxes).toBe(false);
     expect(fields.anonymise).toBe(false);
     expect(fields.include_empty).toBe(false);
     expect(fields.excluded_label_ids).toEqual([]);
+  });
+
+  it("sends the project's threshold until the slider is moved", () => {
+    const send = (s: SeparateState, project: number) =>
+      mediaRequestFields(s, off, off, ALL, "common", project).media_threshold;
+    expect(send(separate(), 0.2)).toBe(0.2);
+    expect(send(separate(), 0.5)).toBe(0.5);
+    expect(send(separate({ mediaThreshold: 0.8 }), 0.2)).toBe(0.8);
+    // Zero is a choice, not "unset".
+    expect(send(separate({ mediaThreshold: 0 }), 0.2)).toBe(0);
   });
 });

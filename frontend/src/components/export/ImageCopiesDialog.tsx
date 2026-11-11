@@ -8,8 +8,11 @@
  * dialog passes no scope to the shell.
  */
 
+import { useQuery } from "@tanstack/react-query";
+
 import { exportApi } from "../../api/export";
 import type { SaveOutputsResult } from "../../api/folder-runs";
+import { projectsApi } from "../../api/projects";
 import { collectIssues } from "../../pages/folder-run/save/media-options";
 import { OutputPreviewPanel } from "../../pages/folder-run/save/OutputPreviewPanel";
 import { IssuesPanel, MediaBody } from "../../pages/folder-run/save/SaveShared";
@@ -39,7 +42,16 @@ function describeResult(data: unknown): ExportResultView {
 }
 
 export function ImageCopiesDialog({ projectId, onClose }: ExportDialogComponentProps) {
-  const media = useMediaOptions({ projectId, alwaysEnabled: true });
+  // Same key as the pages around the dialog, so this is a cache read.
+  const { data: project } = useQuery({
+    queryKey: ["project", projectId],
+    queryFn: () => projectsApi.get(projectId),
+  });
+  const media = useMediaOptions({
+    projectId,
+    projectThreshold: project?.counting_threshold,
+    alwaysEnabled: true,
+  });
   return (
     <ExportDialog
       projectId={projectId}

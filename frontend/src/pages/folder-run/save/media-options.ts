@@ -25,8 +25,13 @@ export interface SeparateState {
   copyEmpties: boolean;
   /** Media-output confidence: detections below it (unless verified)
    * are left out of the copies, drawn boxes, and blurs. The data
-   * exports always contain everything regardless. */
-  mediaThreshold: number;
+   * exports always contain everything regardless. Null until the user
+   * moves the slider: the copies then follow the project's own
+   * threshold, so they hold what the project counts. Not remembered
+   * between exports, because a value from another project is not a
+   * preference here: a project at 20% started at the last export's 50%
+   * and copied fewer files than it counted (until 2026-11-11). */
+  mediaThreshold: number | null;
   /** Leaf ids the user chose to include. Empty = every label, no
    * filter, on both surfaces. The request sends the complement as
    * ``excluded_label_ids``; the data exports ignore it. */
@@ -117,10 +122,11 @@ export function mediaRequestFields(
   anonymise: AnonymiseState,
   allLabelIds: string[],
   nameMode: "common" | "scientific",
+  projectThreshold: number,
 ): MediaOptionsRequest {
   const on = separate.enabled;
   return {
-    media_threshold: separate.mediaThreshold,
+    media_threshold: separate.mediaThreshold ?? projectThreshold,
     separate_group_by: separate.groupBy,
     group_events: separate.groupEvents,
     separate_species_last: separate.speciesLast,
