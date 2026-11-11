@@ -30,12 +30,21 @@ import type { MediaFilter } from "../api/types";
 
 const KEY = "addaxai.folderRun.lastSettings";
 
-/** Bumped when a stored record must not be restored as it is. Version 2
- *  (2026-10-19): the country and the species list used to be able to
- *  disagree, because a model switch kept the country and pruned the list.
- *  A record without this version loses both, so the user picks the
- *  country again; everything else in it is kept. */
-const VERSION = 2;
+/** Bumped when a stored record must not be restored as it is. A record
+ *  loses what each version it predates took away; everything else in it
+ *  is kept.
+ *
+ *  Version 2 (2026-10-19): the country and the species list used to be
+ *  able to disagree, because a model switch kept the country and pruned
+ *  the list. An older record loses both, so the user picks the country
+ *  again.
+ *
+ *  Version 3 (2026-11-11): the video frame rate. Every video is tracked
+ *  since 7.20.0 and the default went from 1 to 3 frames per second. The
+ *  wizard writes every field on Start, so an older record holds a 1 that
+ *  nobody chose, and each new folder run would be tracked at it. An
+ *  older record loses the rate and the form falls back to its default. */
+const VERSION = 3;
 
 export interface PersistedAnalysisSettings {
   detection_model_id?: string;
@@ -88,11 +97,13 @@ export function loadLastUsedSettings(): PersistedAnalysisSettings | null {
     const { version, ...stored } = parsed as PersistedAnalysisSettings & {
       version?: number;
     };
-    if (version !== VERSION) {
+    const saved = version ?? 1;
+    if (saved < 2) {
       delete stored.country_code;
       delete stored.state_code;
       delete stored.excluded_classes;
     }
+    if (saved < 3) delete stored.video_fps;
     return stored;
   } catch {
     return null;
