@@ -3375,6 +3375,27 @@ def test_camtrap_lists_an_excluded_only_photo_without_calling_it_blank(client, d
     assert by_media[empty_photo.id]["observationType"] == "blank"
 
 
+def test_camtrap_calls_a_video_blank_when_its_only_excluded_box_is_no_card(client, db):
+    """"Excluded only" means the exclusion took a row away. A video box
+    that sits on no track's representative frame was never a row (a
+    leftover of a run from before tracking), so an excluded species on it
+    removes nothing and the video is blank like any other without cards."""
+    project, _site, deployment = _build_simple_project(db)
+    project.excluded_classes = ["rat"]
+    clip = make_file(
+        db, deployment_id=deployment.id, file_type="video", file_format="mp4",
+        observation_type="blank",
+    )
+    make_detection(db, file_id=clip.id, frame_number=30, label="rat", confidence=0.9)
+    db.commit()
+
+    resp = _run_camtrap_dp_export(client, db, project.id)
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        obs = list(csv.DictReader(io.StringIO(zf.read("observations.csv").decode())))
+
+    assert [(o["mediaID"], o["observationType"]) for o in obs] == [(clip.id, "blank")]
+
+
 def test_a_batch_is_capped_by_rows_not_files(monkeypatch):
     """A batch holds its files' boxes too. Capping it by files let a
     thousand all-frames videos (425 boxes each) sit in memory at once, a

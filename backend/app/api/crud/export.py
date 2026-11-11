@@ -372,8 +372,10 @@ def _files_with_excluded_boxes(
     """Which of ``file_ids`` hold a passing box the species exclusion
     removed. Such a file arrives with no detections, the same as a file
     the detector found empty, and Camtrap DP must not call it blank: a
-    blank observation claims there is no animal. Chunked like
-    ``_events_by_file``."""
+    blank observation claims there is no animal. Only a box
+    ``iter_scoped_files`` would have yielded counts (``on_visible_frame``):
+    a video box that is no card was never in the file's rows, so the
+    exclusion did not remove it. Chunked like ``_events_by_file``."""
     removed = _excluded_box(project)
     if removed is None:
         return set()
@@ -382,8 +384,10 @@ def _files_with_excluded_boxes(
         stmt = (
             select(Detection.file_id)
             .distinct()
+            .join(File, File.id == Detection.file_id)
             .where(Detection.file_id.in_(chunk))
             .where(threshold_or_verified(project.counting_threshold))
+            .where(on_visible_frame())
             .where(removed)
         )
         found.update(db.scalars(stmt))
