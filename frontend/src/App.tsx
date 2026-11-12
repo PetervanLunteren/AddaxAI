@@ -85,7 +85,14 @@ type UpdateState =
   | { phase: "done" }
   | { phase: "error"; message: string };
 
+/** Whether the app shows the setup screen. The gate sends every route
+ *  there until setup is ready, so this is "setup is not done yet". */
+function useOnSetupRoute(): boolean {
+  return useLocation().pathname.startsWith("/setup");
+}
+
 function ModelUpdateToast() {
+  const onSetupRoute = useOnSetupRoute();
   const [dismissed, setDismissed] = useState(false);
   const [updateStates, setUpdateStates] = useState<Record<string, UpdateState>>(
     {},
@@ -97,6 +104,18 @@ function ModelUpdateToast() {
     queryFn: () => api.get<ModelUpdatesResponse>("/api/ml/updates"),
     staleTime: Infinity,
   });
+
+  // Ask again when setup is done. The list was loaded at start, before
+  // setup installed or rebuilt anything, and an env setup just built kept
+  // its "Update now" (until 2026-11-12). Setup ends by leaving its screen,
+  // so the cleanup of a run on that screen is the one place that sees it
+  // happen: the setup page itself is unmounted by the gate first.
+  useEffect(() => {
+    if (!onSetupRoute) return;
+    return () => {
+      queryClient.invalidateQueries({ queryKey: ["model-updates"] });
+    };
+  }, [onSetupRoute]);
 
   const newModels = updates?.new_models ?? [];
   const driftedModels = updates?.drifted_models ?? [];
@@ -295,8 +314,7 @@ function BackendDownScreen({ onRetry }: { onRetry: () => void }) {
  * open).
  */
 function SetupGate({ children }: { children: ReactNode }) {
-  const location = useLocation();
-  const onSetupRoute = location.pathname.startsWith("/setup");
+  const onSetupRoute = useOnSetupRoute();
   // Sticky-ready flag. Once the backend reports `ready=true` at least
   // once in this session, we trust that setup is done and ignore later
   // transient `ready=false` polls. Real resets bounce the whole app
