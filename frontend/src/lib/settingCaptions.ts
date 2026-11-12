@@ -16,13 +16,15 @@ import {
  * run, so it uses the base caption alone.
  */
 /**
- * The three batch-size captions share one message: the default is picked for
- * the hardware, and it is a power-user knob, not a speed dial (raising it does
- * not make CPU inference faster, and too large a value crashes a GPU run). One
- * helper keeps them identical so they cannot drift, as they had.
+ * The three batch-size captions share one message: the default fits every
+ * machine (it only looks at GPU or no GPU, never at how strong the GPU is),
+ * and it is a power-user knob (raising it does not make CPU inference faster,
+ * and too large a value crashes a GPU run). One helper keeps them identical
+ * so they cannot drift, as they had.
  */
 const batchSizeCaption = (subject: string): string =>
-  `How many ${subject} at once. The default is set for your hardware. ` +
+  `How many ${subject} at once. The default is safe on any computer. ` +
+  "A higher number can be faster on a strong GPU but needs more GPU memory. " +
   "Leave it unless you know what you are doing.";
 
 export const SETTING_CAPTIONS = {
