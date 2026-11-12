@@ -8,7 +8,7 @@
  * - Clean shutdown of backend on quit
  */
 
-import { app, BrowserWindow, crashReporter, session, shell, ipcMain, dialog, Menu, nativeTheme, powerSaveBlocker } from 'electron';
+import { app, BrowserWindow, crashReporter, session, shell, ipcMain, dialog, Menu, nativeTheme, powerSaveBlocker, screen } from 'electron';
 import Store from 'electron-store';
 import { spawn, execSync, ChildProcess } from 'child_process';
 import * as os from 'os';
@@ -896,11 +896,21 @@ function loadHtml(html: string): Promise<void> {
 async function createWindow(): Promise<void> {
   console.log('[Electron] Creating main window...');
 
+  // The size the window opens at, and the floor it can be dragged to,
+  // both cut to the screen it opens on. A fixed 1400 x 900 with a floor of
+  // 768 ran off any screen lower than that plus a title bar: the bottom of
+  // the window, with the viewers' verify buttons, was out of reach, and
+  // the window could not be maximised into view because its floor did not
+  // fit (2026-11-12, a 1512 x 824 Ubuntu screen; a 1366 x 768 laptop is
+  // the same). The floor of 600 leaves room for a title bar the window
+  // manager adds outside the window; the sidebar and pages scroll below it.
+  const area = screen.getPrimaryDisplay().workAreaSize;
+
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 1024,
-    minHeight: 768,
+    width: Math.min(1400, area.width),
+    height: Math.min(900, area.height),
+    minWidth: Math.min(1024, area.width),
+    minHeight: Math.min(600, area.height),
     title: `AddaxAI v${app.getVersion()}`,
     // Show our custom application menu bar on Windows / Linux (built in
     // setupApplicationMenu). It holds every app-wide action: File (data
