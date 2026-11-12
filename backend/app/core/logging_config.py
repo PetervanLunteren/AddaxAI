@@ -10,6 +10,7 @@ Sets up rotating file logging to ~/AddaxAI/logs/backend.log
 """
 
 import logging
+import sys
 from logging.handlers import RotatingFileHandler
 
 from app.core.config import get_settings
@@ -70,9 +71,11 @@ def setup_logging() -> logging.Logger:
     file_handler.setFormatter(formatter)
     root_logger.addHandler(file_handler)
 
-    # Also log to console in development
+    # Also log to console in development. On stdout, not the stderr
+    # default: Electron labels everything on stderr "[Backend Error]",
+    # which made every INFO line in a pasted log read as an error.
     if settings.debug:
-        console_handler = logging.StreamHandler()
+        console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setFormatter(formatter)
         root_logger.addHandler(console_handler)
 
@@ -108,8 +111,6 @@ def setup_logging() -> logging.Logger:
     logging.getLogger("PIL").setLevel(logging.INFO)
 
     # Set up exception hook to log uncaught exceptions
-    import sys
-
     def exception_handler(exc_type, exc_value, exc_traceback):
         """Log uncaught exceptions."""
         if issubclass(exc_type, KeyboardInterrupt):
