@@ -126,14 +126,19 @@ function ModelUpdateToast() {
 
   // Auto-dismiss after 10 s only when there's nothing actionable.
   // Drift entries have buttons the user is supposed to interact with;
-  // those stay visible until the user dismisses them.
+  // those stay visible until the user dismisses them. Not counted while
+  // the setup screen hides the notice, or it would expire unseen.
   useEffect(() => {
-    if (!hasAnything || hasDrift) return;
+    if (onSetupRoute || !hasAnything || hasDrift) return;
     const timer = setTimeout(() => setDismissed(true), 10000);
     return () => clearTimeout(timer);
-  }, [hasAnything, hasDrift]);
+  }, [onSetupRoute, hasAnything, hasDrift]);
 
-  if (dismissed || !hasAnything) {
+  // Hidden on the setup screen: setup installs or rebuilds what is
+  // missing, and a second "Update now" beside it offers the same env
+  // rebuild twice. The effect above asks again when setup is done, so
+  // the notice then lists only what is left.
+  if (onSetupRoute || dismissed || !hasAnything) {
     return null;
   }
 

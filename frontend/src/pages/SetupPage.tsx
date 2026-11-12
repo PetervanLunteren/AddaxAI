@@ -134,11 +134,6 @@ export default function SetupPage() {
   // bundled models missing, common in dev mode) leaves the user with no
   // affordance and the page looks frozen.
   const showStartButton = !inProgress && !status.ready && !hasError;
-  // Any finished piece on disk (env or models) means a previous attempt got
-  // partway. Closing the app mid-setup is safe: installs are atomic and
-  // finished downloads are kept, so we resume rather than start over.
-  const hasPartialProgress =
-    (status.env_installed || status.models_installed) && !status.ready;
 
   return (
     <SetupFrame>
@@ -147,12 +142,19 @@ export default function SetupPage() {
         className="w-full max-w-xl rounded-lg border bg-card p-8
           shadow-[0_20px_50px_-20px_rgba(0,0,0,0.55)]"
       >
-        <h1 className="text-2xl font-bold tracking-tight">Initial setup</h1>
+        {/* One text for every way here: a first launch, an attempt that
+            stopped halfway, an update that needs its environment rebuilt,
+            and a data type whose models are not there yet. Until
+            2026-11-12 it said "Initial setup" and "one-time download",
+            and an update read as a failed earlier attempt. Rows below
+            show what is missing; a branch per case would only repeat
+            them. */}
+        <h1 className="text-2xl font-bold tracking-tight">Setup</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          The AI models and their environment need to be installed before
-          AddaxAI can analyse your photos and videos. This is a one-time
-          download and can take 10 to 30 minutes depending on your internet
-          connection.
+          AddaxAI needs its AI models and their environment to analyse your
+          photos and videos. What is missing is downloaded now; anything
+          already installed is kept. This can take 10 to 30 minutes
+          depending on your internet connection.
         </p>
 
         {/* The one question, and only while there is a button to press:
@@ -189,18 +191,10 @@ export default function SetupPage() {
               disabled={install.isPending}
               className="w-full"
             >
-              {install.isPending
-                ? "Starting..."
-                : hasPartialProgress
-                  ? "Resume setup"
-                  : "Start setup"}
+              {install.isPending ? "Starting..." : "Start setup"}
             </Button>
             <p className="mt-2 text-xs text-muted-foreground">
-              {hasPartialProgress
-                ? "Some pieces are already installed. Resuming picks up "
-                  + "where the last attempt stopped; finished downloads "
-                  + "are kept."
-                : "An internet connection is required for this one-time setup."}
+              An internet connection is required.
             </p>
           </div>
         )}
