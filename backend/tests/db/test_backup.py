@@ -34,8 +34,12 @@ from app.db.backup import (
     validate_backup,
 )
 
+# A revision no build has on disk: what an older AddaxAI sees in a
+# database that a newer one has already upgraded.
+NEWER_REVISION = "zzzz99999999"
 
-def _make_sqlite(path: Path) -> None:
+
+def _make_sqlite(path: Path, revision: str = "3c4d5e6f7a8b") -> None:
     """Create a tiny but valid AddaxAI-shaped SQLite database at `path`.
 
     `alembic_version` is part of "valid": `validate_backup` requires it,
@@ -47,7 +51,7 @@ def _make_sqlite(path: Path) -> None:
     conn = sqlite3.connect(str(path))
     try:
         conn.execute("CREATE TABLE alembic_version (version_num VARCHAR(32))")
-        conn.execute("INSERT INTO alembic_version VALUES ('3c4d5e6f7a8b')")
+        conn.execute("INSERT INTO alembic_version VALUES (?)", (revision,))
         conn.execute("CREATE TABLE t (x INTEGER)")
         conn.execute("INSERT INTO t (x) VALUES (1)")
         conn.commit()
@@ -118,6 +122,17 @@ def test_validate_backup_rejects_plain_text(tmp_path: Path) -> None:
     junk.write_bytes(b"this is not a sqlite database, but it's well over 100 bytes long " * 4)
     with pytest.raises(BackupInvalidError):
         validate_backup(junk)
+
+
+def test_validate_backup_rejects_a_backup_from_a_newer_version(tmp_path: Path) -> None:
+    """After a downgrade, every backup the newer version took is a file
+    `init_db` refuses. Restoring one only brings the startup error back,
+    so it is refused here, with wording that says which way to look."""
+    newer = tmp_path / "newer.db"
+    _make_sqlite(newer, revision=NEWER_REVISION)
+
+    with pytest.raises(BackupInvalidError, match="newer version of AddaxAI"):
+        validate_backup(newer)
 
 
 def test_validate_backup_rejects_truncated(tmp_path: Path) -> None:
@@ -214,17 +229,28 @@ def test_pre_upgrade_backup_handles_unknown_rev(tmp_settings: Settings) -> None:
     assert "pre-upgrade-unknown" in path.name
 
 
-def test_pre_upgrade_backup_skips_a_revision_it_already_has(
+def test_pre_upgrade_backup_skips_a_database_from_a_newer_version(
     tmp_settings: Settings,
 ) -> None:
-    """One snapshot per revision, however many times we launch.
+    """Nothing is about to be upgraded, and the copy would be a file
+    named "pre-upgrade" that this version cannot open: the newest one in
+    the folder, so the one a user picks (beta report 2026-11-12)."""
+    assert pre_upgrade_backup(tmp_settings, rev=NEWER_REVISION) is None
 
-    A second copy of the same unmigrated database is worth nothing and
-    costs a full DB copy. Without this, repeated launches at the same
-    revision (a `uvicorn --reload` storm, or a user clicking Retry on
-    the startup error page) push the real pre-upgrade snapshot out of
-    the ring buffer with identical duplicates, and that is the one
-    snapshot that matters on the day a migration eats data.
+    backups_dir = tmp_settings.user_data_dir / "backups"
+    assert not list(backups_dir.glob("addaxai-pre-upgrade-*.db"))
+
+
+def test_pre_upgrade_backup_skips_a_revision_it_already_has_from_today(
+    tmp_settings: Settings,
+) -> None:
+    """One snapshot per revision per day, however many times we launch.
+
+    Without this, repeated launches at the same revision (a
+    `uvicorn --reload` storm, or a user clicking Retry on the startup
+    error page) push the real pre-upgrade snapshot out of the ring
+    buffer with identical duplicates, and that is the one snapshot that
+    matters on the day a migration eats data.
     """
     first = pre_upgrade_backup(tmp_settings, rev="9c173fff3bcd")
     assert first is not None
@@ -238,6 +264,28 @@ def test_pre_upgrade_backup_skips_a_revision_it_already_has(
     # so it still gets its own snapshot.
     second = pre_upgrade_backup(tmp_settings, rev="2540e6edbee2")
     assert second is not None and second.name != first.name
+
+
+def test_pre_upgrade_backup_is_taken_again_on_a_later_day(
+    tmp_settings: Settings,
+) -> None:
+    """The same revision on a later day is a different database.
+
+    Update, go back to the older version, restore, work for weeks,
+    update again: the database is at the old revision a second time.
+    Skipping because "that revision is already backed up" left the user
+    with a pre-upgrade backup from before those weeks, which is the file
+    the startup error tells them to restore.
+    """
+    backups_dir = tmp_settings.user_data_dir / "backups"
+    backups_dir.mkdir()
+    earlier = backups_dir / "addaxai-pre-upgrade-9c173fff-2026-01-05T101500Z.db"
+    _make_sqlite(earlier)
+
+    fresh = pre_upgrade_backup(tmp_settings, rev="9c173fff3bcd")
+
+    assert fresh is not None and fresh.name != earlier.name
+    assert earlier.is_file()
 
 
 # ── manual snapshots and note slugs ──────────────────────────────────
@@ -350,12 +398,13 @@ def test_list_ring_buffer_classifies_and_sorts_newest_first(
     assert daily is not None
     # ensure mtimes are distinct enough for the sort
     time.sleep(0.01)
-    pre_up = pre_upgrade_backup(tmp_settings, rev="abc12345")
+    pre_up = pre_upgrade_backup(tmp_settings, rev="9c173fff3bcd")
 
     entries = list_ring_buffer(tmp_settings)
 
     kinds = {e.path.name: e.kind for e in entries}
     assert kinds[daily.name] == "daily"
+    assert pre_up is not None
     assert kinds[pre_up.name] == "pre-upgrade"
     # Newest first.
     assert entries[0].created_utc >= entries[-1].created_utc
@@ -508,7 +557,7 @@ def test_schedule_restore_rejects_invalid_source(tmp_settings: Settings) -> None
 
 
 def test_consume_restore_marker_no_op_when_absent(tmp_settings: Settings) -> None:
-    consume_restore_marker(tmp_settings)  # must not raise
+    assert consume_restore_marker(tmp_settings) is None  # and must not raise
 
 
 def test_consume_restore_marker_swaps_db_and_consumes(tmp_settings: Settings) -> None:
@@ -526,7 +575,7 @@ def test_consume_restore_marker_swaps_db_and_consumes(tmp_settings: Settings) ->
     schedule_restore(tmp_settings, other)
     assert (tmp_settings.user_data_dir / RESTORE_MARKER_FILENAME).is_file()
 
-    consume_restore_marker(tmp_settings)
+    assert consume_restore_marker(tmp_settings) is None
 
     # Marker consumed.
     assert not (tmp_settings.user_data_dir / RESTORE_MARKER_FILENAME).exists()
@@ -552,6 +601,92 @@ def test_consume_restore_marker_self_cleans_on_missing_source(
     assert not marker.exists()
     # Live DB untouched.
     assert (tmp_settings.user_data_dir / "addaxai.db").is_file()
+
+
+def test_consume_restore_marker_reports_why_a_restore_failed(
+    tmp_settings: Settings,
+) -> None:
+    """The startup error page writes the marker itself, with no
+    validation, so this is the only place that learns the pick was bad.
+    The reason is returned for the error page; the live DB is untouched."""
+    newer = tmp_settings.user_data_dir / "newer.db"
+    _make_sqlite(newer, revision=NEWER_REVISION)
+    marker = tmp_settings.user_data_dir / RESTORE_MARKER_FILENAME
+    marker.write_text(str(newer))
+    live = tmp_settings.user_data_dir / "addaxai.db"
+    before = live.read_bytes()
+
+    reason = consume_restore_marker(tmp_settings)
+
+    assert reason is not None and "newer version of AddaxAI" in reason
+    assert not marker.exists()
+    assert live.read_bytes() == before
+    backups_dir = tmp_settings.user_data_dir / "backups"
+    assert not list(backups_dir.glob("addaxai-pre-restore-*.db"))
+
+
+def _spy_on_marker_encoding(
+    monkeypatch: pytest.MonkeyPatch, method: str
+) -> list[str | None]:
+    """Record the `encoding` every restore-marker read or write passes.
+
+    macOS and Linux default to UTF-8, so a missing `encoding=` only
+    breaks on Windows and the round trip below passes here either way.
+    The recorded value is what makes these tests fail on any machine.
+    """
+    seen: list[str | None] = []
+    real = getattr(Path, method)
+
+    def spy(self: Path, *args, **kwargs):
+        if self.name == RESTORE_MARKER_FILENAME:
+            seen.append(kwargs.get("encoding"))
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, method, spy)
+    return seen
+
+
+def test_the_restore_marker_is_read_as_utf8(
+    tmp_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The startup error page writes the marker as UTF-8. Read in the
+    Windows code page, a backups folder under `C:\\Users\\Peña` named a
+    file that is not there, and the restore never happened."""
+    encodings = _spy_on_marker_encoding(monkeypatch, "read_text")
+    folder = tmp_settings.user_data_dir / "Peña"
+    folder.mkdir()
+    source = folder / "backup.db"
+    _make_sqlite(source)
+    conn = sqlite3.connect(str(source))
+    try:
+        conn.execute("CREATE TABLE marker (note TEXT)")
+        conn.commit()
+    finally:
+        conn.close()
+    marker = tmp_settings.user_data_dir / RESTORE_MARKER_FILENAME
+    marker.write_bytes(str(source).encode("utf-8"))  # as Electron writes it
+
+    assert consume_restore_marker(tmp_settings) is None
+
+    assert encodings == ["utf-8"]
+    live = tmp_settings.user_data_dir / "addaxai.db"
+    with sqlite3.connect(str(live)) as conn:
+        assert conn.execute("SELECT count(*) FROM marker").fetchone() == (0,)
+
+
+def test_schedule_restore_writes_the_marker_as_utf8(
+    tmp_settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    encodings = _spy_on_marker_encoding(monkeypatch, "write_text")
+    folder = tmp_settings.user_data_dir / "Peña"
+    folder.mkdir()
+    source = folder / "backup.db"
+    _make_sqlite(source)
+
+    marker = schedule_restore(tmp_settings, source)
+
+    assert encodings == ["utf-8"]
+    assert marker.read_bytes() == str(source.resolve()).encode("utf-8")
 
 
 def test_consume_restore_marker_self_cleans_on_corrupt_source(

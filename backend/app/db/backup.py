@@ -43,6 +43,7 @@ from typing import Literal
 
 from app.core.config import Settings
 from app.core.logging_config import get_logger
+from app.db.migrations import revision_is_known
 
 logger = get_logger(__name__)
 
@@ -111,14 +112,18 @@ def validate_backup(path: Path) -> None:
     """Validate a candidate backup file. Raises `BackupInvalidError` if invalid.
 
     Checks: file exists, has at least the SQLite header (100 bytes),
-    `PRAGMA integrity_check` returns `ok`, and it carries an
-    `alembic_version` row.
+    `PRAGMA integrity_check` returns `ok`, and it carries one
+    `alembic_version` row holding a revision this build knows.
 
-    The version-row check is what stops a restore turning into a loop.
-    A database with no `alembic_version` predates 2026-05-08 and
-    `init_db` refuses it, so without this check the user would restore
-    it happily and then meet the same startup error with no clue that
-    the file they picked was the problem.
+    The version checks are what stop a restore turning into a loop: they
+    refuse every file `init_db` would refuse at the next launch. A
+    database with no `alembic_version` predates 2026-05-08. One with a
+    revision this build does not have was written by a newer AddaxAI,
+    which is what every backup taken after an update is once the user
+    goes back to the older version. Without these checks the user
+    restores it happily and meets the same startup error, with no clue
+    that the file they picked was the problem (a beta tester did that
+    five times, 2026-11-12).
     """
     if not path.is_file():
         raise BackupInvalidError(f"Not a file: {path}")
@@ -154,6 +159,11 @@ def validate_backup(path: Path) -> None:
                 raise BackupInvalidError(
                     f"Expected one schema version in the backup, found "
                     f"{len(versions)}."
+                )
+            if not revision_is_known(versions[0][0]):
+                raise BackupInvalidError(
+                    "This backup was made by a newer version of AddaxAI, "
+                    "so this version cannot open it. Pick an older backup."
                 )
     finally:
         conn.close()
@@ -240,28 +250,54 @@ def pre_restore_snapshot(settings: Settings) -> Path:
 def pre_upgrade_backup(settings: Settings, rev: str | None) -> Path | None:
     """Snapshot the live DB to a pre-upgrade-tagged file.
 
-    Returns `None` when a snapshot for `rev` already exists, because a
-    second copy of the same unmigrated database is worth nothing and
-    costs a full DB copy. Without that, repeated launches at the same
-    revision (a `uvicorn --reload` storm in dev, or a user clicking
-    Retry on the startup error page) push the real pre-upgrade snapshot
-    out of the ring buffer with identical duplicates. That is the one
-    snapshot that matters on the day a migration eats data.
+    Returns `None` when a snapshot for `rev` was already taken today
+    (UTC), the same once-a-day rule as the rolling backup. Repeated
+    launches at the same revision (a `uvicorn --reload` storm in dev, or
+    a user clicking Retry on the startup error page) would otherwise
+    push the real pre-upgrade snapshot out of the ring buffer with
+    identical duplicates. That is the one snapshot that matters on the
+    day a migration eats data.
+
+    Only today's, not any earlier one. The same revision on a later day
+    is a different database: a user who updated, went back to the older
+    version, restored, and worked on for weeks is at this revision again
+    when they update a second time. Skipping then left them with a
+    pre-upgrade backup from before those weeks, the file the startup
+    error tells them to restore. The price is that an upgrade which
+    keeps failing gets one more copy per day it is retried on.
+
+    Also returns `None` for a revision this build does not know. That
+    database was written by a newer AddaxAI, so nothing is about to be
+    upgraded, and the copy would be the one file in the backups folder
+    named "pre-upgrade" that this version cannot open. It is also the
+    newest, so it is the one a user picks (beta report 2026-11-12).
 
     Rolls: keeps the newest `BACKUP_KEEP`. Older pre-upgrade snapshots
     span schema versions you can't roll back across anyway, and each is
     a full DB copy, so unbounded accumulation is just wasted disk.
     """
+    if rev is not None and not revision_is_known(rev):
+        logger.info(
+            f"Database is at revision {rev}, which this version does not "
+            "know: no upgrade ahead, so no pre-upgrade backup"
+        )
+        return None
+
     src = live_db_path(settings)
     backups_dir = _backups_dir(settings)
     dst = backups_dir / _pre_upgrade_filename(rev, _backup_timestamp())
 
+    # Group 1 is the revision tag, group 2 the timestamp, which starts
+    # with the UTC date.
     tag = _PRE_UPGRADE_RE.match(dst.name).group(1)  # type: ignore[union-attr]
+    today = _today_str_utc()
     if any(
-        (m := _PRE_UPGRADE_RE.match(p.name)) and m.group(1) == tag
+        (m := _PRE_UPGRADE_RE.match(p.name))
+        and m.group(1) == tag
+        and m.group(2).startswith(today)
         for p in backups_dir.glob("addaxai-pre-upgrade-*.db")
     ):
-        logger.info(f"Pre-upgrade backup for {tag} already exists, skipping")
+        logger.info(f"Pre-upgrade backup for {tag} already taken today, skipping")
         return None
 
     snapshot_db(src, dst)
@@ -311,30 +347,42 @@ def schedule_restore(settings: Settings, source_path: Path) -> Path:
     validate_backup(source_path)
     marker = settings.user_data_dir / RESTORE_MARKER_FILENAME
     marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text(str(source_path.resolve()))
+    # UTF-8 on both sides of the marker, here and in
+    # `consume_restore_marker`: the startup error page (Electron) writes
+    # it as UTF-8 too, and Python's default on Windows is the ANSI code
+    # page, which turns a "ñ" in the path into a file that is not there.
+    marker.write_text(str(source_path.resolve()), encoding="utf-8")
     return marker
 
 
-def consume_restore_marker(settings: Settings) -> None:
+def consume_restore_marker(settings: Settings) -> str | None:
     """Process and remove a pending restore-on-next-launch marker.
 
     No-op if the marker is absent. On failure (invalid source, missing
     file, IO error) logs at error level and consumes the marker anyway,
     so a corrupt request can't loop the user through restore-fail-
     restore-fail forever. The live DB is left untouched on failure.
+
+    Returns why the restore failed, or `None` when it worked or there
+    was nothing to do. The startup error page writes the marker without
+    validating the file, so this is the only place that learns the pick
+    was bad, and the caller shows it: otherwise the user lands on the
+    same error screen with nothing saying their restore did not happen.
     """
     marker = settings.user_data_dir / RESTORE_MARKER_FILENAME
     if not marker.is_file():
-        return
+        return None
     try:
-        raw = marker.read_text().strip()
+        raw = marker.read_text(encoding="utf-8").strip()
         if not raw:
             raise BackupInvalidError("Restore marker is empty")
         restore_db(settings, Path(raw))
     except Exception as e:
         logger.error(f"Restore from marker failed: {e}", exc_info=True)
+        return str(e)
     finally:
         marker.unlink(missing_ok=True)
+    return None
 
 
 def restore_db(settings: Settings, source_path: Path) -> None:

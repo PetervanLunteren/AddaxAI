@@ -211,6 +211,28 @@ def test_restore_rejects_corrupt_source(client, live_db, tmp_path: Path) -> None
     assert not marker.exists()
 
 
+def test_restore_rejects_a_backup_from_a_newer_version(
+    client, live_db, tmp_path: Path
+) -> None:
+    """The refusal reaches the restore dialog as its own sentence, so the
+    user knows to pick an older backup rather than that "it failed"."""
+    newer = tmp_path / "newer.db"
+    conn = sqlite3.connect(str(newer))
+    try:
+        conn.execute("CREATE TABLE alembic_version (version_num VARCHAR(32))")
+        conn.execute("INSERT INTO alembic_version VALUES ('zzzz99999999')")
+        conn.commit()
+    finally:
+        conn.close()
+
+    resp = client.post("/api/backup/restore", json={"source_path": str(newer)})
+
+    assert resp.status_code == 400
+    assert "newer version of AddaxAI" in resp.json()["detail"]
+    marker = get_settings().user_data_dir / RESTORE_MARKER_FILENAME
+    assert not marker.exists()
+
+
 def test_restore_rejects_missing_source(client, live_db, tmp_path: Path) -> None:
     resp = client.post(
         "/api/backup/restore",

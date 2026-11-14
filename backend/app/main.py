@@ -359,7 +359,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # restore-fail forever. The current live DB is force-snapshotted to
     # the ring buffer first as a safety net.
     from app.db.backup import consume_restore_marker
-    consume_restore_marker(settings)
+    restore_failure = consume_restore_marker(settings)
 
     # Honour a pending "wipe DB on next launch" request from the reset
     # flow. We do this BEFORE init_db so no SQLAlchemy connection is
@@ -430,10 +430,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("Database initialized successfully")
     except Exception as e:
         logger.critical(f"Failed to initialize database: {e}", exc_info=True)
-        write_startup_error(
-            settings,
-            str(e) if isinstance(e, SchemaError) else GENERIC_STARTUP_FAILURE,
-        )
+        message = str(e) if isinstance(e, SchemaError) else GENERIC_STARTUP_FAILURE
+        if restore_failure:
+            # The user just picked a backup on the error page and it was
+            # refused, so the database is the one that failed before.
+            # Without this line the same screen comes back unexplained.
+            message = (
+                f"The backup you picked was not restored: {restore_failure}"
+                f"\n\n{message}"
+            )
+        write_startup_error(settings, message)
         raise
 
     # Fail jobs left `running` by a previous process. Analysis runs in an

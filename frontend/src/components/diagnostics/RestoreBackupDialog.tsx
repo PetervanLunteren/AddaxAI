@@ -134,6 +134,13 @@ export function RestoreBackupDialog({
     },
   });
 
+  // A refusal belongs to the backup it was raised for. Without this it
+  // stays on screen under the next pick, which may be a fine one.
+  const { reset: clearRestoreError } = restore;
+  useEffect(() => {
+    clearRestoreError();
+  }, [sourcePath, clearRestoreError]);
+
   return (
     <TypeToConfirmDialog
       open={open}

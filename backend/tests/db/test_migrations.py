@@ -261,10 +261,12 @@ def test_init_db_refuses_a_db_with_no_alembic_version(engine) -> None:
 
 
 def test_init_db_refuses_an_unknown_stamped_revision(engine) -> None:
-    """A revision that is not on disk means a different build wrote this.
+    """A revision that is not on disk means a newer build wrote this.
 
     Alembic raises CommandError while resolving the chain, before any
-    migration runs, so the database is untouched when we refuse.
+    migration runs, so the database is untouched when we refuse. The
+    message sends the user to the newer version or the pre-upgrade
+    backup, and never to starting fresh.
     """
     init_db()
     with engine.begin() as conn:
@@ -273,8 +275,13 @@ def test_init_db_refuses_an_unknown_stamped_revision(engine) -> None:
         )
     before = _row_counts(engine)
 
-    with pytest.raises(SchemaError, match=r"different version of AddaxAI"):
+    with pytest.raises(SchemaError) as refusal:
         init_db()
+
+    message = str(refusal.value)
+    assert "newer version of AddaxAI" in message
+    assert 'the newest backup whose name starts with "addaxai-pre-upgrade"' in message
+    assert "start fresh" not in message
 
     assert get_current_revision(engine) == "zzzz99999999"
     assert _row_counts(engine) == before
@@ -365,6 +372,38 @@ async def test_lifespan_writes_the_refusal_for_the_error_page(
 
     path = isolated_db_settings.user_data_dir / STARTUP_ERROR_FILENAME
     assert path.read_text(encoding="utf-8") == (
+        "this database is unusable, restore a backup"
+    )
+
+
+async def test_lifespan_says_when_the_picked_backup_was_not_restored(
+    isolated_db_settings, monkeypatch
+) -> None:
+    """A restore picked on the error page happens at this launch. When it
+    is refused, the database is still the one that failed, so the same
+    refusal comes back. The page has to say the restore did not happen,
+    or the user picks the same file again."""
+    from app.main import lifespan
+
+    monkeypatch.setattr("app.main.get_settings", lambda: isolated_db_settings)
+    monkeypatch.setattr(
+        "app.db.backup.consume_restore_marker",
+        lambda settings: "This backup was made by a newer version.",
+    )
+
+    def _refuse() -> None:
+        raise SchemaError("this database is unusable, restore a backup")
+
+    monkeypatch.setattr("app.main.init_db", _refuse)
+
+    with pytest.raises(SchemaError):
+        async with lifespan(FastAPI()):
+            pass
+
+    path = isolated_db_settings.user_data_dir / STARTUP_ERROR_FILENAME
+    assert path.read_text(encoding="utf-8") == (
+        "The backup you picked was not restored: "
+        "This backup was made by a newer version.\n\n"
         "this database is unusable, restore a backup"
     )
 

@@ -62,8 +62,9 @@ class SchemaError(RuntimeError):
     """
 
 
-# Every refusal ends the same way, because the two things a user can do
-# are the two buttons on the startup error page.
+# Most refusals end the same way, because the two things a user can do
+# are the two buttons on the startup error page. A database from a newer
+# version is the exception: it has its own message below.
 _WHAT_NOW = (
     "Your data has not been changed. To continue, restore a backup or "
     "start fresh with an empty database."
@@ -77,6 +78,20 @@ _EARLY_BETA_MESSAGE = (
 _FOREIGN_DB_MESSAGE = (
     "This database was made by a different version of AddaxAI, so this "
     f"version cannot open it.\n\n{_WHAT_NOW}"
+)
+
+# Shown after a downgrade. Starting fresh is the worst way out here, so
+# it is not offered: reinstalling the newer version loses nothing, and
+# the pre-upgrade backup is the one file this version can open. A beta
+# tester restored the wrong backup five times on the generic wording
+# (2026-11-12).
+_NEWER_DB_MESSAGE = (
+    "This database was updated by a newer version of AddaxAI, so this "
+    "version cannot open it.\n\n"
+    "Your data has not been changed. Install the newer version again to "
+    "carry on where you left off. To stay on this version instead, restore "
+    'the newest backup whose name starts with "addaxai-pre-upgrade". Work '
+    "done in the newer version is not in that backup."
 )
 
 # The error page has room for a handful of lines, not a schema dump. The
@@ -171,7 +186,8 @@ def upgrade_to_head(database_url: str | None = None) -> None:
     hand-edited version row) makes alembic raise `CommandError` while
     resolving the chain, before any migration runs. Translate that into
     a refusal the user can act on rather than letting a stack trace be
-    the whole story.
+    the whole story. The chain is linear, so an unknown revision is a
+    newer one; a hand-edited row gets the same message, which is fine.
     """
     from alembic import command
     from alembic.util.exc import CommandError
@@ -180,7 +196,7 @@ def upgrade_to_head(database_url: str | None = None) -> None:
         command.upgrade(_alembic_config(database_url), "head")
     except CommandError as e:
         logger.critical(f"Alembic could not upgrade this database: {e}")
-        raise SchemaError(_FOREIGN_DB_MESSAGE) from e
+        raise SchemaError(_NEWER_DB_MESSAGE) from e
 
 
 def revision_is_known(revision: str) -> bool:
