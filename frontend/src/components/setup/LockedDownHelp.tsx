@@ -43,6 +43,14 @@ const HELP_BY_KIND: { [kind: string]: HelpLine | undefined } = {
     label: "Read how to set it",
     href: SET_VARIABLE_HELP_URL,
   },
+  // Tagged only when Windows reports Smart App Control as on, for a
+  // failure with no known cause. "Can" because it is the likely cause,
+  // not a confirmed one.
+  smart_app_control: {
+    lead: "Windows Smart App Control is on and can block parts of the analysis software.",
+    label: "Read how to check and fix it",
+    href: `${LOCKED_DOWN_HELP_URL}#windows-smart-app-control-blocks-the-analysis`,
+  },
 };
 
 interface LockedDownHelpProps {

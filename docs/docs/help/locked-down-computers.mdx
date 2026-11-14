@@ -128,10 +128,12 @@ Then press Try again.
 <FaqItem
   id="windows-smart-app-control-blocks-the-analysis"
   q="Windows Smart App Control blocks the analysis"
-  summary='Analysis fails, Windows shows "Smart App Control has blocked part of this app". Windows 11 only.'
+  summary='Analysis or setup fails, Windows shows "Smart App Control has blocked part of this app". Windows 11 only.'
 >
 
 Analysis fails while AddaxAI itself opens fine. The run ends with an error like `ModuleNotFoundError` or "failed with exit code 1", and Windows shows "Smart App Control has blocked part of this app".
+
+Setup and environment updates can fail the same way. The error then ends with a line like "failed to execute pre/post link script", and the setup screen says Smart App Control is on.
 
 Not sure this is your case? Open Event Viewer and go to Applications and Services Logs, then Microsoft, Windows, CodeIntegrity, Operational. Entries with Event ID 3077 naming files under `C:\Users\<your user name>\AddaxAI\envs\` confirm it.
 

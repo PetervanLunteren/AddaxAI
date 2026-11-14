@@ -43,6 +43,7 @@ from app.services import legacy_install
 from app.utils.exiftool_bin import bundled_exiftool_path
 from app.utils.ffmpeg_bin import APP_ENV, bundled_ffmpeg_path
 from app.utils.fs_remove import safe_rmtree
+from app.utils.windows_security import smart_app_control_state
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/setup", tags=["Setup"])
@@ -475,7 +476,13 @@ def _install_env_blocking(
         _install_state.finish(error=str(e), error_kind="network_blocked")
     except Exception as e:
         logger.error(f"Setup install failed: {e}", exc_info=True)
-        _install_state.finish(error=str(e))
+        # No known cause. Where Smart App Control is enforced it is the
+        # likeliest one: it blocks unsigned programs that a package runs
+        # while it installs (a beta tester's base env build died on
+        # gdk-pixbuf's post-link step, 2026-11-12). Tag it so the wizard
+        # points at that help section. The message stays as it is.
+        kind = "smart_app_control" if smart_app_control_state() == "on" else None
+        _install_state.finish(error=str(e), error_kind=kind)
 
 
 class InstallEnvRequest(BaseModel):
