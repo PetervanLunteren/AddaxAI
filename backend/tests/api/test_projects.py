@@ -213,6 +213,24 @@ def test_delete_project(client, db):
     assert resp.status_code == 204
 
 
+def test_delete_project_removes_its_card_pictures(client, db):
+    """Both kinds go: the one picked from its detections and an upload."""
+    from app.core.config import get_settings
+
+    p = make_project(db)
+    db.commit()
+    pictures = [
+        get_settings().user_data_dir / subdir / f"{p.id}.jpg"
+        for subdir in ("thumbnails", "project-images")
+    ]
+    for picture in pictures:
+        picture.parent.mkdir(parents=True, exist_ok=True)
+        picture.write_bytes(b"jpeg")
+
+    assert client.delete(f"/api/projects/{p.id}").status_code == 204
+    assert not any(picture.exists() for picture in pictures)
+
+
 def test_delete_project_not_found(client):
     resp = client.delete("/api/projects/nonexistent")
     assert resp.status_code == 404

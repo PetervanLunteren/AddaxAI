@@ -296,7 +296,7 @@ def delete_folder_run(db: Session, project_id: str) -> bool:
     Files + Detections + Events + EventObservations via SQLAlchemy
     relationships, then removes the per-project ``.addaxai/projects/
     <project_id>/`` cache folder from every source folder the project
-    pointed at.
+    pointed at, and the run's card picture from the user data folder.
 
     Use this rather than ``delete_project`` for folder-run cleanup
     because the artifact cleanup is required to free the cache (PIL
@@ -332,7 +332,29 @@ def delete_folder_run(db: Session, project_id: str) -> bool:
 
     for folder_path in folder_paths:
         _delete_deployment_artifacts(folder_path, project_id)
+    delete_project_images(project_id)
     return True
+
+
+def delete_project_images(project_id: str) -> None:
+    """Remove a deleted project's card pictures from the user data folder.
+
+    Both kinds: the one picked from its detections (`thumbnails/`) and one
+    the user uploaded (`project-images/`). Best-effort, like the folder
+    cleanup: the rows are committed by the time this runs, so a file we
+    cannot remove is logged and must not fail a delete that succeeded.
+    """
+    from app.core.config import get_settings
+
+    user_data_dir = get_settings().user_data_dir
+    for subdir in ("project-images", "thumbnails"):
+        picture = user_data_dir / subdir / f"{project_id}.jpg"
+        try:
+            if picture.exists():
+                picture.unlink()
+                logger.info(f"Deleted project picture: {picture}")
+        except OSError as e:
+            logger.warning(f"Could not delete project picture {picture}: {e}")
 
 
 def reset_folder_run_data(

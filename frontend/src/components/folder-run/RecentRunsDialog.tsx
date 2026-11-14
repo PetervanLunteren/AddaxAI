@@ -14,8 +14,7 @@
  * resumable (there'd be nothing to open), but they can still be deleted —
  * which is exactly when you'd want to.
  *
- * Delete is irreversible: it takes the run's DB rows and its on-disk
- * `.addaxai` cache, so it sits behind a confirm naming the folder.
+ * Delete sits behind the shared confirm, `DeleteRunDialog`.
  *
  * The API returns every run, so the list starts at INITIAL_ROWS and the rest
  * are one click away. Nothing is hidden silently: a truncated list reads as
@@ -25,23 +24,14 @@
  */
 
 import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { FolderOpen, Trash2 } from "lucide-react";
 
 import { folderRunsApi, type FolderRunSummary } from "../../api/folder-runs";
 import { formatAuditWhen } from "../../lib/auditTime";
 import { cn } from "../../lib/utils";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "../ui/alert-dialog";
+import { DeleteRunDialog } from "./DeleteRunDialog";
 import {
   Dialog,
   DialogContent,
@@ -106,7 +96,6 @@ interface RecentRunsDialogProps {
 
 export function RecentRunsDialog({ open, onOpenChange }: RecentRunsDialogProps) {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const [pendingDelete, setPendingDelete] = useState<FolderRunSummary | null>(
     null,
   );
@@ -126,14 +115,6 @@ export function RecentRunsDialog({ open, onOpenChange }: RecentRunsDialogProps) 
 
   const visibleRuns = showAll ? runs : runs.slice(0, INITIAL_ROWS);
   const hiddenCount = runs.length - visibleRuns.length;
-
-  const remove = useMutation({
-    mutationFn: (runId: string) => folderRunsApi.remove(runId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["folder-runs"] });
-      setPendingDelete(null);
-    },
-  });
 
   return (
     <>
@@ -232,39 +213,10 @@ export function RecentRunsDialog({ open, onOpenChange }: RecentRunsDialogProps) 
         </DialogContent>
       </Dialog>
 
-      <AlertDialog
-        open={pendingDelete !== null}
-        onOpenChange={(o) => !o && setPendingDelete(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this run?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Deletes the analysis of{" "}
-              <span className="font-medium text-foreground">
-                {pendingDelete?.folder_path}
-              </span>
-              , including any labels you verified. Your images and videos are
-              not touched. This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={remove.isPending}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={remove.isPending}
-              onClick={(e) => {
-                // Keep the dialog up until the delete resolves.
-                e.preventDefault();
-                if (pendingDelete) remove.mutate(pendingDelete.id);
-              }}
-            >
-              {remove.isPending ? "Deleting…" : "Delete run"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteRunDialog
+        run={pendingDelete}
+        onClose={() => setPendingDelete(null)}
+      />
     </>
   );
 }

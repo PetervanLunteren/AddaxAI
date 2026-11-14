@@ -534,6 +534,27 @@ def test_delete_folder_run_removes_cache_folder(db, tmp_path):
     assert not (source_folder / ".addaxai").exists()
 
 
+def test_delete_folder_run_removes_its_card_picture(db):
+    """The run's card picture lives in the user data folder, not next to
+    the media, so the cache cleanup alone left one file behind per run."""
+    from app.api.crud import project as crud_project
+    from app.core.config import get_settings
+    from tests.conftest import make_project
+
+    project = make_project(db, mode="folder_run")
+    thumbnails = get_settings().user_data_dir / "thumbnails"
+    thumbnails.mkdir(parents=True, exist_ok=True)
+    picture = thumbnails / f"{project.id}.jpg"
+    picture.write_bytes(b"jpeg")
+    other = thumbnails / "another-project.jpg"
+    other.write_bytes(b"jpeg")
+
+    assert crud_project.delete_folder_run(db, project.id) is True
+    assert not picture.exists()
+    assert other.exists()
+    other.unlink()
+
+
 def test_delete_folder_run_returns_false_for_unknown(db):
     from app.api.crud import project as crud_project
 

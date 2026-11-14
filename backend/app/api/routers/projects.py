@@ -670,18 +670,8 @@ def delete_project(project_id: str, db: Session = Depends(get_db)) -> None:
     for folder_path in folder_paths:
         _delete_deployment_artifacts(str(folder_path), project_id)
 
-    # Clean up thumbnail files. Best-effort for the same reason.
-    from app.core.config import get_settings
-
-    settings = get_settings()
-    for subdir in ("project-images", "thumbnails"):
-        thumb = settings.user_data_dir / subdir / f"{project_id}.jpg"
-        try:
-            if thumb.exists():
-                thumb.unlink()
-                logger.info(f"Deleted thumbnail: {thumb}")
-        except OSError as e:
-            logger.warning(f"Could not delete thumbnail {thumb}: {e}")
+    # Best-effort for the same reason.
+    crud_project.delete_project_images(project_id)
 
     logger.info(f"Deleted project: {project_id} (cascaded to all related data)")
 

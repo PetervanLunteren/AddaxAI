@@ -131,6 +131,7 @@ export function FolderRunSaveStep() {
           <CompletionDialog
             runId={runId}
             runName={run.project.name}
+            folderPath={run.queue_entry?.folder_path ?? ""}
             form={form}
           />
           </div>

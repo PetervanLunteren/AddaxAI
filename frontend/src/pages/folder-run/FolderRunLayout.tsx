@@ -21,8 +21,9 @@
  */
 
 import { createContext, useContext } from "react";
-import { Outlet, useNavigate, useParams } from "react-router-dom";
+import { Navigate, Outlet, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { ApiError } from "../../lib/api-client";
 import { HomeButton } from "../../components/layout/HomeButton";
 import { StepProgress } from "../../components/folder-run/StepProgress";
 import { useLabelColors } from "../../hooks/useLabelColors";
@@ -67,11 +68,15 @@ export function FolderRunLayout() {
   // A folder run is a project too: species colours for its Labels step.
   useLabelColors(runId);
 
-  const { data: run, isLoading } = useQuery({
+  const { data: run, isLoading, error } = useQuery({
     queryKey: ["folder-run", runId],
     queryFn: () => folderRunsApi.get(runId!),
     enabled: !!runId,
+    // A deleted run will not come back, so there is nothing to retry.
+    retry: (failureCount, err) =>
+      !(err instanceof ApiError && err.status === 404) && failureCount < 1,
   });
+  const runIsGone = error instanceof ApiError && error.status === 404;
 
   const currentStep = stepFromPath(window.location.pathname);
 
@@ -98,6 +103,12 @@ export function FolderRunLayout() {
   const isReviewStep = currentStep === "labels" || currentStep === "counts";
   const mainMaxWidth =
     isReviewStep && wideMode.wide ? "max-w-none" : "max-w-7xl";
+
+  // A deleted run's address (browser history, an old link) has nothing to
+  // show, and every step would wait on it forever. Start a new run instead.
+  // Here, once, so no step has to handle it. Other errors are not caught:
+  // those are faults, not a run that is gone.
+  if (runIsGone) return <Navigate to="/folder-runs/new" replace />;
 
   return (
     <FolderRunContext.Provider value={{ runId, run, isLoading }}>

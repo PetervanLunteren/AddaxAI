@@ -16,6 +16,7 @@ import {
   Save,
   SlidersHorizontal,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 
 import { Button } from "../../../components/ui/button";
@@ -43,6 +44,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../../components/ui/select";
+import { DeleteRunDialog } from "../../../components/folder-run/DeleteRunDialog";
 import { PromoteDialog } from "../../../components/folder-run/PromoteDialog";
 import { LabelFilterModal } from "../../../components/verify/LabelFilterModal";
 import { FolderSelector } from "../../../components/analyses/FolderSelector";
@@ -568,13 +570,17 @@ export function SaveErrorLine({ error }: { error: Error | null }) {
 export function CompletionDialog({
   runId,
   runName,
+  folderPath,
   form,
 }: {
   runId: string;
   runName: string;
+  /** The folder the run analysed, named in the delete confirm. */
+  folderPath: string;
   form: UseSaveOutputsFormResult;
 }) {
   const navigate = useNavigate();
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const { result, promoteOpen, setPromoteOpen, handleOpenResults } = form;
   if (!result) return null;
 
@@ -644,6 +650,15 @@ export function CompletionDialog({
               description="Add where the camera was for dashboards, maps and trap-night rates."
               onClick={() => setPromoteOpen(true)}
             />
+            {/* For whoever is done with this folder: the outputs are on
+                disk by now, so the run and its hidden cache next to the
+                media can go. */}
+            <NextStepRow
+              icon={Trash2}
+              title="Delete this run"
+              description="Remove the analysis from AddaxAI and free its disk space. Your images, videos and saved outputs are untouched."
+              onClick={() => setDeleteOpen(true)}
+            />
           </div>
 
           <DialogFooter>
@@ -662,6 +677,13 @@ export function CompletionDialog({
         onOpenChange={setPromoteOpen}
         runId={runId}
         defaultName={runName}
+      />
+
+      {/* Leaves the run's pages on success: they no longer exist. */}
+      <DeleteRunDialog
+        run={deleteOpen ? { id: runId, folder_path: folderPath } : null}
+        onClose={() => setDeleteOpen(false)}
+        onDeleted={() => navigate("/folder-runs/new")}
       />
     </>
   );
