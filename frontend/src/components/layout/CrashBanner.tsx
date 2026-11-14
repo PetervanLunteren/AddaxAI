@@ -10,9 +10,10 @@
  */
 
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Download, X } from "lucide-react";
 import { diagnosticsApi } from "../../api/diagnostics";
+import { exportDiagnosticReport } from "../../lib/diagnostic-export";
 import { Button } from "../ui/button";
 
 export function CrashBanner() {
@@ -22,10 +23,6 @@ export function CrashBanner() {
     queryKey: ["last-launch-status"],
     queryFn: diagnosticsApi.getLastLaunchStatus,
     staleTime: Infinity, // Once per session is enough.
-  });
-
-  const download = useMutation({
-    mutationFn: () => diagnosticsApi.downloadDiagnosticZip(),
   });
 
   if (
@@ -53,12 +50,11 @@ export function CrashBanner() {
           <Button
             size="sm"
             variant="secondary"
-            onClick={() => download.mutate()}
-            disabled={download.isPending}
+            onClick={() => void exportDiagnosticReport()}
             className="shrink-0"
           >
             <Download className="h-3.5 w-3.5 mr-1.5" />
-            {download.isPending ? "Building..." : "Export report"}
+            Export report
           </Button>
           <button
             onClick={() => setDismissed(true)}
