@@ -456,11 +456,15 @@ class MegaDetectorV1000(DetectionModel):
                     env=clean_python_env(**cuda_guard_overrides(self.env_manager)),
                 )
 
-                # Monitor progress from stdout
+                # Monitor progress from stdout. The last line is kept for
+                # the error: when the script dies, that is the line of its
+                # traceback that names what went wrong.
+                last_line = ""
                 with track_subprocess(job_id, process):
                     for line in process.stdout:
                         line = line.strip()
                         if line:
+                            last_line = line
                             logger.info(f"MegaDetector: {line}")
 
                             # Parse device from PTDetector output (appears once during init)
@@ -540,7 +544,12 @@ class MegaDetectorV1000(DetectionModel):
                     raise JobCancelledError()
 
                 if process.returncode != 0:
-                    raise RuntimeError(f"MegaDetector failed with return code {process.returncode}")
+                    # The wrapper below prefixes "MegaDetector execution
+                    # failed", so this half only adds the code and the cause.
+                    raise RuntimeError(
+                        f"exited with code {process.returncode}: "
+                        f"{last_line or 'no output'}"
+                    )
 
                 # Verify temp output exists
                 if not temp_output.exists():

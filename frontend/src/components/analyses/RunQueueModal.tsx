@@ -243,23 +243,22 @@ function LogTable({ rows }: LogTableProps) {
                   {r.deployment}
                 </td>
                 <td className="px-3 py-2 text-muted-foreground font-mono" title={r.detail}>
-                  {/* Which end to keep depends on what the row is about.
-                      A warning names a file, so truncate from the start
-                      and let the filename survive. An error is an
-                      exception message, and its meaning is at the front:
-                      truncating from the start leaves the reader a stray
-                      path fragment or a bare id, which is what a failed
-                      deployment used to show here. */}
-                  <span
-                    className="block overflow-hidden text-ellipsis whitespace-nowrap"
-                    style={
-                      r.severity === "warning"
-                        ? { direction: "rtl", textAlign: "left" }
-                        : undefined
-                    }
-                  >
-                    {r.detail}
-                  </span>
+                  {/* A warning names a file, so it stays on one line and is
+                      cut from the start: the filename survives. An error
+                      is an exception message and is not cut at all, it
+                      wraps. Its cause is often at the end, and a
+                      screenshot of this table is often the whole bug
+                      report (forum, 2026-11-11). */}
+                  {r.severity === "warning" ? (
+                    <span
+                      className="block overflow-hidden text-ellipsis whitespace-nowrap"
+                      style={{ direction: "rtl", textAlign: "left" }}
+                    >
+                      {r.detail}
+                    </span>
+                  ) : (
+                    <span className="block break-words">{r.detail}</span>
+                  )}
                 </td>
               </tr>
             ))}

@@ -104,6 +104,42 @@ def test_a_unicode_progress_bar_does_not_fail_the_run_on_a_cp1252_console(
     assert f"MegaDetector: {bar.strip()}" in caplog.text
 
 
+def test_a_failing_run_says_why_in_the_error(model, tmp_path, monkeypatch):
+    """The screen shows only the error, so it has to carry the cause: the
+    last line the script printed, which for a Python crash is the line of
+    the traceback that names the exception. It used to be a bare "return
+    code 1" (forum report 2026-11-11)."""
+    folder = tmp_path / "deployment"
+    folder.mkdir()
+    (folder / "IMG_0.jpg").write_bytes(b"jpg")
+    output = (
+        "Traceback (most recent call last):\n"
+        '  File "run_detector_batch.py", line 1, in <module>\n'
+        "RuntimeError: CUDA out of memory\n"
+        "\n"
+    )
+
+    def failing_popen(cmd, **_kwargs):
+        process = _FakeProcess(cmd, stdout_text=output)
+        process.returncode = 1
+        return process
+
+    monkeypatch.setattr(md_module, "popen_group", failing_popen)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        model.detect_to_json(
+            image_paths=[folder / "IMG_0.jpg"],
+            deployment_folder=folder,
+            confidence_threshold=0.01,
+            output_path=folder / "detection_image.json",
+        )
+
+    assert str(excinfo.value) == (
+        "MegaDetector execution failed: exited with code 1: "
+        "RuntimeError: CUDA out of memory"
+    )
+
+
 def test_non_ascii_output_survives_a_real_pipe():
     """The same Popen settings, round-tripped through a real child."""
     process = subprocess.Popen(
