@@ -98,11 +98,17 @@ const LOGS_DIR = path.join(USER_DATA_DIR, 'logs');
  * Returns null when the flag is absent. Returns "" (empty string) when
  * the flag is present without an argument — still a valid signal to
  * open a folder run, just without a pre-filled folder.
+ *
+ * A next token that starts with `--` is a switch, not a folder, and counts
+ * as no argument. On Windows, argv can carry Chromium switches that nobody
+ * passed: a user's app opened on the folder `--allow-file-access-from-files`
+ * (2026-11-09). Timelapse always passes an absolute path, never a `--` token.
  */
 function parseTimelapseArg(argv: string[]): string | null {
   const idx = argv.findIndex((a) => a === '--timelapse');
   if (idx === -1) return null;
-  return argv[idx + 1] || '';
+  const next = argv[idx + 1] || '';
+  return next.startsWith('--') ? '' : next;
 }
 
 /**
