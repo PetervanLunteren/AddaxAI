@@ -1,46 +1,54 @@
 ---
 sidebar_position: 9
-title: Underwater videos
+title: Analyse underwater videos
 ---
 
-# Underwater videos
+# Analyse underwater videos
 
-AddaxAI can analyse long underwater videos such as baited remote underwater video stations (BRUVS), the standard tool for surveying sharks, rays and reef fish. The difference from a camera trap clip is length: a drop runs 60 to 90 minutes and animals swim in and out the whole time. AddaxAI follows each animal through every video it analyses, so a drop is reviewed animal by animal, however long it is.
+AddaxAI analyses long underwater videos, such as baited remote underwater video stations (BRUVS). It follows each animal through the video, so you check a 90 minute drop animal by animal, not frame by frame. This page takes you from setup to counts.
 
-## Which models
+A video tutorial is coming soon.
 
-Two detectors are made for underwater footage. Both find animals; neither names the species, you do that on the Labels page.
+## Choose underwater
 
-| Model | Finds | Notes |
+The first time you open the app, the setup screen asks what data you work with. Choose underwater. You can change it later in the View menu, under Data type.
+
+The app then offers only underwater models. There is no species model for underwater footage yet, so the AI finds the animals and you name the species.
+
+| Model | Finds | Speed |
 |---|---|---|
-| SharkTrack | Sharks and rays | Trained on footage from 25 locations worldwide. Small and fast, runs on a laptop without a GPU at roughly half an hour per hour of video. Varini et al. 2024. |
-| Community Fish Detector | Any fish | Trained on 17 open datasets from reefs, rivers, lakes and labs, so it works in most water. Three sizes: nano is the fast one, small and medium see more and are several times slower without a GPU. Varini, Morris and contributors. |
+| SharkTrack | Sharks and rays | About half an hour per hour of video, on a laptop without a GPU |
+| Community Fish Detector | Any fish | Nano is fast. Small and medium find more, but are several times slower without a GPU |
 
-Tell AddaxAI you work underwater and it offers underwater models only. You answer that once, on the setup screen the first time you open the app, and you can change it at any time in the **View** menu under **Data type**. AddaxAI then installs the Community Fish Detector nano and the environment both underwater detectors share, and every model list from then on offers the underwater detectors and no classification model, because none exists for underwater footage yet. SharkTrack is a small extra download whenever you pick it. Both detectors also analyse photos.
+Both also analyse photos. See the [model zoo](../reference/model-zoo.mdx) for details.
 
-## Frame rate
+## Put one drop in one folder
 
-AddaxAI checks a video a few frames per second and follows each animal from one checked frame to the next, so a shark that circles the bait for two minutes is one card to review, not two hundred. The default is 3 frames per second. A higher rate follows fast animals better and takes proportionally longer; below about 1 frame per second a fast animal can split into several detections, and an animal out of sight for more than 2 seconds counts as a new one when it comes back. The setting is in the advanced settings of the setup step and of the project settings.
+- Put the videos of one drop in one folder.
+- In a project, add that folder as one deployment.
+- GoPro chapters of one drop can stay separate files. They become one event, and the count covers all of them.
 
-A filter also drops tracks that last under a second or barely move, unless the detector was confident. For the underwater detectors it is strict, which removes most of the floating debris and algae in turbid water. For MegaDetector it is milder, because a resting animal on a camera trap is ordinary.
+Use a folder run for one batch of drops, and a project when you keep adding drops. See [choose a workflow](../start-here/choose-a-workflow.mdx).
 
-## What you get
+## Check the animals
 
-- **Labels page.** One card per animal the AI followed, shown at the frame where it saw that animal best. Give the card a species with the label picker, tick it, or press X if it is algae, debris or a fish you do not want. Whatever you decide applies to every frame of that animal. The category filter shows the detector's own class, elasmobranch or fish. In Files, a drop opens on its cover with a timeline of every animal underneath; Verify there signs off every animal in the drop.
-- **Counts page.** One event per drop, one row per species with its MaxN: the most individuals visible together in one frame, taken over the whole video. Each row says when that count was reached and when the species was first seen. Show puts the frame the count was made on on screen. Confirm or change the number as you would for a camera trap event. An animal the AI missed is typed in here, or drawn on the frame you count on in Files, where it is counted like any other.
-- **Watching an animal.** From a card, "Open in files view" lands on that animal's frame with the animal selected; the timeline under the picture and under the player has one bar per animal, and the Counts page shows the same timeline with the MaxN frames marked. See [check the labels](./check-labels.mdx) and [confirm the counts](./confirm-counts.mdx).
-- **Exports.** The Counts table has `max_n_frame`, `max_n_time` and `first_arrival_time`; the Detections table says which animal each box belongs to; the Camtrap DP export writes one observation per animal. See [exports](../reference/exports.md).
+On the Labels page, Detections shows one card per animal, at the frame where the AI saw it best. What you do with a card applies to every frame of that animal.
 
-## Setting up the folders
+- Give the card a species, or press <kbd>V</kbd> when the label is right.
+- Press <kbd>X</kbd> for a false detection, such as the bait, algae or debris.
 
-Put the videos of one drop in one folder and add that folder as one deployment. GoPro chapters of the same drop can stay as separate files: they fall within the independence interval and become one event, and the count is taken across all of them. For stereo rigs, use the files of one camera per deployment; AddaxAI does not pair the two views.
+Use Files to watch a whole drop. Under the video is a timeline with one bar per animal.
 
-## Things to know
+See [check the labels](./check-labels.mdx).
 
-- Videos in a format the browser cannot play (some AVI files) are analysed and reviewed like any other. Every card, every bar on the timeline and every count still shows its frame; only playback itself is unavailable.
-- The dashboard's rates per 100 trap nights read a 90 minute drop as one trap night. They are made for camera traps; use the Counts page and the Counts export for underwater work.
-- The AI counts one animal per track. An animal that leaves the picture and comes back is followed again as a new track; that does not change the count, because the count is per frame.
+## Confirm the counts
 
-## Citing the models
+The Counts page has one event per drop, with one row per species. The count is MaxN: the most animals of that species on screen at once. Each row shows when that count was reached and when the species first arrived. Click Show to see that frame.
 
-If you publish results, cite the model you used: SharkTrack, Varini et al. 2024, [arXiv 2407.20623](https://arxiv.org/abs/2407.20623); the Community Fish Detector, Varini, Morris and contributors, [github.com/filippovarini/community-fish-detector](https://github.com/filippovarini/community-fish-detector).
+Confirm the number or change it. To add an animal the AI missed, type the number, or draw it on the MaxN frame in Files.
+
+The counts export has the MaxN time and the first arrival time. See [exports](../reference/exports.md).
+
+## Good to know
+
+AddaxAI was built for camera traps first. Some words and graphs, like trap nights and the rates on the dashboard, don't fit underwater work. Ignore what doesn't apply to your data. It doesn't mean your results are wrong.
