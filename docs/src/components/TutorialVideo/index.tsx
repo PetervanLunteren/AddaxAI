@@ -5,22 +5,26 @@ import styles from "./styles.module.css";
 // styling as AppShot so screenshots and videos read as one family.
 // youtube-nocookie.com keeps YouTube from setting cookies until the
 // visitor presses play; loading="lazy" defers the iframe until it
-// scrolls into view.
+// scrolls into view. `start` opens the video at a chapter, so one
+// recording can serve several pages.
 
 export default function TutorialVideo({
   id,
   title,
+  start,
 }: {
   // The YouTube video id, the part after `watch?v=` in the URL.
   id: string;
   // Accessible name for the iframe, e.g. "Video: analyse a folder".
   title: string;
+  // Optional start time in seconds, e.g. 420 for 7:00.
+  start?: number;
 }): ReactNode {
   return (
     <div className={styles.frame}>
       <iframe
         className={styles.player}
-        src={`https://www.youtube-nocookie.com/embed/${id}`}
+        src={`https://www.youtube-nocookie.com/embed/${id}${start ? `?start=${start}` : ""}`}
         title={title}
         loading="lazy"
         allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
