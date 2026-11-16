@@ -124,8 +124,11 @@ def _scale_filter() -> str:
 
 
 def _seek_time(frame_number: int, fps: float) -> str:
-    """Half a frame early, so float rounding cannot land on the next frame."""
-    return f"{max(0.0, (frame_number - 0.5) / fps):.6f}"
+    """A quarter frame early, so float rounding cannot land on the next
+    frame. Not half: an AVI counts time in whole frames, ffmpeg rounds a
+    seek to that grid, and frame 99.5 became frame 99, so every AVI
+    showed the frame before the one asked for (2026-11-16)."""
+    return f"{max(0.0, (frame_number - 0.25) / fps):.6f}"
 
 
 def frame_seek_cmd(ffmpeg: str, video: Path, frame_number: int, fps: float) -> list[str]:

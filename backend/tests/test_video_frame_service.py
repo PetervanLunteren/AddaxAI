@@ -72,6 +72,52 @@ def test_the_chunk_decode_gives_the_single_decodes_bytes(clip):
     )
 
 
+@pytest.mark.parametrize(
+    ("suffix", "codec"), [("mp4", ["-c:v", "libx264"]), ("avi", ["-c:v", "mjpeg"])]
+)
+def test_a_seek_lands_on_the_frame_asked_for_in_every_container(tmp_path, suffix, codec):
+    """An AVI keeps time in whole frames and ffmpeg rounds a seek to that
+    grid, so a seek half a frame early landed on the frame before: every
+    AVI showed its boxes one frame early. Each decoded frame must be the
+    frame with that index in a plain decode from the start."""
+    import io
+
+    import numpy as np
+    from PIL import Image
+
+    try:
+        ffmpeg = resolve_ffmpeg(APP_ENV)
+    except RuntimeError as e:
+        pytest.skip(f"no ffmpeg: {e}")
+    video = tmp_path / f"pattern.{suffix}"
+    subprocess.run(
+        [
+            ffmpeg, "-v", "error", "-y",
+            "-f", "lavfi", "-i", "testsrc=size=160x120:rate=15:duration=4", *codec, str(video),
+        ],
+        check=True,
+    )
+    raw = subprocess.run(
+        [ffmpeg, "-v", "error", "-i", str(video), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+        capture_output=True,
+        check=True,
+    ).stdout
+    every = np.frombuffer(raw, np.uint8).reshape(-1, 120, 160, 3).astype(int)
+
+    for n in (1, 2, 17, 30, 59):
+        jpeg = vfs.decode_frame_jpeg(str(video), n, 15.0)
+        assert jpeg is not None
+        got = np.asarray(Image.open(io.BytesIO(jpeg)).convert("RGB")).astype(int)
+        errors = np.abs(every - got).mean(axis=(1, 2, 3))
+        assert int(errors.argmin()) == n, (suffix, n, int(errors.argmin()))
+    vfs._frames.clear()
+    chunk = vfs.decode_frames_jpeg(str(video), [30, 35, 40], 15.0)
+    for n, jpeg in chunk.items():
+        got = np.asarray(Image.open(io.BytesIO(jpeg)).convert("RGB")).astype(int)
+        assert int(np.abs(every - got).mean(axis=(1, 2, 3)).argmin()) == n, (suffix, n)
+    assert sorted(chunk) == [30, 35, 40]
+
+
 def test_frames_past_the_end_are_left_out(clip):
     got = vfs.decode_frames_jpeg(clip, [55, 59, 70, 80], FPS)
     assert sorted(got) == [55, 59]
@@ -117,7 +163,7 @@ def test_the_cache_is_bounded_and_drops_the_oldest(monkeypatch):
 
 def test_the_chunk_command_selects_by_offset_from_the_seek(tmp_path):
     cmd = vfs.frames_seek_cmd("ffmpeg", tmp_path / "c.mp4", 100, [0, 10, 25], 30.0, tmp_path)
-    assert cmd[cmd.index("-ss") + 1] == f"{99.5 / 30.0:.6f}"
+    assert cmd[cmd.index("-ss") + 1] == f"{99.75 / 30.0:.6f}"
     assert cmd[cmd.index("-vf") + 1].startswith("select='eq(n\\,0)+eq(n\\,10)+eq(n\\,25)',")
     assert cmd[cmd.index("-frames:v") + 1] == "3"
     assert cmd[cmd.index("-fps_mode") + 1] == "passthrough"

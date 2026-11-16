@@ -985,7 +985,7 @@ After video detection (phase 1), one frame number is selected per video as its c
 |---|---|---|
 | `best_frame.py`, and the classifier when a clip has nothing to crop | 1 | `read_frame_by_seek` |
 | the classifier with crops (11 to 51 frames) | many, close together | `iter_wanted_frames`, walking |
-| any frame a person looks at (`/image?frame=N`, a card cut on request) | 1, any | `services/video_frame_service.py`: an ffmpeg keyframe seek and decode, hardware where there is one, a 64-entry memory cache, nothing on disk |
+| any frame a person looks at (`/image?frame=N`, a card cut on request) | 1, any | `services/video_frame_service.py`: an ffmpeg keyframe seek and decode, hardware where there is one, aimed a quarter frame early (half landed one frame early on every AVI, whose clock ticks in whole frames), a 64-entry memory cache, nothing on disk |
 
 Until 2026-08-03 everything walked, and `best_frame.py` carried a comment claiming it decoded "only the frame we are going to keep". That was false: it decoded every frame *up to* the one it kept. Since a video with no confident detection is sent to `total_frames // 2`, and blank is the majority of clips, it decoded **half of every empty video and discarded it**. On a beta tester's 1595-video run that was 85 minutes, 71% of the MegaDetector video detection time itself. This was invisible for two months because the May refactor (bulk frames to disk removed) and the July one (sharpness tier dropped, `wanted` shrank to two frames) both really did fix something, disk and memory respectively, and the comments they left described *retention* in language that reads like *work*.
 
