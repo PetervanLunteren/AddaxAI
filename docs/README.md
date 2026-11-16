@@ -93,6 +93,10 @@ list could not be fetched.
 Because the committed copy is the safety net, commit what a good run writes
 now and then, so the fallback does not drift far behind the catalogue.
 
+## Writing style
+
+Docs pages follow the docs mode of the `/write-partner` skill: length, layout, app labels, keys and the word list.
+
 ## Build
 
 ```bash
