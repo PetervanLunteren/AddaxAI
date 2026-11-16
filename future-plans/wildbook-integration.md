@@ -5,6 +5,7 @@ Date: 2026-09-17
 Branch the investigation ran on: `claude/access-capabilities-question-icvtpc`
 Repo state at time of audit: `abe69cd`, then rebased onto `c6f537c` on `main`, VERSION `0.0.0-dev`
 Wildbook source read at: `WildMeOrg/Wildbook` `main`, shallow clone taken 2026-09-17
+Corrected 2026-11-16 after issue #134: section 7 and what follows from it. The line references in the corrected passages are at Wildbook commit `db9634c3`.
 
 This document is the raw material for a proper implementation plan. It holds the original
 brief, the questions to answer, what the audit of both codebases found, how Wildbook's API
@@ -130,7 +131,7 @@ specificEpithet. These are the same idea.
 | AddaxAI | Wildbook | Note |
 |---|---|---|
 | `EventObservation` | one Encounter row | the unit to send |
-| `Event` | `Encounter.sightingID` | also the durable join key, see section 7 |
+| `Event` | `Encounter.sightingID` | groups the event's encounters, see section 7 |
 | `File`s in the event | `Encounter.mediaAsset0..N` | `File.best_frame_path` for video |
 | `LabelTaxonomy.taxon_genus` | `Encounter.genus` | separate columns already, no string splitting |
 | `LabelTaxonomy.taxon_species` | `Encounter.specificEpithet` | same |
@@ -138,7 +139,7 @@ specificEpithet. These are the same idea.
 | `Site.latitude` / `.longitude` | `Encounter.decimalLatitude` / `.decimalLongitude` | |
 | `Site.name` | `Encounter.verbatimLocality` | free text, no vocabulary |
 | `File.captured_at_local` | `Encounter.year/month/day/hour/minutes` | or `dateInMilliseconds` |
-| `sex`, `life_stage`, `behavior` | same names | conditionally, see section 7.3 |
+| `sex`, `life_stage`, `behavior` | same names | conditionally, see section 7.4 |
 | `Event.notes` | `Encounter.sightingRemarks` | |
 | `Deployment` | nothing | lost, Wildbook has no equivalent |
 
@@ -374,37 +375,48 @@ photo, Wildbook clones the Encounter so each animal gets its own. From
 > If machine learning Detection has been configured for the submitted species, it will process
 > the submitted photo and clone new encounters for each animal found.
 
-The clone is `Encounter.cloneWithoutAnnotations` at `Encounter.java:3868`. It copies: day,
+The clone is `Encounter.cloneWithoutAnnotations` at `Encounter.java:3882`. It copies: day,
 month, year, hour, minutes, size guess, verbatimLocality, genus, specificEpithet, decimal
 lat/lon, submitterID, submitters, photographers, **sex**, locationID, country, recordedBy,
-state, **alternateID**, occurrenceRemarks. It joins the clone to the same Occurrence, the same
-Projects, and the same ImportTask.
+state, **otherCatalogNumbers** (through its alias `setAlternateID`), occurrenceRemarks. It
+joins the clone to the same Occurrence, the same Projects, and the same ImportTask.
 
-### 7.2 Neither obvious key is both cloned and searchable
+### 7.2 The external key is cloned and searchable
 
-- `Encounter.otherCatalogNumbers` is indexed in OpenSearch as a normalised keyword
-  (`Encounter.java:5010`) and serialised into the document (`Encounter.java:4506` onwards).
-  It is **not** copied by the clone.
-- `Encounter.alternateID` **is** copied by the clone. It does not appear in
-  `opensearchMapping()` or in the document serialiser, so it cannot be queried.
+An earlier version of this section said the clone copies `alternateID` but not
+`otherCatalogNumbers`. That was wrong (issue #134). They are one field:
 
-Stamping only `otherCatalogNumbers`, which was the first plan, silently loses every cloned
-encounter. A frame with two leopards gives one joinable record and one orphan, with no error.
+- `Encounter` declares only `otherCatalogNumbers` (`Encounter.java:90`). `setAlternateID()`
+  writes to it and `getAlternateID()` reads it (`Encounter.java:1880`).
+- The clone calls `enc.setAlternateID(this.getAlternateID())` (`Encounter.java:3918`), so a
+  cloned encounter keeps the value.
+- The field is indexed in OpenSearch as a normalised keyword (`Encounter.java:4779`) and
+  serialised into the document (`Encounter.java:4317`).
 
-### 7.3 Two keys that do work, both chosen client-side
+The import spreadsheet accepts two columns for it, `Encounter.alternateID` and
+`Encounter.otherCatalogNumbers` (`BulkImporter.java:472` and `:577`). Both write the same
+field, so send only `Encounter.otherCatalogNumbers`.
+
+Every clone carries the same value as the encounter it came from. A frame with two leopards
+gives two records with one key, both joinable, and no orphans.
+
+### 7.3 The two keys we use, both chosen client-side
 
 - **`importTaskId`** is indexed as a plain keyword. `BulkImport.java:778` constructs the task
   as `new ImportTask(user, id)` where `id` is the `bulkImportId` the client generated. So the
   batch identifier is known before the request is even sent, and clones inherit it because
   `cloneWithoutAnnotations` calls `itask.addEncounter(enc)`.
-- **`occurrenceId`** is indexed as a plain keyword. `Occurrence.getId()` (`Occurrence.java:444`)
-  returns `occurrenceID`, and bulk import sets that from the `Encounter.sightingID` supplied in
-  the row. Clones join the same Occurrence. So a per-event key chosen by the client survives
-  cloning.
+- **`otherCatalogNumbers`** is the per-row key, set in the spreadsheet row. It is indexed and
+  clones keep it. Section 7.2.
+
+`occurrenceId` is indexed too. `Occurrence.getId()` (`Occurrence.java:444`) returns
+`occurrenceID`, bulk import sets that from the `Encounter.sightingID` supplied in the row, and
+clones join the same Occurrence. Its job is to group an event's encounters into one sighting
+in Wildbook. It is not needed to resolve a hit.
 
 The working strategy is therefore: scope the pull by `importTaskId`, then resolve each hit
-back by `otherCatalogNumbers` where it is present and fall back to `occurrenceId` where it is
-not. Everything resolves. What is lost on a cloned encounter is per-box precision: the result
+back by `otherCatalogNumbers`. Everything resolves. One key can return several encounters, one
+per animal Wildbook found. What is lost on a cloned encounter is per-box precision: the result
 says this event contained individuals A and B, not which of our two bounding boxes is which.
 That is honest, because we genuinely do not know.
 
@@ -480,7 +492,8 @@ Mechanics, end to end:
 4. It generates a `bulkImportId` UUID client-side. This is the batch key and it is recorded
    locally before anything is sent.
 5. It assigns each AddaxAI `Event` a `sightingID` and each Encounter row an
-   `otherCatalogNumbers` value. Both are keys we choose. Section 7.3.
+   `otherCatalogNumbers` value. The first groups the sighting in Wildbook, the second is the
+   join key. Section 7.3.
 6. A background job builds a zip containing the media files plus `wildbook-import.xlsx` plus
    a small `addaxai-batch.json` recording the `bulkImportId`, the sightingIDs, and the
    per-row keys.
@@ -496,7 +509,7 @@ Design decisions inside that:
 - **Do not map location IDs, and do not send submitter.** Wildbook's bulk import review screen
   has a "+" next to columns including location ID and submitter ID that sets the value for
   every row in two clicks (`docs/data/bulk-import-beta.md`, step 3). Leaving both out removes
-  an entire configuration surface from AddaxAI, and the `sightingID` join key is unaffected.
+  an entire configuration surface from AddaxAI, and the `sightingID` key is unaffected.
 - **Do not send sex or life stage on multi-animal rows.** Section 7.4.
 
 Cost of this phase: no credentials, no network calls, no coupling to a Wildbook version. If
@@ -526,7 +539,7 @@ Content-Type: application/json
 5. It reads `X-Wildbook-Total-Hits` first and pages with `from`/`size`, respecting the
    `from + size <= 10000` ceiling.
 6. Each hit carries `individualId`, `otherCatalogNumbers`, `occurrenceId` and `mediaAssets[]`.
-   Resolve by `otherCatalogNumbers` when present, else by `occurrenceId`. Section 7.3.
+   Resolve by `otherCatalogNumbers`. Several hits can share one key. Section 7.3.
 7. Write the individual onto our rows, and discard the token.
 
 Mechanical gotchas for whoever implements this:
@@ -671,24 +684,19 @@ that to be handled. Better raised by us than discovered by them.
 
 Then, in the original order:
 
-1. **Make the external key survive the clone.** Either copy `otherCatalogNumbers` in
-   `Encounter.cloneWithoutAnnotations` (`Encounter.java:3868`), or add `alternateID` to
-   `opensearchMapping()` and the document serialiser. One line either way. It upgrades the
-   join from event-level to per-animal on multi-animal frames, and anyone integrating with
-   Wildbook hits this. This is the single highest-value ask.
-2. **Is the 200-Encounter guidance a real number?** And is `processInBackground` the supported
+1. **Is the 200-Encounter guidance a real number?** And is `processInBackground` the supported
    way to go larger? Right now it is a note in a documentation page with no enforcement and no
    description of what happens at 201.
-3. **Expose match-result status on the read-only token API.** So a client can show "42
+2. **Expose match-result status on the read-only token API.** So a client can show "42
    encounters still awaiting review" and deep-link into Wildbook, rather than the user having
    to remember to go and look. Today `/api/v3/match-inspection` is session-only and the token
    API has no match-results endpoint. Nice to have, not required.
-4. **A write-scoped bearer token for bulk import.** Would remove the stored-password
+3. **A write-scoped bearer token for bulk import.** Would remove the stored-password
    requirement from phase 3 entirely. Worth asking for even if phase 3 is never built.
-5. **Location IDs creatable per organisation or via API.** Needing a pull request against
+4. **Location IDs creatable per organisation or via API.** Needing a pull request against
    `locationID.json` to register a camera trap site is the largest onboarding friction in the
    whole flow.
-6. **A question rather than a request: does camera trap data have a future shape in Wildbook?**
+5. **A question rather than a request: does camera trap data have a future shape in Wildbook?**
    Deployment, camera and effort are dropped on the way in today. If there is a plan, it
    changes whether we design around their absence.
 
@@ -720,8 +728,8 @@ curl to confirm that `importTaskId`, `occurrenceId` and `otherCatalogNumbers` co
 way section 7 says they do, including on a frame with two animals.
 
 Everything above is conditional on that round trip working. In particular, verify by
-experiment that a cloned encounter really does keep `importTaskId` and `occurrenceId` and
-really does lose `otherCatalogNumbers`, because that is read from source, not observed.
+experiment that a cloned encounter really does keep `importTaskId`, `occurrenceId` and
+`otherCatalogNumbers`, because that is read from source, not observed.
 
 ---
 
@@ -1172,12 +1180,11 @@ needs a short-lived token the user pastes in. So the recommendation is to push b
 pull automatically: AddaxAI builds a zip with the photos and a Wildbook import spreadsheet,
 the user drags it into Wildbook and does the identification work there, then pastes a token
 into AddaxAI and it fetches the individual IDs back and fills the `individualID` column that
-the Camtrap DP export has been writing empty since it was written. The one thing that nearly
-broke this is that Wildbook splits a photo of two animals into two records and drops the
-external ID when it does, so the join has to use the batch ID and the sighting ID, which are
-both values we choose before sending. Almost all of the export machinery already exists as the
-Camtrap DP export job. Nothing in the first two phases needs the Wild Me team to change
-anything, though there is one genuinely one-line fix worth asking them for.
+the Camtrap DP export has been writing empty since it was written. One thing to know is that
+Wildbook splits a photo of two animals into two records. Both keep the ID we set, so the join
+still works, but they share that ID, so we learn which individuals were on the photo and not
+which box is which. Almost all of the export machinery already exists as the Camtrap DP export
+job. Nothing in the first two phases needs the Wild Me team to change anything.
 
 Then a second pass through the source found something better, and it is what the plan should
 actually be built around. Wildbook stores its MiewID vectors in a searchable vector index, and
