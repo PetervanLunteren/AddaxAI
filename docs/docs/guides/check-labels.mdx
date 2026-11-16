@@ -8,90 +8,106 @@ import TutorialVideo from "@site/src/components/TutorialVideo";
 
 # Check the labels
 
-The AI gives every animal a species. Some will be wrong. This page shows how to find the mistakes quickly instead of clicking through every photo. Checking is optional, but recommended. If you plan to report the numbers, check at least the species you will report on.
+The AI gives every animal a species, and some will be wrong. This page shows how to find the mistakes fast. Checking is optional. If you report numbers, check at least the species you report on.
 
 <AppShot name="verifyOddOneOutSelected" />
 
 ## Video tutorial
 
-Prefer to watch? This video shows how to find and fix wrong labels quickly.
-
 <TutorialVideo id="PQ84itpTrvI" title="Video: check the labels" />
-
-## The grid
-
-The Labels page shows one card per detection: the cropped animal and the species the AI chose. A progress bar shows how much of the project you have checked.
 
 ## Detections and files
 
-The page has two tabs. Detections shows one card per box the AI found above your detection threshold. Files shows one card per file, photo or video, with its boxes drawn on it. They are two views of the same work: a box you verify in Detections counts towards its file, and a file you verify in Files takes its boxes out of Detections.
+The Labels page has two tabs. They show the same work in two ways.
 
-Use Files to judge whole pictures: check that the AI did not miss anything, and fix a file with several animals in one go. It opens sorted by folder, so one camera's files sit together and you can scan them quickly. To see only the files where the AI found nothing, set the Empty filter under More filters to "Show only empty".
+- **Detections** has one card per animal: a crop with the species the AI chose. This is the fast way to check labels.
+- **Files** has one card per photo or video, with the boxes drawn on it. Use it to find animals the AI missed, or to fix a file with several animals at once.
+
+A box you verify in Detections counts for its file. A file you verify in Files takes its boxes out of Detections.
+
+To see the files where the AI found nothing, set Empty to "Show only empty" under More filters. Most of them do have a box, scored too low to show. Lower the detection confidence to bring those boxes back.
 
 <AppShot name="verifyEmpties" />
 
-Select the files that are right and click Verify to sign them off in one go; when the selection holds a video, the app first tells you how many of its detections nobody has looked at. Double-click a file to see it full size, where Enter verifies it and takes you to the next one you have not checked. Verifying a file means the boxes you see are all there is: every box on it is verified, and weak boxes below your threshold are set aside as false detections. Unverify the file if you change your mind, on the file itself or with the Unverify button for a whole selection, and the AI takes them back on the next reprocess. If you do see an animal without a box, click "Draw a box" or press D and drag around it; on a clip the box is saved on the frame you are looking at. The species search opens so you can name it right away, and you stay on the picture with nothing selected, so D draws the next one. Drag a box, or its corners, to fix where it sits. Click a box to select it, or press Tab to step through the boxes; the other boxes fade so the one you picked stands out. V accepts it as it is and selects the next box you have not checked, R relabels it, X (or Backspace) marks it as a false detection and 1 to 9 apply your saved labels. Agreeing moves you on once every box on the picture is checked; a correction keeps you where you are, so you can fix several boxes in a row. With no box selected the same keys act on every box in the picture, and M relabels them all to the picture's most common label. Ctrl+Z (Cmd+Z on Mac) undoes the last change, a label, a verify or an unverify, and puts back exactly what was there. Drawing or moving a box cannot be undone, so it starts a fresh history. B hides the boxes so you can see what is under them.
+## Work in groups
 
-Most empty photos do have a box, the AI just scored it too low to show you. Lower the detection confidence in More filters and those photos get their boxes back, where a cropped card in Detections is faster to judge than a whole frame.
+Select a group of cards, then verify, relabel or unverify them in one go. Verified cards are hidden, so every group you clear leaves the grid.
 
-Videos work a little different. The AI checks the clip a few frames per second and follows each animal from one frame to the next, so a detection in a video is one animal followed through the clip. It gets one card in Detections, shown at the frame where the AI saw it best. Give the card a species, tick it or reject it, and that verdict reaches every frame of the animal. You never label the same animal twice.
+The fastest flow: sort per event, press E to select the event, then M to give it the most common label. This works best when most events hold one species.
 
-In Files, a video's tile shows its cover, one frame the AI picked as the picture for the clip, and reads "Video"; the chips on it show the most animals of each species seen at once in the clip, the same number the Counts page reports, not how many were followed, because an animal that leaves and comes back is followed twice. Opening it shows the cover with a timeline underneath: one block of rows per species, one bar per animal, and animals that were on screen together sit on rows of their own so each one is its own bar. A bar is faint until you have checked that animal and solid after. An animal you mark false leaves the timeline, as a box you mark false on a photo leaves the picture. Changed your mind? Ctrl+Z (Cmd+Z on Mac) brings it back, or find its card in Detections with the label filter set to False detection and Verified set to All. A bar thins to a line where the AI lost the animal for a moment: there is no box of it on those frames, so it is not among "the N boxes on this frame" until you step to a frame that shows it. Click a bar to see that animal on its own frame and select it. To go to a moment, hover the strip above the bars: it shows the time and the frame under the cursor, and a click takes you there. On a clip with more than four animals at once, the strip is also a small graph of the most animals on screen at once along the clip, so the busy moments stand out even where their bars are thin. With nothing selected it counts every species; select an animal and it counts only that species, in its colour, so its tallest peak is that species' MaxN frame. The corner of the strip says which one you see. Shift with the left or right arrow, or Shift with the scroll wheel over the picture, steps to the previous or next frame the AI looked at, to see what happened just before or after; the plain arrows still move between files. The frame you land on is one the AI looked at, so a bar under the white line means a box on the picture. "MaxN" beside a species name takes you to the frame with the most of that species at once, the number its tile shows. When some rows do not fit, drag the top edge of the timeline to make it taller; the app remembers the height. On a long clip the slider above the rows zooms in, each step showing half as much of the clip around the point you are at, which is how you tell apart animals that swam past seconds from each other; swipe sideways over the rows, or hold shift and scroll, to move along the clip. Mark correct, Mark false and Relabel act on the animal you selected, every frame of it: saying an animal is a red deer makes every frame of it a red deer, so the app never stores a species you did not see. Frames you labelled yourself, by opening the animal and picking them out, keep what you gave them. With nothing selected, every action acts on the animals on the frame you are looking at and on nothing else in the clip; their bars carry a thin outline under the white line so you can see which ones that is: the big button reads "Verify the 14 boxes on this frame", Enter checks them all in one press, each through all of its frames, and moves on to the next animal still unchecked, so Enter after Enter walks you through the clip. V is the quick one on a selected animal: it accepts it with the species the AI gave it and selects the next animal on the frame you have not checked; once the frame is done, it moves on to the next animal waiting, so a clip the AI got right is one key per animal. A correction (X, U, R, M, 1 to 5, or naming a box you drew) keeps you on the frame. Once the last animal is checked, the clip is signed off by itself. "Verify the whole clip" at the bottom signs off every animal in it in one go, the ones you have not looked at included; it asks first and says how many that is. Unverify undoes it for the whole clip: every animal is unchecked again, the ones you checked yourself too, and you start the clip over. An animal the AI missed is drawn as on a photo, on the frame you are looking at: it becomes one bar on that frame and is counted there, so draw the missed animals on the frame you count on, usually the MaxN frame. Typing the number on the Counts page is the other way. While a frame is on its way the picture dims and the buttons wait, so what you judge or draw on is never a frame you did not ask for.
+## Keys
 
-### Checking one animal frame by frame
+| Key | What it does |
+|---|---|
+| Enter | Verify |
+| V | Accept the selected box and go to the next one |
+| R | Relabel |
+| X | Mark as false detection |
+| U | Mark as unknown |
+| 1 to 9 | Apply a saved label |
+| M | Apply the most common label |
+| E | Select the whole event |
+| D | Draw a box around a missed animal |
+| B | Hide the boxes |
+| Ctrl+Z (Cmd+Z on Mac) | Undo |
 
-A card for a video stands for one animal, so a card with a species on it is a statement about the whole animal. Sometimes that is wrong: two fish cross, and the AI carries on following the wrong one. The card cannot show you that, because it is one picture.
+With no box selected, a key acts on every box in the picture. The keyboard icon in the toolbar lists every key and lets you set the 1 to 9 labels.
 
-The Frames button in the corner of a video card opens the frames the AI followed that animal through. The grid fills with those frames instead, oldest first, so you can see whether it stayed the same animal the whole way. Click Back to detections, or press Esc, to leave.
+## Photos
 
-Inside there, a label applies to the frames you selected, not to the whole animal. So if the AI followed a shark and then switched to a ray halfway, select the frames that are rays, relabel those, and your counts come out right for both. Every frame shows the animal's one species, the same one as the card, the player and the counts; a frame you relabel here shows yours. Labelling the card still changes the whole animal, as it always did.
+Double-click a file to open it. Enter verifies it and opens the next one. Verifying a file means the boxes you see are all there is. Weak boxes below your threshold are set aside as false detections.
 
-You see every frame the AI kept for that animal, the weak ones too. The AI holds on to a faint box when it sits where the animal was expected, which is how it follows an animal through blur and cover, so some frames are blurred or half hidden and now and then one is a bush. They are the same frames the bar under the video spans and the player draws boxes on, so what you see here is what the timeline claims.
+Missed an animal? Press D, drag a box around it and pick the species. Drag a box or its corners to fix where it sits.
 
-The AI reads each frame on its own, and those reads wobble: one raccoon walking past a camera was read as raccoon, badger, badger, blank and opossum on five frames in a row. The app combines them into one species for the whole animal, weighted by how clearly each frame saw it, so a wolf misread as a golden jackal on two frames is still a wolf on every frame. To see whether the AI changed animals, look at the pictures: a run of frames that shows a different animal is the sign, and you relabel those frames.
+## Videos
 
-To watch a clip, press P or the play button. The clip opens at the frame you were looking at, with each frame's boxes drawn and the same timeline underneath, zoom and all; the animal you selected keeps its colour while the others fade, as on the still. Press P again to pause and come back to the still on the moment you stopped at, so what you verify is what you watched. The AI only checks a video a few frames per second, but the boxes slide from one checked frame to the next so they follow the animals instead of jumping. Where the AI lost an animal for a while, its box disappears rather than gliding across the gap. Every animal leaves a short trail showing where it has been over the last few seconds. From a card in Detections, "Open in files view" lands on that animal's frame with the animal selected.
+The AI follows each animal through a clip. In Detections, each animal gets one card. What you do with that card applies to every frame of the animal.
+
+Open a video in Files to see the whole clip. Under the picture is a timeline with one bar per animal.
+
+- Click a bar to select that animal.
+- Shift with the left or right arrow steps one frame back or forward.
+- MaxN next to a species goes to the frame with the most of that species at once.
+- P plays the clip.
+
+With an animal selected, V, X and R act on that animal. With nothing selected, they act on the animals in the frame you see. Enter verifies those and moves on to the next animal you have not checked, so you can walk through a clip with Enter.
+
+"Verify the whole clip" signs off every animal in it, also the ones you did not look at. Use it only when you are sure.
+
+To add an animal the AI missed, draw it on the frame you count on, usually the MaxN frame. Or type the number on the Counts page.
+
+### When the AI switches animals
+
+Sometimes the AI follows one animal and then jumps to another, for example when two fish cross. The card can't show that, because it is one picture.
+
+Click Frames on a video card to see every frame of that animal. If some frames show a different animal, select those frames and relabel them. Esc takes you back.
+
+Some frames are blurry or half hidden. That is normal: the AI keeps weak boxes to follow an animal through cover. The card's species is a vote over all frames, so one bad frame does not change it. See [how labels get cleaned up](../understanding/label-cleanup.md).
 
 ## Same in folder runs and projects
 
-It is the same grid in both modes: step 2 of a folder run, and the Labels page of a project. The one difference is where you change the refine settings, like thresholds, the species selection and the event interval. In a folder run, use the Refine results button. In a project, they are on the Settings page.
+It is the same grid in both: step 2 of a folder run, and the Labels page of a project. To change thresholds, the species selection or the event interval, use Refine results in a folder run, or the Settings page in a project.
 
-## Let look-alikes sit together
+## Sort look-alikes together
 
-The grid opens sorted per event. That keeps each visit together, and orders the events so look-alike ones sit next to each other. It also gives you the fast keyboard flow below.
+The grid opens sorted per event, so each visit stays together. Sort by similarity to put look-alike animals together across the whole project. You get a block of opossums, then a block of deer, and the odd one stands out. In the screenshot at the top, two cards are not opossums.
 
-You can switch to sorting purely by similarity. Then animals that look alike sit next to each other across the whole project, so you get a block of opossums, then a block of deer, and your eye only has to notice the odd one out. In the screenshot above every card is an opossum except two. Their label is different, and in a different colour, so they stand out at a glance.
-
-Both need the embedding model. Without it, sorting falls back to date order.
-
-## Handle a group at once
-
-Work in bulk, not photo by photo. Select a group of cards, then apply one action to all of them: verify the ones that are right, relabel the ones that are wrong, or unverify the ones you signed off too soon. The Unverify button appears when the selection holds a verified card.
-
-A fast way is to sort per event and use the keyboard. Press E to select the whole event, then M to set it to the majority label. This is very fast if your independence interval fits your ecological context and few events hold more than one species, since then most events are a single species.
-
-The other keys: Enter verifies, R relabels, X marks a false detection, U marks it unknown, and 1 to 9 apply your saved labels. Made a mistake? Ctrl+Z (Cmd+Z on Mac) undoes it and puts back exactly what was there, label and verified mark, as many steps back as you need. Drawing a box starts a fresh history. The keyboard icon in the toolbar lists every key and lets you set the 1 to 9 slots.
-
-Open a card to see the crop on its photo. If the AI missed an animal there, press D or click "Draw a box", drag a box around the animal and name it. The card you were on stays open.
-
-Verified cards are hidden by default, so every group you clear leaves the grid.
-
-## Suggestions
-
-The app can point out likely mistakes for you. It pairs the AI's labels with the embedding model: for each animal it looks at its closest look-alikes, and if they mostly carry a different label, it flags that as a suggestion. A detection labelled "canis" whose look-alikes are all "domestic dog" is the classic case.
-
-When the toolbar shows a suggestions badge, click Review. The suggestions come grouped into cohorts, one fix each. Accept relabels and verifies the whole cohort in one click. Dismiss hides it and changes nothing. Your filters are set aside while you review, because a suggestion compares each animal with its look-alikes across the whole run. Back to detections, or Esc, brings them back.
-
-Suggestions look at the newest 100,000 detections that match the filters. In a larger project, set a date range or pick sites to search the rest.
+Both need the embedding model. Without it, the grid sorts by date.
 
 ## Filters
 
-Filters narrow the grid by label, verified status, site or date range. Similarity sorting works best when you do not filter to a single species. If you show only wolves, every card says wolf, so nothing stands out and the odd one is invisible. Filter to a broader group instead. If wolves are your target and you cannot review everything, filter to all canids in the taxonomic filter. A wolf mislabelled as a coyote then shows up among the real coyotes, where it is easy to catch.
+Filter by label, verified status, site or date. When you sort by similarity, do not filter to one species. If every card says wolf, a wrong one does not stand out. Filter to a broader group instead, for example all canids. A wolf labelled as a coyote then sits among the real coyotes.
 
-## Your corrections win over the AI's
+## Suggestions
 
-Once you correct a detection, reprocessing and threshold changes leave it untouched, so your correction stays. Re-running the AI is the exception: it re-analyses from scratch and overwrites everything, including your corrections. See [confidence and verification](../understanding/confidence-and-verification.md).
+The app can point out likely mistakes. It compares each animal with its closest look-alikes. If those mostly carry another label, you get a suggestion. For example, a "canis" whose look-alikes are all "domestic dog".
+
+Click Review when the toolbar shows a suggestions badge. Accept relabels and verifies the whole group. Dismiss hides it. Suggestions look at the newest 100,000 detections. In a larger project, set a date range or pick sites to check the rest.
+
+## Your corrections win
+
+Reprocessing and threshold changes never touch what you corrected. Re-running the AI does, because it starts from scratch. See [confidence and verification](../understanding/confidence-and-verification.md).
 
 ## Labels are not counts
 
-Checking labels answers *which species*. It does not answer *how many*, and it does not confirm any count. The dashboard tracks the two separately, which is why "labels verified" and "counts confirmed" show different numbers: one counts files, the other counts events. The most efficient and least noisy order is labels first, then counts. See [confirm the counts](./confirm-counts.mdx).
+Checking labels tells you which species, not how many. Check the labels first, then [confirm the counts](./confirm-counts.mdx).
