@@ -8,42 +8,55 @@ import TutorialVideo from "@site/src/components/TutorialVideo";
 
 # Confirm the counts
 
-The AI already counted how many animals it saw in each event. On the Counts page you check those numbers and confirm them. This step is optional. The AI miscounts, so it is recommended to review the suggested counts for the species of interest. Counts are separate from labels, and tracked separately. See [check the labels](./check-labels.mdx).
+The AI counted how many animals of each species it saw in each event. On the Counts page you check those numbers and confirm them. Checking is optional.
+
+The count is the most animals of a species in any single photo of the event, so one deer photographed 40 times is one deer. See [detections, events and observations](../understanding/detections-events-observations.mdx).
 
 ## Video tutorial
 
-Prefer to watch? This video shows how to check the AI's counts and confirm them.
-
 <TutorialVideo id="wl82KMO9t0w" title="Video: confirm the counts" />
 
-## How counting works
+## Go through the events
 
-An event is a group of photos and videos from one camera, taken close together in time, set by the independence interval. The count for a species in an event is the highest number visible in any single photo, not the total across photos. One deer photographed 40 times is one deer. The full explanation is in [detections, events and observations](../understanding/detections-events-observations.mdx).
+Each card is one event. It opens on the photo or frame with the most animals, so you can judge the species and the number in one look. The strip below holds the rest of the event.
 
-## Going through them
+- Check the species and counts in the panel on the right.
+- Change a count, or add a species the AI missed.
+- Press <kbd>Enter</kbd> to confirm and go to the next event.
 
-Each card is one event. It opens on the frame where the most animals are visible, for a video the frame its count was made on, so you can judge the species and the number in one look. The strip below is the rest of the event. Click any of them to look closer, or press <kbd>Space</kbd> to loop through all the photos in the event automatically, a fast way to inspect the whole visit. Shift with the left or right arrow, or Shift with the scroll wheel over the picture, steps through the event one at a time: the next photo of a burst, or the next frame the AI looked at in a video. Press <kbd>Enter</kbd> to confirm and move to the next event, or change the count first and then press <kbd>Enter</kbd>. The panel on the right lists each species with its count. Adjust a count if it is wrong, or add a species the AI missed. Keys: arrow up and down pick a species, 0 to 9 set its count, plus and minus nudge it by one, N adds a species. A, S and J set the picked row's age (adult, subadult, juvenile) and M and F its sex; the same key again sets it back to unknown. Your confirmed numbers are used in the graphs and outputs, and always win over the AI's suggestions. You can set a count the AI could not reach: if four deer pass but never share one frame, its best is 2 and you enter 4. Events you do not confirm still count, using the AI's number.
+Your numbers replace the AI's everywhere: in the charts, the rates and the exports. Events you don't confirm still count, with the AI's number.
 
-When you play a video, the labels change from frame to frame. That is normal: each frame carries its own guess, and the count is the most animals of a species on screen at once during the event. See [videos](../understanding/detections-events-observations.mdx#videos).
-
-For a video, each species row says when its count was reached, for example "MaxN 3 at 00:12:41", and when the species was first seen. Show jumps the player to that frame, so you can check the number against the picture it came from; for a video the browser cannot play, Show puts that frame on screen as a still. Under a video's frame a timeline shows every animal the AI followed as a bar, one row per species, with a small marker at the frame each species' count was made on and a "MaxN" button beside the species name that takes you there. Click a bar to see that animal on its own frame; while the video plays, the same timeline follows along.
+For a video, each species row says when its count was reached and when the species first arrived. Show takes you to that frame, with the same timeline under it as on the Labels page.
 
 <AppShot name="countsEvent" />
 
 ## Sex, age and behaviour
 
-Under each species you can set the sex, age and behaviour of the animals on that row. All of it is optional and the AI never fills it in. The values apply to the whole row, so "6 roe deer, all male" is one dropdown. To record 4 males and 2 females, press the split button on the row: you get a second roe deer row, adjust the two counts and set each row's sex. The rows go into the exports as they are, one row per group, in the Camtrap DP fields of the same name.
+Under each species you can set sex, age and behaviour. It's optional, and the AI never fills it in. To record 4 males and 2 females, click "Split into two rows" and set each row's count and sex.
 
-When the same animals walk through event after event, you do not have to retype all of this. Press <kbd>C</kbd>, or the "Same as last" button, and the event gets exactly the rows of the last event you confirmed: species, counts, sex, age and behaviour. Adjust what differs and press <kbd>Enter</kbd>. The copy replaces what was there, so a species the AI saw in this event but the copied rows do not name drops to zero; "Reset to AI" brings the AI's own numbers back.
+Press <kbd>C</kbd> to copy the rows of the last event you confirmed. Below the list is a note field for anything else.
 
-Below the list is a note field for the event, for anything the dropdowns cannot say. A note is never lost: if you change the independence interval and events merge, the merged event gets both notes; if an event splits, each part keeps the note.
+## Keys
+
+| Key | What it does |
+|---|---|
+| <kbd>Enter</kbd> | Confirm and go to the next event |
+| <kbd>Space</kbd> | Play through the photos of the event |
+| <kbd>Shift</kbd>+<kbd>←</kbd> or <kbd>→</kbd> | Previous or next photo or frame |
+| <kbd>↑</kbd> or <kbd>↓</kbd> | Pick a species |
+| <kbd>0</kbd> to <kbd>9</kbd> | Set its count |
+| <kbd>+</kbd> or <kbd>-</kbd> | Count one up or down |
+| <kbd>N</kbd> | Add a species |
+| <kbd>A</kbd>, <kbd>S</kbd>, <kbd>J</kbd> | Age: adult, subadult, juvenile |
+| <kbd>M</kbd>, <kbd>F</kbd> | Sex: male, female |
+| <kbd>C</kbd> | Copy the rows of the last confirmed event |
+
+Press an age or sex key again to set it back to unknown.
 
 ## Same in folder runs and projects
 
-It is the same gallery in both modes: step 3 of a folder run, and the Counts page of a project. The one difference is where you change the independence interval that decides what one visit is. In a folder run, use the Refine results button on the Labels step. In a project, it is on the Settings page.
+It is the same gallery in both: step 3 of a folder run, and the Counts page of a project. To change the independence interval, use Refine results on the Labels step in a folder run, or the Settings page in a project.
 
 ## Events where nothing happened
 
-Events where the AI found nothing are hidden. Open More and set Empty to "Show only empty" to page through them. This finds events where every photo is empty, so it will not show you an empty photo that sits in an event with an animal in it. Most empty photos are in such events.
-
-To go through all your empty photos, use the Files tab on the [Labels page](./check-labels.mdx) with the Empty filter set to "Show only empty".
+Events where the AI found nothing are hidden. To see them, open More and set Empty to "Show only empty". To see every empty photo, also inside events with animals, use the Files tab on the [Labels page](./check-labels.mdx) with the same filter.
