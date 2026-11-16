@@ -19,7 +19,7 @@ I wrote it myself. It is not an independent audit. It says where AddaxAI falls s
 
 ## What works
 
-- The application menu is the operating system's own menu. It works with every screen reader and opens with the standard keys: F10 or Alt on Windows and Linux, Ctrl+F2 on macOS.
+- The application menu is the operating system's own menu. It works with every screen reader and opens with the standard keys: <kbd>F10</kbd> or <kbd>Alt</kbd> on Windows and Linux, <kbd>Ctrl</kbd>+<kbd>F2</kbd> on macOS.
 - Zoom. Use View, then Zoom in, Zoom out or Reset zoom, or the usual shortcuts (Ctrl or Cmd with plus, minus and 0). Nothing in the app blocks zoom, and the display scaling of your operating system is respected.
 - Dialogs, forms, settings and tables work with the keyboard. Tab moves between controls, Enter and Space activate them, Escape closes a dialog and puts focus back where it was. Every control shows a focus ring.
 - Keyboard shortcuts on the labels page. The common review actions (verify, reject, relabel, next) are single keys. The list is behind the keyboard button in the toolbar, and you can give the keys 1 to 9 your own species.

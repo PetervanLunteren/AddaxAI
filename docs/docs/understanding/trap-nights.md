@@ -11,7 +11,7 @@ A trap night is one camera working for one day. It is how you turn raw counts in
 
 ## The short version
 
-Trap nights come from the capture times in your files, both images and videos. For each [deployment](./how-a-project-is-organised.mdx), AddaxAI takes the first and last file, and counts the days between them, including both ends.
+Trap nights come from the capture times in your files, both photos and videos. For each [deployment](./how-a-project-is-organised.mdx), AddaxAI takes the first and last file, and counts the days between them, including both ends.
 
 ```
 trap nights = (date of last file) - (date of first file) + 1
@@ -23,9 +23,9 @@ A deployment whose first file is from 1 September and last from 16 September cou
 
 Two cases where the number is not what you expect.
 
-1. **Your camera ran longer than its files suggest.** You put it out on 1 September and collected it on 30 September, but the last file is from 16 September because the battery died. AddaxAI counts 16 trap nights, not 30, because there are no files after the 16th.
+1. Your camera ran longer than its files suggest. You put it out on 1 September and collected it on 30 September, but the last file is from 16 September because the battery died. AddaxAI counts 16 trap nights, not 30, because there are no files after the 16th.
 
-2. **Your camera recorded on only a few days.** First file 1 September, last file 16 September, but nothing in between. It still counts 16 trap nights, because the camera was working across that whole window, it just saw nothing.
+2. Your camera recorded on only a few days. First file 1 September, last file 16 September, but nothing in between. It still counts 16 trap nights, because the camera was working across that whole window, it just saw nothing.
 
 ## Deployments with subfolders
 

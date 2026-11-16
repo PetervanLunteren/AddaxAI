@@ -34,7 +34,7 @@ The models are separate. Each comes with its own licence and those differ, and m
 
 Six models use a software package called ultralytics, which has its own licence (AGPL-3.0): SharkTrack, MegaDetector v1000 Larch and Sorrel, and the Namibia (Skeleton Coast), New Zealand (invasives a) and Turkmenistan species models.
 
-You can use them to analyse your own images and videos and use the results, for research, commercial or personal work. You cannot build them into an app, website or service that you give or sell to others, unless you also share that software's source code under the same licence. AddaxAI only installs the package once you have read this, and asks you once. The full licence is on the [Ultralytics website](https://www.ultralytics.com/license).
+You can use them to analyse your own photos and videos and use the results, for research, commercial or personal work. You cannot build them into an app, website or service that you give or sell to others, unless you also share that software's source code under the same licence. AddaxAI only installs the package once you have read this, and asks you once. The full licence is on the [Ultralytics website](https://www.ultralytics.com/license).
 
 </FaqItem>
 
@@ -66,11 +66,11 @@ The first launch downloads the models and the software they run in. In mainland 
 
 Three ways, from small to big. Your photos, videos and exported results are never inside the folders below, so none of these touch them.
 
-**Setup failed and you want a clean retry.** Open Help > Reset application and type RESET. It removes the models and the analysis environment and closes the app. Open it again and setup runs from the start. Your projects stay, unless you tick the box to remove the database too.
+Setup failed and you want a clean retry. Open Help > Reset application and type RESET. It removes the models and the analysis environment and closes the app. Open it again and setup runs from the start. Your projects stay, unless you tick the box to remove the database too.
 
-**You want the app itself gone.** Uninstall it as described under [installation](../start-here/install.mdx), and answer Yes when it asks to delete your data. Then install the newest version.
+You want the app itself gone. Uninstall it as described under [installation](../start-here/install.mdx), and answer Yes when it asks to delete your data. Then install the newest version.
 
-**You still have version 6.** Open Help > Remove old AddaxAI. That works also when setup has not finished yet. Or delete the folder by hand: `C:\Users\<your user name>\AddaxAI_files` on Windows, `/Applications/AddaxAI_files` on macOS. Version 6 and version 7 keep their data apart, so removing one never touches the other.
+You still have version 6. Open Help > Remove old AddaxAI. That works also when setup has not finished yet. Or delete the folder by hand: `C:\Users\<your user name>\AddaxAI_files` on Windows, `/Applications/AddaxAI_files` on macOS. Version 6 and version 7 keep their data apart, so removing one never touches the other.
 
 </FaqItem>
 
@@ -94,9 +94,9 @@ If your internet is limited, run one small analysis from start to finish while y
 
 <FaqItem id="does-addaxai-change-my-photos" q="Does AddaxAI change my photos?">
 
-No. It reads your images and videos and never writes to them.
+No. It reads your photos and videos and never writes to them.
 
-It does write new files. A hidden `.addaxai` folder goes inside the folder you analysed, and the save step writes whatever outputs you asked for. Species folders, images with boxes drawn on them and blurred versions are all copies, and those copies carry the labels in their metadata. Whatever you pick in the save step, your originals are never overwritten, moved or deleted. They stay exactly as they were. See [where your files live](../reference/file-locations.md).
+It does write new files. A hidden `.addaxai` folder goes inside the folder you analysed, and the save step writes whatever outputs you asked for. Species folders, photos with boxes drawn on them and blurred versions are all copies, and those copies carry the labels in their metadata. Whatever you pick in the save step, your originals are never overwritten, moved or deleted. They stay exactly as they were. See [where your files live](../reference/file-locations.md).
 
 </FaqItem>
 
@@ -182,13 +182,13 @@ One thing does wipe them: re-running the AI on the folder, which analyses everyt
 
 <FaqItem id="can-i-analyse-a-single-video-or-a-few-files" q="Can I analyse a single video or a few files?">
 
-No. AddaxAI works per folder: you choose a folder and it analyses every image and video in it, subfolders included. It cannot take a single file, so dropping one video on the folder picker gives you "This is a file, not a folder". Put the files you want analysed in a folder of their own and choose that folder.
+No. AddaxAI works per folder: you choose a folder and it analyses every photo and video in it, subfolders included. It cannot take a single file, so dropping one video on the folder picker gives you "This is a file, not a folder". Put the files you want analysed in a folder of their own and choose that folder.
 
 </FaqItem>
 
 <FaqItem id="can-a-project-sort-my-photos-into-species-folders" q="Where are the photos with animals? Can I get them sorted into species folders?">
 
-AddaxAI does not copy or move photos by itself. The results live in the app, where the Labels page shows each species. To get the photos as files, ask for copies. In a project, "Image copies" on the Export page writes copies of your images into species folders, with the same options a folder run has on its Save step: nested by taxonomy or one folder per species, boxes drawn on, people blurred. You pick the deployments, and you can narrow it to one species, to the files you liked or verified, or to a date range. The species goes into the image metadata too, so programs like digiKam and Lightroom show it as a tag.
+AddaxAI does not copy or move photos by itself. The results live in the app, where the Labels page shows each species. To get the photos as files, ask for copies. In a project, "Image copies" on the Export page writes copies of your photos into species folders, with the same options a folder run has on its Save step: nested by taxonomy or one folder per species, boxes drawn on, people blurred. You pick the deployments, and you can narrow it to one species, to the files you liked or verified, or to a date range. The species goes into the photo metadata too, so programs like digiKam and Lightroom show it as a tag.
 
 The copies are a snapshot of your labels at that moment. Correct more, then export again into the same folder to replace them. See [exports](../reference/exports.md#image-copies).
 
@@ -206,9 +206,9 @@ Yes, but only in your own data. Type the name in the relabel picker and add it a
 
 </FaqItem>
 
-<FaqItem id="why-do-some-images-have-no-boxes-during-review" q="Why do some images have no boxes during review?">
+<FaqItem id="why-do-some-images-have-no-boxes-during-review" q="Why do some photos have no boxes during review?">
 
-The detector runs at a low threshold and keeps everything. The review grid then hides detections below your chosen confidence, so an image can look empty even though it has a weak detection. Lower the threshold to see them.
+The detector runs at a low threshold and keeps everything. The review grid then hides detections below your chosen confidence, so a photo can look empty even though it has a weak detection. Lower the threshold to see them.
 
 </FaqItem>
 
@@ -261,7 +261,7 @@ On any system the same message appears for a folder your user account may not wr
 
 The run was interrupted, by a crash, a power cut, the app closing or an external drive that disconnected. Reconnect the drive before you try again. Its results never reached the database, so they are not in any backup either, and restoring one will not bring them back.
 
-What does survive is the detection progress. While MegaDetector works through your photos it saves where it got to every few hundred images. Open the folder again and click "Re-run analysis". If there is progress to pick up, the window says how far detection got and offers "Continue" next to "Start over". Continue skips the photos that were already detected; the steps after detection (species classification, counting) run again from the start. Videos are not covered: their detection always starts over.
+What does survive is the detection progress. While MegaDetector works through your photos it saves where it got to every few hundred photos. Open the folder again and click "Re-run analysis". If there is progress to pick up, the window says how far detection got and offers "Continue" next to "Start over". Continue skips the photos that were already detected; the steps after detection (species classification, counting) run again from the start. Videos are not covered: their detection always starts over.
 
 Continue is only offered when the detection settings (detector, image size, augmentation) are the same as in the interrupted run. Your photos and backups are untouched either way.
 

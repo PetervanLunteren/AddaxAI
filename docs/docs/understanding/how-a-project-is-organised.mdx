@@ -23,11 +23,11 @@ flowchart LR
   class P,S,D,F,Det box;
 ```
 
-- **Project**: the whole study, holding all its sites and their data.
-- **Site**: a physical camera location, with coordinates. It stays put.
-- **Deployment**: one period a camera was recording at a site, backed by a folder of files.
-- **File**: an image or video, with its capture time.
-- **Detection**: an animal, person, or vehicle found in a file, with a species label once classified.
+- Project: the whole study, holding all its sites and their data.
+- Site: a physical camera location, with coordinates. It stays put.
+- Deployment: one period a camera was recording at a site, backed by a folder of files.
+- File: a photo or video, with its capture time.
+- Detection: an animal, person, or vehicle found in a file, with a species label once classified.
 
 ## Site or deployment
 
@@ -47,7 +47,7 @@ Both work. The effort comes out right either way, as long as each camera period 
 
 One thing does want them split. [Camtrap DP](../reference/exports.md#camtrap-dp) expects one camera period per deployment, so split the folder if you plan to share or archive in that format.
 
-You do not have to decide up front. Add the folder, look at the results, and split later on the Deployments page. The split follows the folder hierarchy, and your images and videos stay where they are on disk.
+You do not have to decide up front. Add the folder, look at the results, and split later on the Deployments page. The split follows the folder hierarchy, and your photos and videos stay where they are on disk.
 
 ## Paired cameras
 
@@ -74,9 +74,9 @@ Add `november-pickup` as one deployment on the Process page, open "Options" and 
 
 What the tick changes:
 
-- **Events.** Files from all cameras are grouped by time, as if they came from one camera. An animal that passes the cameras is one event, with the files of every camera in time order.
-- **Observations.** The count of an observation is the largest number seen in any single file, so the same animal seen by more than one camera is counted once.
-- **Trap nights.** The deployment counts once. Two cameras that both ran 1 to 15 August give 15 trap nights, not 30.
+- Events. Files from all cameras are grouped by time, as if they came from one camera. An animal that passes the cameras is one event, with the files of every camera in time order.
+- Observations. The count of an observation is the largest number seen in any single file, so the same animal seen by more than one camera is counted once.
+- Trap nights. The deployment counts once. Two cameras that both ran 1 to 15 August give 15 trap nights, not 30.
 
 Each camera can get its own time shift in the Adjust dates window. Tick "Paired cameras" first, the camera dropdown only shows after that. See [capture times](./capture-times.md#paired-cameras). In the event view each frame shows its camera.
 

@@ -88,14 +88,14 @@ One row per species per event, with the count. Each row is one [observation](../
 | `human_count` | The number you set on the Counts page. Empty if you did not set one |
 | `max_n_file_id` | The photo or video the AI's count was made on. Empty for a row you added by hand |
 | `max_n_frame` | For a video, the frame the AI's count was made on. Empty for a photo and for a row you added by hand |
-| `max_n_offset_seconds` | For a video, how many seconds into the clip that frame is. Empty for a photo and for a row you added by hand |
+| `max_n_offset_seconds` | For a video, how many seconds into the video that frame is. Empty for a photo and for a row you added by hand |
 | `max_n_time` | The camera-local time of that frame or photo. Empty for a row you added by hand |
 | `first_arrival_time` | When the species was first seen in the event, camera-local time. Empty when the files carry no capture time |
 | `sex` | female or male, if you set it. Empty means unknown |
 | `life_stage` | adult, subadult or juvenile, if you set it |
 | `behavior` | What the animals were doing, if you set it, for example foraging |
 | `event_notes` | Your note on the event, repeated on each of its rows |
-| `is_confirmed` | TRUE if you signed off the count for this event |
+| `is_confirmed` | TRUE if you confirmed the count for this event |
 
 ## Detections
 
@@ -123,11 +123,11 @@ One row per card on the Labels page, including the ones you marked false. For a 
 | `scientific_name` | Scientific name |
 | `common_name` | Common name |
 | `frame_number` | Frame index for videos, empty for photos |
-| `track_id` | Which animal in the clip the box belongs to, the tracker's own number within that video. Empty for photos |
+| `track_id` | Which animal in the video the box belongs to, the tracker's own number within that video. Empty for photos |
 | `track_start_frame`, `track_end_frame` | First and last checked frame the animal was on |
 | `track_frame_count` | How many checked frames hold a box of it, which is its number of rows in the Frames table |
 | `track_start_time`, `track_end_time` | The camera-local times of those two frames |
-| `track_duration_seconds` | Seconds from the first to the last of those frames. An animal seen on one frame reads 0. Empty when the clip has no known frame rate |
+| `track_duration_seconds` | Seconds from the first to the last of those frames. An animal seen on one frame reads 0. Empty when the video has no known frame rate |
 | `bbox_x`, `bbox_y` | Top left corner of the box, 0 to 1 |
 | `bbox_width`, `bbox_height` | Size of the box, 0 to 1 |
 
@@ -145,10 +145,10 @@ Every box of every animal in the Detections table, one row per checked video fra
 
 | Column | Meaning |
 |---|---|
-| `frame_time`, `frame_offset_seconds` | When the frame is: camera-local time, and seconds into the clip |
+| `frame_time`, `frame_offset_seconds` | When the frame is: camera-local time, and seconds into the video |
 | `is_representative` | TRUE on the box that stands for the animal, the one its Detections row shows |
 
-Group by `file_id` and `track_id` to follow one animal through a clip.
+Group by `file_id` and `track_id` to follow one animal through a video.
 
 ## Files
 
@@ -165,7 +165,7 @@ One row per photo or video, whether or not anything was found.
 | `absolute_path` | Full path on the machine that ran the analysis |
 | `datetime` | Capture time, camera local time. Empty if the file had no readable date |
 | `image_width`, `image_height` | Size in pixels. Empty when the size was not recorded |
-| `camera_make` | Camera manufacturer, from the image's own EXIF (`Make`), read once during analysis |
+| `camera_make` | Camera manufacturer, from the file's own EXIF (`Make`), read once during analysis |
 | `camera_model` | Camera model, from EXIF `Model`, read once during analysis |
 | `ambient_temperature` | Temperature at capture, from EXIF `AmbientTemperature`, read once during analysis. The standard says degrees Celsius, but camera trap thermometers are rough, so treat it as indicative |
 | `camera_serial` | The camera's serial number, from EXIF `BodySerialNumber`, read once during analysis. Useful to confirm which physical camera took the file |
@@ -219,19 +219,19 @@ It follows the MegaDetector output format, version 1.6, which is [documented her
 2. Each detection keeps only the top classification, not the full list the format allows.
 3. Nothing is filtered by a threshold. Every detection AddaxAI stored is in the file.
 4. File paths are relative to the folder the JSON sits in.
-5. The `exif_metadata` block per image is the file's raw EXIF, copied verbatim. A date correction made with Adjust dates does not change it: the corrected timestamps are in the `datetime` column of the files table, while this block stays in sync with what the image files themselves say, which is also what Timelapse reads from them.
+5. The `exif_metadata` block per photo is the file's raw EXIF, copied verbatim. A date correction made with Adjust dates does not change it: the corrected timestamps are in the `datetime` column of the files table, while this block stays in sync with what the photo files themselves say, which is also what Timelapse reads from them.
 6. Your corrections are in it. A relabelled box carries the label you gave it, and every box has a `verified` flag. A box you rejected stays in the file with the label `false detection` and `verified: true`, so a program reading the file can tell it apart from a box the AI called an animal. The file is a snapshot: correct more, then export again to replace it.
 
 ## Image copies
 
-Copies of your images and videos, sorted into folders, for browsing or sharing in another program. A folder run writes them from its save step; a project writes them from the Export page, under "Image copies". Both show the same options.
+Copies of your photos and videos, sorted into folders, for browsing or sharing in another program. A folder run writes them from its save step; a project writes them from the Export page, under "Image copies". Both show the same options.
 
 What you get, in an `addaxai-media` folder inside the folder you choose:
 
 - One folder per species, or nested by taxonomy (class, order, family, genus, species), or no species folders at all. Each file goes into one folder only, the species of its strongest detection, or the species its event was mostly verified as when "Keep events together" is on. People, vehicles and empty files get their own folders.
 - Under the species folder, your own folder structure. A folder run keeps the subfolders of the folder it analysed. A project puts the deployment's folder name first, then its subfolders, so `wolf/CAM07/100RECNX/IMG_0012.JPG` says which camera the photo came from. With "Species folder last" the order flips: `CAM07/100RECNX/wolf/IMG_0012.JPG`. Two deployments whose folders have the same name land in the same folder, and a file that would overwrite another gets a `_2` suffix.
-- The species in the image metadata: the XMP subject tag, which digiKam, Lightroom and most photo managers read as keywords, plus a caption with every detection. A copy also keeps the original's own metadata (EXIF, XMP, IPTC, colour profile). A copy with boxes or blur drops the embedded thumbnail, because it would show the original pixels. Your originals are never changed, only the copies carry the tags.
-- Optionally boxes drawn on each image, and people and vehicles blurred. A video cannot be drawn on, so it gets a still image with the boxes next to it; with blur on, a video is written as its blurred still only.
+- The species in the photo metadata: the XMP subject tag, which digiKam, Lightroom and most photo managers read as keywords, plus a caption with every detection. A copy also keeps the original's own metadata (EXIF, XMP, IPTC, colour profile). A copy with boxes or blur drops the embedded thumbnail, because it would show the original pixels. Your originals are never changed, only the copies carry the tags.
+- Optionally boxes drawn on each photo, and people and vehicles blurred. A video cannot be drawn on, so it gets a still image with the boxes next to it; with blur on, a video is written as its blurred still only.
 
 You can narrow what is copied, in a folder run and in a project alike: to the labels you choose, to the files you liked or verified on the Labels page, and to a date range. A project with several cameras also lets you pick which of them. Both start with every label and every camera in, so check the count beside the options before you copy a whole project. A file without a capture time is left out as soon as a date is set. The folder tree, the count and the size of what will be written are shown beside the options before you start.
 
@@ -251,7 +251,7 @@ For models that predict below species level (adult or juvenile fox, for example)
 
 What you set on the Counts page goes into the same fields: `sex`, `lifeStage` and `behavior` per row, and your note on the event into `observationComments` of each of its rows. Unknown stays empty. A favourite file gets `favorite` set to true in the media table.
 
-A video is one media row, and each animal the AI followed through it is one media-level observation: `eventStart` and `eventEnd` are the seconds the animal was on screen, the box is the one from the frame it was seen best on, `individualID` names the animal within the clip (the file's id and its `track_id`; it is the AI following one animal through one clip, not a recognised individual, so an animal that leaves and comes back gets a new one), and `observationTags` carries the frame numbers (`frameStart`, `frameEnd`, `bboxFrame`, `frameRate`), since the standard has no field for them. The event-level row per species carries the count, MaxN or your own number, with `countMethod:MaxN` and the file and frame the MaxN was made on in its tags.
+A video is one media row, and each animal the AI followed through it is one media-level observation: `eventStart` and `eventEnd` are the seconds the animal was on screen, the box is the one from the frame it was seen best on, `individualID` names the animal within the video (the file's id and its `track_id`; it is the AI following one animal through one video, not a recognised individual, so an animal that leaves and comes back gets a new one), and `observationTags` carries the frame numbers (`frameStart`, `frameEnd`, `bboxFrame`, `frameRate`), since the standard has no field for them. The event-level row per species carries the count, MaxN or your own number, with `countMethod:MaxN` and the file and frame the MaxN was made on in its tags.
 
 ## AddaxAI bundle
 

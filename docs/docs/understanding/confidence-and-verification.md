@@ -5,7 +5,7 @@ title: Confidence and verification
 
 # Confidence and verification
 
-The AI gives two confidence scores, both between 0 and 1. The detector says how sure it is that the box holds an animal. The species model then says how sure it is about the species. You can see both on a marked-up image: this box is 90% animal and 98% coyote.
+The AI gives two confidence scores, both between 0 and 1. The detector says how sure it is that the box holds an animal. The species model then says how sure it is about the species. You can see both on a marked-up photo: this box is 90% animal and 98% coyote.
 
 This page explains where those scores are used, and what happens when you correct something. Both settings below work on the first one, the detector's score.
 

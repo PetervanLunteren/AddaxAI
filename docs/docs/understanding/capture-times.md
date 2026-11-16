@@ -23,9 +23,9 @@ A project has a timezone setting. It works out when the sun rises and sets at yo
 
 Some files have no readable capture time. Cameras get reset, files get edited, some formats lose it. AddaxAI never invents one by itself, but there are two ways you can supply it. Both are last resorts: they only apply to files with no readable time of their own, so a real capture time always wins.
 
-1. **Put the time in the filename.** End the name with `addaxai-YYYYMMDD-HHMMSS` before the extension, for example `clip_addaxai-20250222-072314.mp4`. AddaxAI reads the time from the name.
+1. Put the time in the filename. End the name with `addaxai-YYYYMMDD-HHMMSS` before the extension, for example `clip_addaxai-20250222-072314.mp4`. AddaxAI reads the time from the name.
 
-2. **Use the file dates from your computer.** When a scan finds no capture times at all, AddaxAI offers a checkbox for this, and shows you the date range those file dates would give before you tick it. Read that range first. A folder you copied last week often reads as last week, not as the week the animals walked past, and then every date in your project is wrong.
+2. Use the file dates from your computer. When a scan finds no capture times at all, AddaxAI offers a checkbox for this, and shows you the date range those file dates would give before you tick it. Read that range first. A folder you copied last week often reads as last week, not as the week the animals walked past, and then every date in your project is wrong.
 
    <img src="/img/no-capture-dates.webp" alt="The no capture dates warning, with a checkbox to use the file dates from your computer" style={{maxWidth: '460px', width: '100%', display: 'block'}} />
 
@@ -41,7 +41,7 @@ The app tells you how many files this affected after an analysis. If the number 
 
 If a camera had the wrong date set, the photos carry that wrong date, and AddaxAI stores what the camera said. You can correct it with a time shift, which applies to every file in that deployment at once. There are two places to set it: on the Process page while you add the deployment, or afterwards on the Deployments page, where the deployment's metadata has a Datetime offset button.
 
-Both open the same Adjust dates window. It shows one image next to the date AddaxAI read from the file. Compare that with the date the camera burned into the photo, set what it should have been, and page through a few more images to check the shift looks right before you apply it.
+Both open the same Adjust dates window. It shows one photo next to the date AddaxAI read from the file. Compare that with the date the camera burned into the photo, set what it should have been, and page through a few more photos to check the shift looks right before you apply it.
 
 Doing this after an analysis is safe. AddaxAI shifts the stored times and updates the dates, events and charts, so you do not have to analyse again.
 

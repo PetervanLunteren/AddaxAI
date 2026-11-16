@@ -11,11 +11,11 @@ The label you see is not always what the model said. Between the model and your 
 
 Some models can answer "nothing here", with labels like blank, empty or false detection. When that is the model's top answer, the box is kept with that label, but it is not counted: it draws no box on the photo, it is not an observation on the Counts page, it is in no chart, and a file with nothing else on it is marked blank. So a box that reads "Animal 68%, false detection 80%" is a box the detector found and the species model rejected.
 
-The model can be wrong about that, so the box is not hidden from you. It is a card on the Labels page like any other, with the label the model gave it. Press Enter to agree, or relabel it if there is an animal after all, and it counts from then on. The detections table and the recognition file carry these boxes too, with the model's label, so nothing the AI found is lost.
+The model can be wrong about that, so the box is not hidden from you. It is a card on the Labels page like any other, with the label the model gave it. Press <kbd>Enter</kbd> to agree, or relabel it if there is an animal after all, and it counts from then on. The detections table and the recognition file carry these boxes too, with the model's label, so nothing the AI found is lost.
 
 ## 2. One species per animal in a video
 
-The AI follows each animal through a video and gives it one card. The card does not take the species from one frame: it takes what all the animal's frames agree on, weighted by how clearly each frame saw it. A sharp frame counts fully, a blurry frame where the animal is half out of the picture barely counts. So one odd frame cannot name the animal, and the card says what the clip as a whole shows. Each frame keeps its own label underneath, which is what lets you see when the AI switched animals halfway. See [check the labels](../guides/check-labels.mdx).
+The AI follows each animal through a video and gives it one card. The card does not take the species from one frame: it takes what all the animal's frames agree on, weighted by how clearly each frame saw it. A sharp frame counts fully, a blurry frame where the animal is half out of the picture barely counts. So one odd frame cannot name the animal, and the card says what the video as a whole shows. Each frame keeps its own label underneath, which is what lets you see when the AI switched animals halfway. See [check the labels](../guides/check-labels.mdx).
 
 ## 3. Taxonomic rollup
 
@@ -31,7 +31,7 @@ It is a trade-off: a broader label tells you less, but it is more likely to be r
 
 ## 4. Labels are smoothed
 
-It runs twice: first within a single image, across the boxes in it, then across all the files in an event. Inside one event the same animal usually triggers many photos. If the model labels 11 of them deer and 1 of them elk, smoothing treats the odd one out as a mistake and makes all 12 deer.
+It runs twice: first within a single photo, across the boxes in it, then across all the files in an event. Inside one event the same animal usually triggers many photos. If the model labels 11 of them deer and 1 of them elk, smoothing treats the odd one out as a mistake and makes all 12 deer.
 
 Smoothing works the other way too. If most of an event is confidently "lion" and one detection only made it to "felidae" in step 3, smoothing can turn that group back into the species. Vague labels give way easily: "animal" or "unknown" needs far less support to be overwritten than a real species does. This removes a lot of noise and it is usually right, but it can also hide a real second species in a busy event. So if you work with mixed herds, or with two similar species at the same site, check those events yourself. See [detections, events and observations](./detections-events-observations.mdx) for how events are formed.
 
