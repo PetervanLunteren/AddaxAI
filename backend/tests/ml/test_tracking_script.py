@@ -267,6 +267,9 @@ def test_ffmpeg_command_selects_by_source_index_and_scales():
     assert cmd[cmd.index("-vf") + 1] == "select=not(mod(n\\,10)),scale=1920:1080"
     assert cmd[cmd.index("-fps_mode") + 1] == "passthrough"
     assert cmd[cmd.index("-hwaccel") + 1] == "auto"
+    # An input option: it only counts before the -i it applies to.
+    assert cmd[cmd.index("-reinit_filter") + 1] == "0"
+    assert cmd.index("-reinit_filter") < cmd.index("-i")
     assert cmd[-4:] == ["-f", "rawvideo", "-pix_fmt", "bgr24"][:0] + cmd[-4:]
     assert cmd[cmd.index("-pix_fmt") + 1] == "bgr24" and cmd[-1] == "-"
 
@@ -297,6 +300,50 @@ def test_ffmpeg_frames_number_the_frames_like_process_video(tmp_path, make_video
         assert frame.shape == (48, 64, 3)
         # Blue channel is the source frame index (within codec noise).
         assert abs(int(frame[24, 32, 0]) - n) <= 4, (n, int(frame[24, 32, 0]))
+
+
+def test_ffmpeg_frames_keep_their_numbers_when_the_pixel_format_changes(tmp_path):
+    """Some trail cameras write the first frames of an MJPEG AVI as 4:2:2
+    and the rest as 4:2:0. ffmpeg rebuilds its filter chain at the change
+    and the select filter's `n` restarts there, so a stride of 5 gave
+    source frames 0, 2, 7, 12 under the numbers 0, 5, 10, 15: every box
+    of the clip filed on a frame the detector never saw. The frame handed
+    out as number n must be source frame n."""
+    import shutil
+    import subprocess
+
+    import pytest
+
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        pytest.skip("ffmpeg not on PATH")
+    # Raw MJPEG is a run of whole JPEGs, so two streams joined end to end
+    # are one valid stream: frames 0-1 as 4:2:2, frames 2-19 as 4:2:0.
+    parts = []
+    for name, pick, pix_fmt in (("a", "lt(n\\,2)", "yuvj422p"), ("b", "gte(n\\,2)", "yuvj420p")):
+        part = tmp_path / f"{name}.mjpeg"
+        subprocess.run(
+            [
+                ffmpeg, "-v", "error", "-y", "-f", "lavfi",
+                "-i", "testsrc=size=64x48:rate=10:duration=2",
+                "-vf", f"select={pick}", "-pix_fmt", pix_fmt, "-q:v", "2",
+                "-f", "mjpeg", str(part),
+            ],
+            check=True,
+        )
+        parts.append(part.read_bytes())
+    video = tmp_path / "mixed.mjpeg"
+    video.write_bytes(b"".join(parts))
+
+    every = dict(ts.ffmpeg_frames(ffmpeg, video, 1, 64, 48))
+    assert len(every) == 20
+    sampled = list(ts.ffmpeg_frames(ffmpeg, video, 5, 64, 48))
+    assert [n for n, _ in sampled] == [0, 5, 10, 15]
+    for n, frame in sampled:
+        errors = {
+            k: float(np.abs(v.astype(int) - frame.astype(int)).mean()) for k, v in every.items()
+        }
+        assert min(errors, key=errors.get) == n, (n, errors)
 
 
 class _ScriptedDetector:

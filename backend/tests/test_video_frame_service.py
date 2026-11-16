@@ -121,6 +121,9 @@ def test_the_chunk_command_selects_by_offset_from_the_seek(tmp_path):
     assert cmd[cmd.index("-vf") + 1].startswith("select='eq(n\\,0)+eq(n\\,10)+eq(n\\,25)',")
     assert cmd[cmd.index("-frames:v") + 1] == "3"
     assert cmd[cmd.index("-fps_mode") + 1] == "passthrough"
+    # Keeps `n` counting across a change of frame shape; an input option.
+    assert cmd[cmd.index("-reinit_filter") + 1] == "0"
+    assert cmd.index("-reinit_filter") < cmd.index("-i")
 
 
 def test_a_decode_that_runs_past_the_timeout_is_given_up(monkeypatch, caplog):

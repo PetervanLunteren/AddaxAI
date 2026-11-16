@@ -107,7 +107,9 @@ def _load_sibling(name: str):
     return module
 
 
-open_video = _load_sibling("video_iter").open_video
+_video_iter = _load_sibling("video_iter")
+open_video = _video_iter.open_video
+FFMPEG_KEEP_FRAME_COUNT = _video_iter.FFMPEG_KEEP_FRAME_COUNT
 track_crop_filename = _load_sibling("scoring").track_crop_filename
 _crop_box = _load_sibling("crop_box")
 _botsort = _load_sibling("botsort")
@@ -297,6 +299,8 @@ def ffmpeg_decode_cmd(
     writes; ``-fps_mode passthrough`` stops ffmpeg from duplicating
     frames to fill the timeline. ``-hwaccel auto`` takes the platform's
     hardware decoder and falls back to software without a word.
+    ``FFMPEG_KEEP_FRAME_COUNT`` keeps ``n`` counting when the frames
+    change shape part way through the clip.
     """
     return [
         ffmpeg,
@@ -304,6 +308,7 @@ def ffmpeg_decode_cmd(
         "-hide_banner",
         "-loglevel", "error",
         "-hwaccel", "auto",
+        *FFMPEG_KEEP_FRAME_COUNT,
         "-i", str(video),
         "-vf", f"select=not(mod(n\\,{stride})),scale={out_w}:{out_h}",
         "-fps_mode", "passthrough",

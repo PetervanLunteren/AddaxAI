@@ -35,7 +35,7 @@ from pathlib import Path
 import cv2
 
 from app.core.logging_config import get_logger
-from app.ml.inference.video_iter import open_video
+from app.ml.inference.video_iter import FFMPEG_KEEP_FRAME_COUNT, open_video
 from app.models import File
 from app.utils.ffmpeg_bin import APP_ENV, resolve_ffmpeg
 
@@ -162,7 +162,9 @@ def frames_seek_cmd(
     offset 0 is the frame the single decode gives for ``first``.
     Passthrough timing keeps the filter from duplicating or dropping
     frames to fit an output rate, and the output frame count stops the
-    decode right after the last wanted frame.
+    decode right after the last wanted frame. ``FFMPEG_KEEP_FRAME_COUNT``
+    keeps that count running when the frames change shape inside the
+    chunk.
     """
     pick = "+".join(f"eq(n\\,{o})" for o in offsets)
     return [
@@ -171,6 +173,7 @@ def frames_seek_cmd(
         "-hide_banner",
         "-loglevel", "error",
         "-hwaccel", "auto",
+        *FFMPEG_KEEP_FRAME_COUNT,
         "-ss", _seek_time(first, fps),
         "-i", str(video),
         "-vf", f"select='{pick}',{_scale_filter()}",

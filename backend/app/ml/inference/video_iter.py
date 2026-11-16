@@ -52,6 +52,16 @@ _BACKENDS = (
     cv2.CAP_GSTREAMER,
 )
 
+# Goes before `-i` in every ffmpeg command that picks frames by the
+# select filter's `n`. When the frames of a clip change shape part way
+# (pixel format, as in Bushnell-style MJPEG AVIs whose first frames are
+# 4:2:2 and the rest 4:2:0, or resolution) ffmpeg rebuilds its filter
+# chain and `n` starts again at 0, so "every 5th frame" becomes frames
+# 0, 2, 7, 12 while the caller numbers them 0, 5, 10, 15. With this the
+# chain is built once and later frames are converted into it, so `n`
+# counts source frames from start to end.
+FFMPEG_KEEP_FRAME_COUNT = ("-reinit_filter", "0")
+
 
 def open_video(path: Path | str) -> cv2.VideoCapture | None:
     """
