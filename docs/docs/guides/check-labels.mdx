@@ -20,8 +20,8 @@ The AI gives every animal a species, and some will be wrong. This page shows how
 
 The Labels page has two tabs. They show the same work in two ways.
 
-- **Detections** has one card per animal: a crop with the species the AI chose. This is the fast way to check labels.
-- **Files** has one card per photo or video, with the boxes drawn on it. Use it to find animals the AI missed, or to fix a file with several animals at once.
+- Detections has one card per animal: a crop with the species the AI chose. This is the fast way to check labels.
+- Files has one card per photo or video, with the boxes drawn on it. Use it to find animals the AI missed, or to fix a file with several animals at once.
 
 A box you verify in Detections counts for its file. A file you verify in Files takes its boxes out of Detections.
 
@@ -33,46 +33,46 @@ To see the files where the AI found nothing, set Empty to "Show only empty" unde
 
 Select a group of cards, then verify, relabel or unverify them in one go. Verified cards are hidden, so every group you clear leaves the grid.
 
-The fastest flow: sort per event, press E to select the event, then M to give it the most common label. This works best when most events hold one species.
+The fastest flow: sort per event, press <kbd>E</kbd> to select the event, then <kbd>M</kbd> to give it the most common label. This works best when most events hold one species.
 
 ## Keys
 
 | Key | What it does |
 |---|---|
-| Enter | Verify |
-| V | Accept the selected box and go to the next one |
-| R | Relabel |
-| X | Mark as false detection |
-| U | Mark as unknown |
-| 1 to 9 | Apply a saved label |
-| M | Apply the most common label |
-| E | Select the whole event |
-| D | Draw a box around a missed animal |
-| B | Hide the boxes |
-| Ctrl+Z (Cmd+Z on Mac) | Undo |
+| <kbd>Enter</kbd> | Verify |
+| <kbd>V</kbd> | Accept the selected box and go to the next one |
+| <kbd>R</kbd> | Relabel |
+| <kbd>X</kbd> | Mark as false detection |
+| <kbd>U</kbd> | Mark as unknown |
+| <kbd>1</kbd> to <kbd>9</kbd> | Apply a saved label |
+| <kbd>M</kbd> | Apply the most common label |
+| <kbd>E</kbd> | Select the whole event |
+| <kbd>D</kbd> | Draw a box around a missed animal |
+| <kbd>B</kbd> | Hide the boxes |
+| <kbd>Ctrl</kbd>+<kbd>Z</kbd> (<kbd>Cmd</kbd>+<kbd>Z</kbd> on Mac) | Undo |
 
-With no box selected, a key acts on every box in the picture. The keyboard icon in the toolbar lists every key and lets you set the 1 to 9 labels.
+With no box selected, a key acts on every box in the picture. The keyboard icon in the toolbar lists every key and lets you set the <kbd>1</kbd> to <kbd>9</kbd> labels.
 
 ## Photos
 
-Double-click a file to open it. Enter verifies it and opens the next one. Verifying a file means the boxes you see are all there is. Weak boxes below your threshold are set aside as false detections.
+Double-click a file to open it. <kbd>Enter</kbd> verifies it and opens the next one. Verifying a file means the boxes you see are all there is. Weak boxes below your threshold are set aside as false detections.
 
-Missed an animal? Press D, drag a box around it and pick the species. Drag a box or its corners to fix where it sits.
+Missed an animal? Press <kbd>D</kbd>, drag a box around it and pick the species. Drag a box or its corners to fix where it sits.
 
 ## Videos
 
-The AI follows each animal through a clip. In Detections, each animal gets one card. What you do with that card applies to every frame of the animal.
+The AI follows each animal through a video. In Detections, each animal gets one card. What you do with that card applies to every frame of the animal.
 
-Open a video in Files to see the whole clip. Under the picture is a timeline with one bar per animal.
+Open a video in Files to see the whole video. Under the picture is a timeline with one bar per animal.
 
 - Click a bar to select that animal.
-- Shift with the left or right arrow steps one frame back or forward.
+- <kbd>Shift</kbd> with the left or right arrow steps one frame back or forward.
 - MaxN next to a species goes to the frame with the most of that species at once.
-- P plays the clip.
+- <kbd>P</kbd> plays the video.
 
-With an animal selected, V, X and R act on that animal. With nothing selected, they act on the animals in the frame you see. Enter verifies those and moves on to the next animal you have not checked, so you can walk through a clip with Enter.
+With an animal selected, <kbd>V</kbd>, <kbd>X</kbd> and <kbd>R</kbd> act on that animal. With nothing selected, they act on the animals in the frame you see. <kbd>Enter</kbd> verifies those and moves on to the next animal you have not checked, so you can walk through a video with Enter.
 
-"Verify the whole clip" signs off every animal in it, also the ones you did not look at. Use it only when you are sure.
+"Verify the whole clip" verifies every animal in the video, also the ones you did not look at. Use it only when you are sure.
 
 To add an animal the AI missed, draw it on the frame you count on, usually the MaxN frame. Or type the number on the Counts page.
 
@@ -80,7 +80,7 @@ To add an animal the AI missed, draw it on the frame you count on, usually the M
 
 Sometimes the AI follows one animal and then jumps to another, for example when two fish cross. The card can't show that, because it is one picture.
 
-Click Frames on a video card to see every frame of that animal. If some frames show a different animal, select those frames and relabel them. Esc takes you back.
+Click Frames on a video card to see every frame of that animal. If some frames show a different animal, select those frames and relabel them. <kbd>Esc</kbd> takes you back.
 
 Some frames are blurry or half hidden. That is normal: the AI keeps weak boxes to follow an animal through cover. The card's species is a vote over all frames, so one bad frame does not change it. See [how labels get cleaned up](../understanding/label-cleanup.md).
 
