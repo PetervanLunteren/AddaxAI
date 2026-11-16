@@ -95,7 +95,7 @@ now and then, so the fallback does not drift far behind the catalogue.
 
 ## Writing style
 
-Docs pages follow the docs mode of the `/write-partner` skill: length, layout, app labels, keys and the word list.
+Docs pages follow the `/docs-partner` skill: length, layout, app labels, keys, word list and the checks before a page goes in.
 
 ## Build
 
