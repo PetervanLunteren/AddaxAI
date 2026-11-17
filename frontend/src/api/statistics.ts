@@ -116,6 +116,8 @@ export interface ActivityPatternResponse {
 }
 
 export type TrendGranularity = "day" | "week" | "month";
+/** The Trend page's period sizes: a day across sites is mostly zeros. */
+export type TrendPeriodSize = Exclude<TrendGranularity, "day">;
 
 /** One period of the Explore trend and the observations in it. */
 export interface DetectionTrendPoint {
@@ -168,6 +170,12 @@ export interface RateTrendResponse {
   first_date: string | null;
   last_date: string | null;
   periods: TrendPeriod[];
+}
+
+/** The Species rates page. The dates are as on `RateTrendResponse`. */
+export interface SpeciesRatesResponse {
+  first_date: string | null;
+  last_date: string | null;
   species: SpeciesRate[];
 }
 
@@ -397,14 +405,16 @@ export const statisticsApi = {
       `/api/statistics/detection-trend?${trendParams(projectId, scope, granularity)}`,
     ),
 
-  /** The Trend page: mean site rate per period and per species. */
-  getRateTrend: (
-    projectId: string,
-    scope: DashboardScope,
-    granularity?: Exclude<TrendGranularity, "day">,
-  ) =>
+  /** The Trend page: mean site rate per week or month. */
+  getRateTrend: (projectId: string, scope: DashboardScope, granularity?: TrendPeriodSize) =>
     api.get<RateTrendResponse>(
       `/api/statistics/rate-trend?${trendParams(projectId, scope, granularity)}`,
+    ),
+
+  /** The Species rates page: mean site rate per species. */
+  getSpeciesRates: (projectId: string, scope: DashboardScope) =>
+    api.get<SpeciesRatesResponse>(
+      `/api/statistics/species-rates?${scopeParams(projectId, scope)}`,
     ),
 
   /** Events, observations, trap nights and sites for the dashboard tiles. */

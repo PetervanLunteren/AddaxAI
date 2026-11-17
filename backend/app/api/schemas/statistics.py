@@ -186,6 +186,13 @@ class RateTrendResponse(BaseModel):
     first_date: date | None
     last_date: date | None
     periods: list[TrendPeriod]
+
+
+class SpeciesRatesResponse(BaseModel):
+    """The Species rates page. The dates are as on `RateTrendResponse`."""
+
+    first_date: date | None
+    last_date: date | None
     species: list[SpeciesRate]
 
 

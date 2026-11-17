@@ -27,6 +27,7 @@ import DashboardOverview from "./pages/dashboard/DashboardOverview";
 import DashboardExplore from "./pages/dashboard/DashboardExplore";
 import { MapPage } from "./pages/MapPage";
 import { TrendPage } from "./pages/TrendPage";
+import { SpeciesRatesPage } from "./pages/SpeciesRatesPage";
 import { DeploymentTimelinePage } from "./pages/DeploymentTimelinePage";
 import { ActivityOverlapPage } from "./pages/ActivityOverlapPage";
 import { ConfusionMatrixPage } from "./pages/ConfusionMatrixPage";
@@ -480,6 +481,7 @@ function App() {
               <Route path="insights" element={<Navigate to="map" replace />} />
               <Route path="insights/map" element={<MapPage />} />
               <Route path="insights/trend" element={<TrendPage />} />
+              <Route path="insights/species-rates" element={<SpeciesRatesPage />} />
               <Route path="insights/timeline" element={<DeploymentTimelinePage />} />
               <Route path="insights/activity-overlap" element={<ActivityOverlapPage />} />
               <Route path="insights/confusion-matrix" element={<ConfusionMatrixPage />} />

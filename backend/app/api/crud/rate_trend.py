@@ -14,6 +14,8 @@ months, for two charts with two jobs.
   95% confidence interval (`app.core.rate_statistics`). A site with
   effort and no observations is a rate of 0. Deployments without a site
   have no sampling unit and are left out.
+- **Species rates page** (`get_species_rates`): the same mean of site
+  rates, per label, over the whole date range.
 
 Which sites count:
 
@@ -52,6 +54,7 @@ from app.api.schemas.statistics import (
     DetectionTrendResponse,
     RateTrendResponse,
     SpeciesRate,
+    SpeciesRatesResponse,
     TrendGranularity,
     TrendPeriod,
 )
@@ -432,9 +435,7 @@ def get_rate_trend(
     date_to: str | None = None,
     granularity: TrendGranularity | None = None,
 ) -> RateTrendResponse:
-    """The Trend page: mean site rate per period, and per species over
-    the whole date range. One response, so the chart and the table are
-    always the same scope."""
+    """The Trend page: the mean site rate per week or month."""
     data = _load_scope(db, project_id, label_taxonomy_ids, site_ids, date_from, date_to)
     granularity = _resolve_granularity(data, granularity, allow_day=False)
     span = data.span()
@@ -447,5 +448,22 @@ def get_rate_trend(
             if span is not None
             else []
         ),
-        species=_species_rates(data) if span is not None else [],
+    )
+
+
+def get_species_rates(
+    db: Session,
+    project_id: str,
+    label_taxonomy_ids: list[str] | None = None,
+    site_ids: list[str] | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> SpeciesRatesResponse:
+    """The Species rates page: the mean site rate per label over the
+    whole date range."""
+    data = _load_scope(db, project_id, label_taxonomy_ids, site_ids, date_from, date_to)
+    return SpeciesRatesResponse(
+        first_date=data.first,
+        last_date=data.last,
+        species=_species_rates(data) if data.span() is not None else [],
     )

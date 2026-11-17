@@ -872,16 +872,16 @@ A rate is observations (or events) over trap nights, times a multiplier: the use
 
 Each unit has its own number of decimals (4, 3, 3, 2), so a rare species does not show as 0 per trap night. Map colours are computed from `rate_per_100` against the p66 of the visible sites, so the unit cancels out and the colours never change with it. The unit is a device-global display preference like species names (localStorage, reload on change), not a project setting: it changes no result, and exports stay comparable whatever the reader picked.
 
-## Trend: the site is the sampling unit
+## Trend and Species rates: the site is the sampling unit
 
-Every other rate in the app is pooled: all observations over all trap nights. A pooled rate cannot say how certain it is. The Trend page (`pages/TrendPage.tsx`, `crud/rate_trend.py`) takes the site as the sampling unit, the usual answer in camera trap work: one rate per site, then the mean across sites with its SD and a 95% confidence interval, `mean ± t(n - 1) × SD / √n` (`app/core/rate_statistics.py`). It was asked for by DOC New Zealand, whose camera trap catch index prescribes exactly this, but nothing in it is specific to them: their 5-minute visit is the independence interval and their rate per week is the rate unit.
+Every other rate in the app is pooled: all observations over all trap nights. A pooled rate cannot say how certain it is. The Trend and Species rates pages (`pages/TrendPage.tsx`, `pages/SpeciesRatesPage.tsx`, `crud/rate_trend.py`) take the site as the sampling unit, the usual answer in camera trap work: one rate per site, then the mean across sites with its SD and a 95% confidence interval, `mean ± t(n - 1) × SD / √n` (`app/core/rate_statistics.py`). It was asked for by DOC New Zealand, whose camera trap catch index prescribes exactly this, but nothing in it is specific to them: their 5-minute visit is the independence interval and their rate per week is the rate unit.
 
 The rules, each pinned in `tests/api/test_statistics_trend.py`:
 
 - **A site with effort and no observations is a rate of 0.** Leaving it out is the easy mistake and inflates every mean.
 - **In a period of the chart a site counts when it was active on at least 80% of the period's days** (`MIN_ACTIVE_SHARE`). Cameras rarely start or stop on the edge of a week, and 1 observation over 1 trap night would read as 7 per week. Active days, not trap nights: two cameras at one site for three days are 6 nights and still 3 days. The share is of the whole calendar period, also where the date filter cuts it, so a piece of a week is a gap and not a point from one trap night.
 - **A period no site ran long enough is a gap, not a zero.** `mean` is null and the line breaks.
-- **In the species table every site with at least 1 trap night in the date range counts.** The 80% rule over a whole range would empty the table for rotating cameras.
+- **On Species rates every site with at least 1 trap night in the date range counts.** The 80% rule over a whole range would empty the table for rotating cameras.
 - **Deployments without a site are left out.** There is no unit to put them in. The page shows the `NoSiteBanner`.
 - **One site has a mean and no SD or interval.** The lower bound of an interval stops at 0.
 
@@ -889,9 +889,9 @@ The rules, each pinned in `tests/api/test_statistics_trend.py`:
 
 **Time is cut into periods in one place.** `crud/rate_trend.py` owns days, ISO weeks and calendar months (`period_of`, `build_periods`), the choice between them (`pick_granularity`) and the guard against a corrupt capture year (`MAX_CHART_YEARS`, mirrored in `frontend/src/lib/date-span.ts`, checked before any interval is spread over days). The Explore tab's "Observation trend" card reads its periods from the same module (`get_detection_trend`), but as a **count, not a rate**, and that is a speed decision. Effort per period means reading every file row of the scope: 1.6 s on 480,000 files, and 9.4 s when it ran next to the Explore tiles and the map, which load the same rows. The count is one grouped query, and `test_the_explore_trend_reads_no_file_rows` keeps it that way. Until 2026-11 the card divided every period by the trap nights of the whole scope, which only scaled the counts and changed with the period size; the rate now lives on the Trend page, one click away.
 
-Both cards draw with `components/plots/TrendLineChart.tsx`. The page reuses the Explore tab's filters as they are (`useExploreFilters`, `ExploreFilterBar`), so a link from Explore lands on the same selection. Effort per period comes from `nights_per_day` in `crud/trap_nights.py`, which sums to the trap nights every other rate uses.
+**Two pages, two endpoints, one frame.** Trend (`GET /api/statistics/rate-trend`, `get_rate_trend`) answers "when", Species rates (`species-rates`, `get_species_rates`) answers "which species". They share the loader (`_load_scope`) and each computes only what it shows. Both pages are built on `components/plots/RatePageLayout.tsx`: the page header with its Download CSV button, the banners, the Explore tab's filter bar (`useExploreFilters`, `ExploreFilterBar`, so a link from Explore lands on the same selection), and "About this view". The chart and the table sit in plain boxes without a header of their own, like every Insights page's one chart or table; the page header says what it is. Trend's period size is a `FilterField` in the filter bar, like the Map's view mode. The chart is `components/plots/TrendLineChart.tsx`, shared with the Explore card. Effort per period comes from `nights_per_day` in `crud/trap_nights.py`, which sums to the trap nights every other rate uses.
 
-The two "Download CSV" buttons write what their card shows (`lib/trend-csv.ts`), in the user's rate unit, with `per_trap_nights` naming that unit and the filters repeated on every row. They are built in the frontend because only the frontend knows the unit. The Export page is not involved.
+Download CSV writes what the page shows (`lib/trend-csv.ts`), in the user's rate unit, with `per_trap_nights` naming that unit and the filters repeated on every row. It is built in the frontend because only the frontend knows the unit. The Export page is not involved.
 
 ## Species colours
 

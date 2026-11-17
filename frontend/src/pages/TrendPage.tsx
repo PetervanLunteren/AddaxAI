@@ -1,59 +1,41 @@
 /**
  * Trend page: the observation rate over time, with its uncertainty.
  *
- * The site is the sampling unit. Each site gets its own rate, the chart
- * draws the mean of those rates per week or month with a 95% confidence
- * band, and the table below gives the same per species for the whole
- * date range (backend: `crud/rate_trend.py`).
+ * The site is the sampling unit. Each site gets its own rate, and the
+ * chart draws the mean of those rates per week or month with a 95%
+ * confidence band (backend: `get_rate_trend` in `crud/rate_trend.py`).
+ * The same statistic per species is the Species rates page.
  *
- * Filters are the Explore tab's (labels, sites, site tags, dates), with
- * the same hook, bar and URL parameters, so a link from Explore lands on
- * the same selection. The period size is a control on the chart card: it
- * changes how the chart is drawn, not which data is in scope.
+ * The frame, the filters and the download are `RatePageLayout`. The
+ * period size is this page's display control, in the filter bar like the
+ * view mode on the Map.
  */
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 
-import { eventsApi } from "../api/events";
-import { statisticsApi } from "../api/statistics";
-import { ExploreFilterBar } from "../components/dashboard/ExploreFilterBar";
-import { MissingDatesBanner } from "../components/dashboard/MissingDatesWarning";
-import { NoSiteBanner } from "../components/deployments/NoSiteBanner";
-import { buildSiteNameMap } from "../components/plots/InsightsFilterChips";
+import { statisticsApi, type TrendPeriodSize } from "../api/statistics";
+import { FilterField } from "../components/dashboard/ExploreFilterBar";
 import { PlotExplainer } from "../components/plots/PlotExplainer";
-import { RateTrendCard, type TrendPeriodSize } from "../components/plots/RateTrendCard";
-import { SpeciesRateTable } from "../components/plots/SpeciesRateTable";
-import { Callout } from "../components/ui/callout";
-import { useNoSiteDeployments } from "../hooks/useNoSiteDeployments";
-import { downloadBlob } from "../lib/download";
-import { speciesLabelMap } from "../lib/species-name-mode";
-import { speciesRatesCsv, trendPeriodsCsv, type TrendCsvScope } from "../lib/trend-csv";
+import { RatePageLayout } from "../components/plots/RatePageLayout";
+import { RateTrendChart } from "../components/plots/RateTrendChart";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
+import { ROVERO_MARSHALL_2009, SWEETAPPLE_HICKLING_2024 } from "../lib/rate-references";
+import { trendPeriodsCsv } from "../lib/trend-csv";
 import { useExploreFilters } from "./dashboard/useExploreFilters";
-
-/** Saves a download named after what it holds and its dates, so a
- *  "before" and an "after" file can be told apart. */
-function saveCsv(name: string, fileScope: TrendCsvScope, csv: string) {
-  const { dateFrom, dateTo } = fileScope;
-  const dates = dateFrom && dateTo ? `-${dateFrom}-to-${dateTo}` : "";
-  downloadBlob(
-    new Blob([csv], { type: "text/csv;charset=utf-8" }),
-    `addaxai-${name}${dates}.csv`,
-  );
-}
-
-/** Names for a download's filter columns, or "all" without a filter. */
-function namesOrAll(ids: string[] | undefined, names: Record<string, string>): string {
-  return ids?.length ? ids.map((id) => names[id] ?? id).join("; ") : "all";
-}
 
 export function TrendPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const id = projectId as string;
   const explore = useExploreFilters(id);
-  const { scope, ready } = explore;
-  const showCards = ready && !explore.noSiteMatch;
+  const { scope } = explore;
 
   // Until the user picks one, the backend chooses week or month from
   // the span of the data.
@@ -62,148 +44,84 @@ export function TrendPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["statistics", "rate-trend", id, scope, picked],
     queryFn: () => statisticsApi.getRateTrend(id, scope, picked),
-    enabled: showCards,
+    enabled: explore.ready && !explore.noSiteMatch,
   });
   const periodSize: TrendPeriodSize =
     picked ?? (data?.granularity === "month" ? "month" : "week");
 
-  const { data: noSite } = useNoSiteDeployments(id);
-  // Same query as the filter bar's, so this is a cache hit.
-  const { data: filterOptions } = useQuery({
-    queryKey: ["event-filter-options", id],
-    queryFn: () => eventsApi.getFilterOptions(id),
-  });
-
-  const csvScope = (): TrendCsvScope => ({
-    // The filter when one is set, else the first and last day with effort.
-    dateFrom: scope.dateFrom ?? data?.first_date ?? "",
-    dateTo: scope.dateTo ?? data?.last_date ?? "",
-    sites: namesOrAll(scope.siteIds, buildSiteNameMap(explore.sites)),
-    labels: namesOrAll(
-      scope.labelTaxonomyIds,
-      filterOptions ? speciesLabelMap(filterOptions) : {},
-    ),
-  });
-
   return (
-    <div className="min-h-screen">
-      {/* Header */}
-      <header className="border-b bg-card/80 backdrop-blur-sm">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Trend</h1>
-              <p className="text-sm text-muted-foreground">
-                Observation rate over time, with its uncertainty
-              </p>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
-        <NoSiteBanner
-          projectId={id}
-          count={noSite?.count ?? 0}
-          reason="They are not part of the trend."
-        />
-        <MissingDatesBanner projectId={id} />
-        <ExploreFilterBar
-          projectId={id}
-          filters={explore.filters}
-          scopeSiteIds={scope.siteIds}
-          sites={explore.sites}
-          update={explore.update}
-          clearAll={explore.clearAll}
-        />
-
-        {explore.noSiteMatch ? (
-          <Callout variant="info">
-            No site has these tags. Pick other sites or tags to see results.
-          </Callout>
-        ) : !ready ? (
-          <p className="text-sm text-muted-foreground">Loading...</p>
-        ) : (
-          <>
-            <RateTrendCard
-              projectId={id}
-              data={data}
-              isLoading={isLoading}
-              periodSize={periodSize}
-              onPeriodSizeChange={setPicked}
-              onDownload={() => {
-                const fileScope = csvScope();
-                saveCsv(
-                  `trend-${periodSize}`,
-                  fileScope,
-                  trendPeriodsCsv(data?.periods ?? [], fileScope),
-                );
-              }}
-            />
-            <SpeciesRateTable
-              species={data?.species ?? []}
-              isLoading={isLoading}
-              onDownload={() => {
-                const fileScope = csvScope();
-                saveCsv(
-                  "species-rates",
-                  fileScope,
-                  speciesRatesCsv(data?.species ?? [], fileScope),
-                );
-              }}
-            />
-          </>
-        )}
-
+    <RatePageLayout
+      projectId={id}
+      title="Trend"
+      subtitle="Observation rate over time, with its uncertainty"
+      explore={explore}
+      dates={data && { first: data.first_date, last: data.last_date }}
+      download={
+        data?.periods.length
+          ? {
+              name: `trend-${periodSize}`,
+              csv: (fileScope) => trendPeriodsCsv(data.periods, fileScope),
+            }
+          : undefined
+      }
+      filterExtra={
+        <FilterField label="Period">
+          <Select value={periodSize} onValueChange={(v) => setPicked(v as TrendPeriodSize)}>
+            {/* The filter bar's other controls are h-9; the shared trigger
+                defaults to min-h-10. Same fix as the Deployment timeline. */}
+            <SelectTrigger className="h-9 min-h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="week">Weekly</SelectItem>
+              <SelectItem value="month">Monthly</SelectItem>
+            </SelectContent>
+          </Select>
+        </FilterField>
+      }
+      explainer={
         <PlotExplainer
           plotKey="trend"
           what={
-            <>
-              <p>
-                Each site gets its own observation rate. The line is the
-                average of those site rates per week or month, and the band
-                shows how sure that average is: with more sites, or sites
-                that agree, the band is narrower. The table gives the same
-                per species for the whole date range.
-              </p>
-              <p>
-                An observation counts individuals: each event's confirmed
-                count, or the AI's count where not yet confirmed. A trap
-                night is one day a camera was active. The average of the
-                site rates differs from the single rate on the dashboard
-                when sites ran for different lengths of time: here every
-                site weighs the same.
-              </p>
-            </>
+            <p>
+              Each site gets its own observation rate. The line is the average
+              of those site rates per week or month, and the band shows how sure
+              that average is: with more sites, or sites that agree, the band is
+              narrower. Hover a point for its dates, its 95% confidence interval
+              and the number of sites behind it. An observation counts
+              individuals: each event's confirmed count, or the AI's count where
+              not yet confirmed. A trap night is one day a camera was active.
+              The average of the site rates differs from the single rate on the
+              dashboard when sites ran for different lengths of time: here every
+              site weighs the same. The rate is an index of how many animals
+              there are, not a count of them: it can track density closely
+              (Rovero & Marshall 2009), but it also rises and falls with how
+              active animals are, for example between seasons.
+            </p>
           }
           how={
-            <>
-              <p>
-                Per site, rate = observations / trap_nights, shown in the
-                unit chosen under View &gt; Rate unit. A site with effort
-                and no observations is a rate of zero. Then mean and
-                standard deviation across the n sites, and 95% confidence
-                interval = mean ± t × SD / √n, with t from Student's
-                distribution for n − 1 degrees of freedom. The lower bound
-                stops at zero.
-              </p>
-              <p>
-                In the chart a site counts in a week or month when it was
-                active on at least 80% of its days, so a camera that
-                started or stopped partway does not distort the period. A
-                period without such a site is a gap, not a zero. In the
-                table every site with at least one trap night in the date
-                range counts. Deployments without a site are left out.
-              </p>
-              <p>
-                With few sites the interval is wide and rough. Read the
-                number of sites next to it.
-              </p>
-            </>
+            <p>
+              Per site, rate = observations / trap_nights, shown in the unit
+              chosen under View &gt; Rate unit. A site with effort and no
+              observations is a rate of zero. Then mean and standard deviation
+              across the n sites, and 95% confidence interval = mean ± t × SD /
+              √n, with t from Student's distribution for n − 1 degrees of
+              freedom, the method of New Zealand's camera trap catch index
+              (Sweetapple & Hickling 2024). The lower bound stops at zero. A site counts in a week or
+              month when it was active on at least 80% of its days, so a camera
+              that started or stopped partway does not distort the period. A
+              period without such a site is a gap, not a zero, and so is a week
+              or month the date range cuts short. Deployments without a site are
+              left out. With few sites the interval is wide and rough. Read the
+              number of sites next to it.
+            </p>
           }
+          references={[ROVERO_MARSHALL_2009, SWEETAPPLE_HICKLING_2024]}
         />
-      </main>
-    </div>
+      }
+    >
+      <RateTrendChart data={data} isLoading={isLoading} periodSize={periodSize} />
+    </RatePageLayout>
   );
 }
 

@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { speciesRatesCsv, trendPeriodsCsv } from "./trend-csv";
+import { speciesRatesCsv, trendCsvScope, trendPeriodsCsv } from "./trend-csv";
 
 const scope = {
   dateFrom: "2024-01-01",
@@ -54,5 +54,43 @@ describe("trend downloads", () => {
     expect(csv.split("\r\n")[1]).toBe(
       'deer,"Deer, red",Cervus elaphus,1,50,,,,100,2024-01-01,2024-01-14,Site A; Site B,all',
     );
+  });
+});
+
+describe("the filters of a download", () => {
+  const names = {
+    siteNames: { a: "Site A", b: "Site B" },
+    labelNames: { t1: "Red deer" },
+  };
+
+  it("names the picked sites and labels", () => {
+    expect(
+      trendCsvScope({
+        ...names,
+        dateFrom: "2024-01-01",
+        dateTo: "2024-01-14",
+        siteIds: ["a", "b"],
+        labelIds: ["t1", "t2"],
+      }),
+    ).toEqual({
+      dateFrom: "2024-01-01",
+      dateTo: "2024-01-14",
+      sites: "Site A; Site B",
+      // A label without a known name keeps its id, never an empty cell.
+      labels: "Red deer; t2",
+    });
+  });
+
+  it("says all without a filter and falls back to the days with effort", () => {
+    expect(
+      trendCsvScope({ ...names, firstDate: "2023-05-02", lastDate: "2023-09-30", siteIds: [] }),
+    ).toEqual({ dateFrom: "2023-05-02", dateTo: "2023-09-30", sites: "all", labels: "all" });
+  });
+
+  it("leaves the dates empty when there is nothing to date", () => {
+    expect(trendCsvScope({ ...names, firstDate: null, lastDate: null })).toMatchObject({
+      dateFrom: "",
+      dateTo: "",
+    });
   });
 });

@@ -262,11 +262,11 @@ def test_a_deployment_without_a_site_is_no_sampling_unit(db):
     loose = _camera(db, project=project, first=_jan(1), last=_jan(14))
     _sighting(db, loose, _jan(5), 700)
 
-    response = rate_trend.get_rate_trend(db, project.id)
+    week_1 = rate_trend.get_rate_trend(db, project.id).periods[0]
+    species = rate_trend.get_species_rates(db, project.id).species
 
-    assert response.periods[0].n_sites == 3
-    assert response.periods[0].mean == pytest.approx(100.0)
-    assert [s.mean for s in response.species] == [pytest.approx(250 / 3)]
+    assert (week_1.n_sites, week_1.mean) == (3, pytest.approx(100.0))
+    assert [s.mean for s in species] == [pytest.approx(250 / 3)]
 
 
 def test_months_are_drawn_on_request(db):
@@ -289,7 +289,10 @@ def test_months_are_drawn_on_request(db):
 def test_the_species_table_is_the_mean_over_every_site_with_effort(db):
     project, *_ = _three_sites(db)
 
-    (deer,) = rate_trend.get_rate_trend(db, project.id).species
+    response = rate_trend.get_species_rates(db, project.id)
+    (deer,) = response.species
+
+    assert (response.first_date, response.last_date) == (_jan(1), _jan(14))
 
     # Whole range, 14 nights each: A 21, B 14, C 0 -> 150, 100, 0.
     assert (deer.label, deer.n_sites) == ("deer", 3)
@@ -305,11 +308,11 @@ def test_the_species_table_counts_a_site_with_a_single_night(db):
     brief = make_site(db, project_id=project.id, name="D")
     _camera(db, project=project, site=brief, first=_jan(8), last=_jan(8))
 
-    response = rate_trend.get_rate_trend(db, project.id)
+    (deer,) = rate_trend.get_species_rates(db, project.id).species
+    week_2 = rate_trend.get_rate_trend(db, project.id).periods[1]
 
-    assert response.species[0].n_sites == 4
-    assert response.species[0].mean == pytest.approx(250 / 4)
-    assert response.periods[1].n_sites == 3
+    assert (deer.n_sites, deer.mean) == (4, pytest.approx(250 / 4))
+    assert week_2.n_sites == 3
 
 
 def test_observations_without_a_label_get_a_row_per_category(db):
@@ -328,7 +331,7 @@ def test_observations_without_a_label_get_a_row_per_category(db):
         )
     db.flush()
 
-    rows = {s.label: s for s in rate_trend.get_rate_trend(db, project.id).species}
+    rows = {s.label: s for s in rate_trend.get_species_rates(db, project.id).species}
 
     assert set(rows) == {"deer", "person", "vehicle"}
     # Only C, over 14 nights: person 50, vehicle 100 per 100 -> mean of 3 sites.
@@ -342,7 +345,7 @@ def test_the_species_table_has_a_row_per_label_highest_first(db):
     pig = _taxon(db, "pig")
     _sighting(db, deps[2], _jan(6), 70, label="pig", taxon=pig)
 
-    species = rate_trend.get_rate_trend(db, project.id).species
+    species = rate_trend.get_species_rates(db, project.id).species
 
     assert [(s.label, s.common_name, s.scientific_name) for s in species] == [
         ("pig", "Pig", "pig sci"),
@@ -358,22 +361,25 @@ def test_picked_labels_narrow_the_chart_and_the_table(db):
     pig = _taxon(db, "pig")
     _sighting(db, deps[2], _jan(6), 70, label="pig", taxon=pig)
 
-    response = rate_trend.get_rate_trend(db, project.id, label_taxonomy_ids=[pig.id])
+    picked = {"label_taxonomy_ids": [pig.id]}
+    week_1 = rate_trend.get_rate_trend(db, project.id, **picked).periods[0]
+    species = rate_trend.get_species_rates(db, project.id, **picked).species
 
-    assert [s.label for s in response.species] == ["pig"]
+    assert [s.label for s in species] == ["pig"]
     # Week 1: A 0, B 0, C 70/7 -> 0, 0, 1000.
-    assert response.periods[0].mean == pytest.approx(1000 / 3)
-    assert response.periods[0].n_sites == 3
+    assert (week_1.n_sites, week_1.mean) == (3, pytest.approx(1000 / 3))
 
 
 def test_a_project_without_effort_has_nothing_to_draw(db):
     project = make_project(db)
     make_site(db, project_id=project.id)
 
-    response = rate_trend.get_rate_trend(db, project.id)
+    trend = rate_trend.get_rate_trend(db, project.id)
+    species = rate_trend.get_species_rates(db, project.id)
 
-    assert (response.first_date, response.last_date) == (None, None)
-    assert (response.periods, response.species) == ([], [])
+    for response in (trend, species):
+        assert (response.first_date, response.last_date) == (None, None)
+    assert (trend.periods, species.species) == ([], [])
 
 
 # ---------------------------------------------------------------------------
@@ -462,11 +468,13 @@ def test_a_corrupt_capture_year_is_reported_not_walked(db):
 
     explore = rate_trend.get_detection_trend(db, project.id)
     per_site = rate_trend.get_rate_trend(db, project.id)
+    species = rate_trend.get_species_rates(db, project.id)
 
     assert (explore.first_date, explore.last_date) == (date(25, 6, 1), _jan(10))
-    assert (per_site.first_date, per_site.last_date) == (date(25, 6, 1), _jan(14))
+    for response in (per_site, species):
+        assert (response.first_date, response.last_date) == (date(25, 6, 1), _jan(14))
     assert explore.points == []
-    assert (per_site.periods, per_site.species) == ([], [])
+    assert (per_site.periods, species.species) == ([], [])
 
 
 # ---------------------------------------------------------------------------
@@ -474,24 +482,27 @@ def test_a_corrupt_capture_year_is_reported_not_walked(db):
 # ---------------------------------------------------------------------------
 
 
-def test_the_rate_trend_endpoint_returns_the_chart_and_the_table(client, db):
+def test_each_page_has_its_own_endpoint(client, db):
+    """Trend gets the periods, Species rates gets the species, and neither
+    carries the other's part."""
     project, sites, _ = _three_sites(db)
+    params = {"project_id": project.id, "site_ids": f"{sites[0].id},{sites[1].id}"}
 
-    response = client.get(
-        "/api/statistics/rate-trend",
-        params={
-            "project_id": project.id,
-            "site_ids": f"{sites[0].id},{sites[1].id}",
-            "granularity": "week",
-        },
+    trend = client.get(
+        "/api/statistics/rate-trend", params={**params, "granularity": "week"}
     )
+    species = client.get("/api/statistics/species-rates", params=params)
 
-    assert response.status_code == 200
-    body = response.json()
-    assert body["granularity"] == "week"
-    assert [p["n_sites"] for p in body["periods"]] == [2, 2]
-    assert body["periods"][0]["mean"] == pytest.approx(150.0)
-    assert body["species"][0]["label"] == "deer"
+    assert (trend.status_code, species.status_code) == (200, 200)
+    assert trend.json()["granularity"] == "week"
+    assert [p["n_sites"] for p in trend.json()["periods"]] == [2, 2]
+    assert trend.json()["periods"][0]["mean"] == pytest.approx(150.0)
+    assert "species" not in trend.json()
+    (deer,) = species.json()["species"]
+    assert (deer["label"], deer["n_sites"]) == ("deer", 2)
+    # A 21 and B 14 over 14 nights each -> 150 and 100 per 100.
+    assert deer["mean"] == pytest.approx(125.0)
+    assert "periods" not in species.json()
 
 
 def test_the_trend_page_refuses_days_and_the_explore_card_takes_them(client, db):
@@ -508,8 +519,10 @@ def test_the_trend_page_refuses_days_and_the_explore_card_takes_them(client, db)
 def test_an_empty_label_list_and_a_bad_date_are_refused(client, db):
     project, *_ = _three_sites(db)
 
-    for extra in ({"label_taxonomy_ids": ""}, {"date_from": "banana"}):
-        response = client.get(
-            "/api/statistics/rate-trend", params={"project_id": project.id, **extra}
-        )
-        assert response.status_code == 422, extra
+    for endpoint in ("rate-trend", "species-rates"):
+        for extra in ({"label_taxonomy_ids": ""}, {"date_from": "banana"}):
+            response = client.get(
+                f"/api/statistics/{endpoint}",
+                params={"project_id": project.id, **extra},
+            )
+            assert response.status_code == 422, (endpoint, extra)

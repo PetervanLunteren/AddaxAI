@@ -24,6 +24,7 @@ from app.api.schemas.statistics import (
     ObservationRateMapResponse,
     RateTrendResponse,
     SpeciesCount,
+    SpeciesRatesResponse,
     VerificationProgressByLabel,
 )
 from app.api.schemas.timeline import TimelineResponse
@@ -204,13 +205,30 @@ def rate_trend(
     granularity: Literal["week", "month"] | None = Query(None),
     db: Session = Depends(get_db),
 ) -> RateTrendResponse:
-    """The Trend page: the mean of site rates per period and per species.
+    """The Trend page: the mean of site rates per week or month.
     A day is not offered: across sites it is mostly zeros."""
     return rate_trend_crud.get_rate_trend(
         db, project_id, _parse_taxon_ids(label_taxonomy_ids),
         _parse_site_ids(site_ids),
         _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),
         granularity,
+    )
+
+
+@router.get("/species-rates", response_model=SpeciesRatesResponse)
+def species_rates(
+    project_id: str = Query(...),
+    label_taxonomy_ids: str | None = Query(None),
+    site_ids: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    db: Session = Depends(get_db),
+) -> SpeciesRatesResponse:
+    """The Species rates page: the mean of site rates per label."""
+    return rate_trend_crud.get_species_rates(
+        db, project_id, _parse_taxon_ids(label_taxonomy_ids),
+        _parse_site_ids(site_ids),
+        _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),
     )
 
 

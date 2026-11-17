@@ -100,9 +100,8 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
             </p>
             <p>
               A count, not a rate: it rises when more cameras run. For the
-              rate against trap nights, with its uncertainty and a table
-              per species, use Open trend. It opens Trend with the same
-              labels, sites and dates.
+              rate against trap nights, with its uncertainty, use Open
+              trend. It opens Trend with the same labels, sites and dates.
             </p>
           </>
         }
