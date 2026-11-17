@@ -84,6 +84,11 @@ export function insightsMapHref(projectId: string, scope: DashboardScope): strin
   return insightsHref(projectId, "map", scope);
 }
 
+/** The Insights trend with the same labels, sites and dates. */
+export function insightsTrendHref(projectId: string, scope: DashboardScope): string {
+  return insightsHref(projectId, "trend", scope);
+}
+
 /**
  * Activity overlap with the same sites and dates. Not the labels: that page
  * compares one or two species picked there, and a label selection (a family,

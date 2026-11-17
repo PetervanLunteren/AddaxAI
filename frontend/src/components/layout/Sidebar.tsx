@@ -37,6 +37,7 @@ import {
   Table2,
   Tag,
   Tally5,
+  TrendingUp,
 } from "lucide-react";
 import { projectsApi } from "../../api/projects";
 import { useBrokenDeployments } from "../../hooks/useBrokenDeployments";
@@ -103,6 +104,11 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
           to: `/projects/${projectId}/insights/map`,
           icon: Map,
           label: "Map",
+        },
+        {
+          to: `/projects/${projectId}/insights/trend`,
+          icon: TrendingUp,
+          label: "Trend",
         },
         {
           to: `/projects/${projectId}/insights/timeline`,

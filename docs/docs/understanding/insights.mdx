@@ -17,7 +17,7 @@ The Dashboard has two tabs.
 
 Overview shows the whole project, without filters. You see a random animal photo (a new one every time you open the dashboard, or press the refresh button for another), how many files were recorded and how many trap nights that took, a calendar of when your cameras were running (one row per year, one square per week, darker for more cameras), the top ten wildlife taxa, and how much of the work you have verified. Pick a higher rank in the chart to compare groups, such as mammals against birds at class level. Click a bar to explore it.
 
-Explore shows every label by default, people and vehicles included, at the sites, site tags and dates you choose. Pick labels in the same tree as on the Counts page to narrow it: one species, a whole family, a set like livestock, or everything except people and vehicles. Every card follows the same choice: the number of events and observations, each as a rate against trap nights, random photos, the day and night activity pattern, a trend over time, and a small map of where it was seen. To compare when species are active, use Compare species on the activity card. It opens [Activity overlap](#activity-overlap) with the same sites and dates.
+Explore shows every label by default, people and vehicles included, at the sites, site tags and dates you choose. Pick labels in the same tree as on the Counts page to narrow it: one species, a whole family, a set like livestock, or everything except people and vehicles. Every card follows the same choice: the number of events and observations, each as a rate against trap nights, random photos, the day and night activity pattern, a trend over time, and a small map of where it was seen. To compare when species are active, use Compare species on the activity card. It opens [Activity overlap](#activity-overlap) with the same sites and dates. The trend counts observations per day, week or month, so it also rises when more cameras run. For the rate against trap nights and how sure it is, use Open trend on that card. It opens [Trend](#trend) with the same labels, sites and dates.
 
 The photos are picked at random from detections the AI is sure about, so the name under a photo is one the AI is confident of. Click a photo to open the file on the Labels page and check it.
 
@@ -32,6 +32,18 @@ The Overview's chart and random animal show wildlife only, which their titles sa
 Each camera site on a map, coloured by its observation rate (see [rates](./trap-nights.md#rates)). You can switch how the sites are drawn: one marker per site, nearby sites merged into a hex grid, or nearby sites grouped into clusters. Deployments with no site do not appear. Map style changes the background: Light, Satellite, or OpenStreetMap. Satellite is the useful one when you want to see the habitat around a camera, like where the forest gives way to open ground.
 
 <AppShot name="mapSatellite" />
+
+## Trend
+
+How the observation rate changes over time, and how sure you can be of it. Each site gets its own rate. The line is the average of those site rates per week or month, and the band around it is the 95% confidence interval: with more sites, or sites that agree, the band is narrower. A site that recorded and saw nothing counts as zero.
+
+A site counts in a week or month when it was active on at least 80% of its days, so a camera that started or stopped partway does not distort that period. A period without such a site is a gap in the line. That includes a week or month your date range cuts short: a few days are too few to be a point. Deployments with no site are left out.
+
+The table below the chart gives the same per species for the whole date range: the mean, the standard deviation and the 95% confidence interval, with the number of sites above it. Here every site with at least one trap night counts. With one site there is nothing to measure a spread with, so those cells stay empty.
+
+To compare before and after, such as a control operation, set the date range to one period, note or download the table, then set it to the other. Download CSV on each card saves the rows it shows, in your [rate unit](./trap-nights.md#rates), with the filters written in.
+
+The average of the site rates is not the same number as the single rate on the dashboard when your sites ran for different lengths of time. On the dashboard every trap night weighs the same. Here every site does.
 
 ## Activity overlap
 

@@ -27,7 +27,6 @@ from app.api.schemas.statistics import (
     DashboardSummary,
     Demographics,
     DetectionCategories,
-    DetectionTrendPoint,
     HourlyCount,
     LabelProgressRow,
     ObservationRateMapFeature,
@@ -1086,39 +1085,8 @@ def get_activity_overlap(
 # ---------------------------------------------------------------------------
 
 
-def get_detection_trend(
-    db: Session,
-    project_id: str,
-    label_taxonomy_ids: list[str] | None = None,
-    site_ids: list[str] | None = None,
-    date_from: str | None = None,
-    date_to: str | None = None,
-) -> list[DetectionTrendPoint]:
-    """Daily observation counts for the trend chart.
-
-    Scoped like every dashboard card (`_scoped_observations_query`).
-    """
-    date_expr = func.strftime("%Y-%m-%d", Event.event_start_local)
-
-    query = (
-        _scoped_observations_query(
-            [
-                date_expr.label("date"),
-                func.sum(EventObservation.effective_count).label("count"),
-            ],
-            project_id, label_taxonomy_ids, site_ids, date_from, date_to,
-        )
-        # Date-less events (NULL bounds) have no date; exclude them.
-        .where(Event.event_start_local.isnot(None))
-        .group_by(date_expr)
-        .order_by(date_expr.asc())
-    )
-
-    rows = db.execute(query).all()
-    return [
-        DetectionTrendPoint(date=row.date, count=row.count)
-        for row in rows
-    ]
+# The observation trend lives in crud/rate_trend.py, the one place that
+# cuts time into periods.
 
 
 # ---------------------------------------------------------------------------

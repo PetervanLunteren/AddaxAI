@@ -3,8 +3,10 @@
 from datetime import date, datetime, timedelta
 
 from app.api.crud.trap_nights import (
+    compute_intervals_for_deployments,
     compute_trap_nights_for_deployment,
     compute_trap_nights_for_deployments,
+    nights_per_day,
 )
 from tests.conftest import (
     make_deployment,
@@ -466,3 +468,69 @@ def test_paired_cameras_give_one_interval(db):
         (date(2024, 1, 1), date(2024, 1, 10)),
         (date(2024, 1, 1), date(2024, 1, 10)),
     ]
+
+
+# ---------------------------------------------------------------------------
+# Effort per day
+# ---------------------------------------------------------------------------
+
+
+def test_nights_per_day_spreads_one_session_over_its_days():
+    nights = nights_per_day([(date(2024, 1, 30), date(2024, 2, 2))])
+
+    assert dict(nights) == {
+        date(2024, 1, 30): 1,
+        date(2024, 1, 31): 1,
+        date(2024, 2, 1): 1,
+        date(2024, 2, 2): 1,
+    }
+
+
+def test_nights_per_day_stacks_parallel_cameras():
+    """Two cameras on one day are two trap nights on one active day."""
+    nights = nights_per_day(
+        [(date(2024, 1, 1), date(2024, 1, 3)), (date(2024, 1, 2), date(2024, 1, 4))]
+    )
+
+    assert [nights[date(2024, 1, d)] for d in (1, 2, 3, 4)] == [1, 2, 2, 1]
+
+
+def test_nights_per_day_adds_up_to_the_trap_nights(db):
+    """The trend charts' effort per period and every other rate's total
+    effort come from the same intervals, so they cannot disagree. Covers
+    a rollover, two parallel cameras, a paired pair and a clip window."""
+    p = make_project(db)
+    rollover = make_deployment(db, project_id=p.id, folder_path="/r")
+    for folder, first, last in (("100", 1, 15), ("101", 15, 31)):
+        for day in (first, last):
+            make_file(
+                db, deployment_id=rollover.id,
+                file_path=f"/r/DCIM/{folder}/{day}.jpg",
+                captured_at_local=_dt(2024, 1, day),
+            )
+    parallel = make_deployment(db, project_id=p.id, folder_path="/p")
+    paired = make_deployment(
+        db, project_id=p.id, folder_path="/q", paired_cameras=True
+    )
+    for dep, root in ((parallel, "/p"), (paired, "/q")):
+        for cam in ("cam_1", "cam_2"):
+            for day in (1, 10):
+                make_file(
+                    db, deployment_id=dep.id,
+                    file_path=f"{root}/{cam}/{day}.jpg",
+                    captured_at_local=_dt(2024, 3, day),
+                )
+    db.commit()
+    ids = [rollover.id, parallel.id, paired.id]
+
+    for clip in ({}, {"clip_start": date(2024, 1, 10), "clip_end": date(2024, 3, 5)}):
+        totals = compute_trap_nights_for_deployments(db, ids, **clip)
+        intervals = compute_intervals_for_deployments(db, ids, **clip)
+
+        for dep_id in ids:
+            assert sum(nights_per_day(intervals[dep_id]).values()) == totals[dep_id]
+
+    # Unclipped: one session of 31, two cameras of 10, one station of 10.
+    assert compute_trap_nights_for_deployments(db, ids) == {
+        rollover.id: 31, parallel.id: 20, paired.id: 10,
+    }

@@ -127,9 +127,66 @@ class ActivityPatternResponse(BaseModel):
     deployments_without_site: int = 0
 
 
+TrendGranularity = Literal["day", "week", "month"]
+
+
 class DetectionTrendPoint(BaseModel):
-    date: str
+    """One period of the Explore trend and the observations in it."""
+
+    period: str  # "2024-01-15", "2024-W03" or "2024-01"
+    start: date
+    end: date
     count: int
+
+
+class DetectionTrendResponse(BaseModel):
+    """`first_date` and `last_date` bound the periods: the date filter, or
+    else the first and last day with an observation. A span of years too
+    wide to chart (a corrupt capture year) comes back with those two
+    dates and no points."""
+
+    granularity: TrendGranularity
+    first_date: date | None
+    last_date: date | None
+    points: list[DetectionTrendPoint]
+
+
+class RateSummary(BaseModel):
+    """Mean of per-site rates with its spread, per 100 trap nights.
+
+    `n_sites` is how many sites went into it. `mean` is None without a
+    site, `sd` and the interval are None with fewer than two.
+    """
+
+    n_sites: int
+    mean: float | None
+    sd: float | None
+    ci_low: float | None
+    ci_high: float | None
+
+
+class TrendPeriod(RateSummary):
+    period: str  # "2024-W03" or "2024-01"
+    start: date
+    end: date
+
+
+class SpeciesRate(RateSummary):
+    label: str
+    label_taxonomy_id: str | None
+    common_name: str
+    scientific_name: str
+
+
+class RateTrendResponse(BaseModel):
+    """`first_date` and `last_date` are the first and last day a camera at
+    a site ran in scope, with the same wide-span rule as the trend."""
+
+    granularity: TrendGranularity
+    first_date: date | None
+    last_date: date | None
+    periods: list[TrendPeriod]
+    species: list[SpeciesRate]
 
 
 class DetectionCategories(BaseModel):

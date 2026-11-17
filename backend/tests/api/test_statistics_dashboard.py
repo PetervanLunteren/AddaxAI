@@ -10,6 +10,7 @@ tiles and the demographics card, and the random photos.
 import uuid
 from datetime import date, datetime
 
+from app.api.crud import rate_trend
 from app.api.crud import statistics as stats_crud
 from app.models.event_observation import EventObservation
 from app.models.label_taxonomy import LabelTaxonomy
@@ -89,11 +90,13 @@ def test_trend_respects_the_date_window(db):
     """The window used to be accepted and ignored."""
     project, *_ = _project(db)
 
-    points = stats_crud.get_detection_trend(
+    points = rate_trend.get_detection_trend(
         db, project.id, date_from="2024-08-01", date_to="2024-08-31"
-    )
+    ).points
 
-    assert [(p.date, p.count) for p in points] == [("2024-08-20", 4)]
+    # The window bounds the periods; nothing was seen until the 20th.
+    assert (points[0].period, points[-1].period) == ("2024-08-01", "2024-08-31")
+    assert [(p.period, p.count) for p in points if p.count] == [("2024-08-20", 4)]
 
 
 def test_activity_respects_the_date_window(db):
@@ -109,7 +112,7 @@ def test_activity_respects_the_date_window(db):
 def test_nothing_picked_means_every_label(db):
     project, *_ = _project(db)
 
-    points = stats_crud.get_detection_trend(db, project.id)
+    points = rate_trend.get_detection_trend(db, project.id).points
     activity = stats_crud.get_activity_pattern(db, project.id)
 
     assert sum(p.count for p in points) == 6
@@ -134,14 +137,14 @@ def test_a_picked_person_is_counted(db):
 def test_trend_and_activity_narrow_to_the_taxon(db):
     project, _, _, leopard, _, _ = _project(db)
 
-    points = stats_crud.get_detection_trend(
+    points = rate_trend.get_detection_trend(
         db, project.id, label_taxonomy_ids=[leopard.id]
-    )
+    ).points
     activity = stats_crud.get_activity_pattern(
         db, project.id, label_taxonomy_ids=[leopard.id]
     )
 
-    assert [(p.date, p.count) for p in points] == [("2024-06-10", 2)]
+    assert [(p.period, p.count) for p in points if p.count] == [("2024-06-10", 2)]
     assert activity.total_observations == 2
 
 

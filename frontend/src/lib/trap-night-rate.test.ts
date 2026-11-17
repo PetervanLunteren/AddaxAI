@@ -132,3 +132,4 @@ describe("rate units", () => {
     expect(getRateUnit()).toBe("hundred");
   });
 });
+

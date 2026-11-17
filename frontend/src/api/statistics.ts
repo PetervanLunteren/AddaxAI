@@ -115,9 +115,60 @@ export interface ActivityPatternResponse {
   deployments_without_site: number;
 }
 
+export type TrendGranularity = "day" | "week" | "month";
+
+/** One period of the Explore trend and the observations in it. */
 export interface DetectionTrendPoint {
-  date: string;
+  /** "2024-01-15", "2024-W03" or "2024-01". */
+  period: string;
+  start: string;
+  end: string;
   count: number;
+}
+
+/**
+ * `first_date` and `last_date` bound the periods: the date filter, or else
+ * the first and last day with an observation. A span of years too wide to
+ * chart comes back with those two dates and no points (lib/date-span.ts).
+ */
+export interface DetectionTrendResponse {
+  granularity: TrendGranularity;
+  first_date: string | null;
+  last_date: string | null;
+  points: DetectionTrendPoint[];
+}
+
+/**
+ * Mean of per-site rates with its spread, per 100 trap nights. `mean` is
+ * null without a site; `sd` and the interval are null with fewer than two.
+ */
+export interface RateSummary {
+  n_sites: number;
+  mean: number | null;
+  sd: number | null;
+  ci_low: number | null;
+  ci_high: number | null;
+}
+
+export interface TrendPeriod extends RateSummary {
+  period: string;
+  start: string;
+  end: string;
+}
+
+export interface SpeciesRate extends RateSummary {
+  label: string;
+  label_taxonomy_id: string | null;
+  common_name: string;
+  scientific_name: string;
+}
+
+export interface RateTrendResponse {
+  granularity: TrendGranularity;
+  first_date: string | null;
+  last_date: string | null;
+  periods: TrendPeriod[];
+  species: SpeciesRate[];
 }
 
 export interface DetectionCategories {
@@ -286,6 +337,16 @@ function scopeParams(projectId: string, scope?: DashboardScope): URLSearchParams
   return params;
 }
 
+function trendParams(
+  projectId: string,
+  scope: DashboardScope,
+  granularity?: TrendGranularity,
+): URLSearchParams {
+  const params = scopeParams(projectId, scope);
+  if (granularity) params.set("granularity", granularity);
+  return params;
+}
+
 // --- API client ---
 
 export const statisticsApi = {
@@ -325,10 +386,25 @@ export const statisticsApi = {
       `/api/statistics/activity-pattern?${scopeParams(projectId, scope)}`,
     ),
 
-  /** Daily observations for the trend chart. */
-  getDetectionTrend: (projectId: string, scope: DashboardScope) =>
-    api.get<DetectionTrendPoint[]>(
-      `/api/statistics/detection-trend?${scopeParams(projectId, scope)}`,
+  /** Observations per period for the Explore trend. Without a
+   *  granularity the backend picks one from the span. */
+  getDetectionTrend: (
+    projectId: string,
+    scope: DashboardScope,
+    granularity?: TrendGranularity,
+  ) =>
+    api.get<DetectionTrendResponse>(
+      `/api/statistics/detection-trend?${trendParams(projectId, scope, granularity)}`,
+    ),
+
+  /** The Trend page: mean site rate per period and per species. */
+  getRateTrend: (
+    projectId: string,
+    scope: DashboardScope,
+    granularity?: Exclude<TrendGranularity, "day">,
+  ) =>
+    api.get<RateTrendResponse>(
+      `/api/statistics/rate-trend?${trendParams(projectId, scope, granularity)}`,
     ),
 
   /** Events, observations, trap nights and sites for the dashboard tiles. */

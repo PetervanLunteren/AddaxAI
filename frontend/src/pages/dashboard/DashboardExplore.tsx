@@ -21,7 +21,11 @@ import { ExploreFilterBar } from "../../components/dashboard/ExploreFilterBar";
 import { MiniMapCard } from "../../components/dashboard/MiniMapCard";
 import { StatTile } from "../../components/dashboard/StatTile";
 import { Callout } from "../../components/ui/callout";
-import { activityOverlapHref, insightsMapHref } from "../../lib/explore-filters";
+import {
+  activityOverlapHref,
+  insightsMapHref,
+  insightsTrendHref,
+} from "../../lib/explore-filters";
 import { NO_SITE_SENTINEL } from "../../lib/filter-url";
 import { formatRate, rateLabel, rateValue } from "../../lib/trap-night-rate";
 import { useExploreFilters } from "./useExploreFilters";
@@ -113,7 +117,7 @@ export default function DashboardExplore() {
             <DetectionTrendChart
               projectId={id}
               scope={scope}
-              trapNights={trapNights}
+              trendHref={insightsTrendHref(id, scope)}
             />
             <MiniMapCard
               projectId={id}
