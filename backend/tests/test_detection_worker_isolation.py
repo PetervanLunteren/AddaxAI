@@ -22,6 +22,7 @@ runs with no weights, no environments and no subprocesses.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -29,13 +30,14 @@ import pytest
 from app.core.job_cancellation import JobCancelledError
 from app.models import Deployment, DeploymentQueue
 from app.workers import detection_worker
-from app.workers.detection_worker import _process_batch_job
+from app.workers.detection_worker import DETECTION_KEPT, _process_batch_job
 from tests.conftest import make_job, make_project
 
 
 class _FakeManifest:
     env = "addaxai-base"
     full_image_cls = False
+    class_mapping = None
 
 
 class _FakeManifestManager:
@@ -192,6 +194,8 @@ async def test_one_failed_deployment_does_not_stop_the_others(db, tmp_path):
     failed = db.get(DeploymentQueue, entries[1].id)
     assert failed.error, "a failed entry with no error renders no log row"
     assert "Not a directory" in failed.error or "addaxai" in failed.error
+    # It died before detection, so there is nothing to continue from.
+    assert DETECTION_KEPT not in failed.error
 
     # A run where something landed is a completed run, which is what opens
     # the modal's summary block (it is gated on isComplete && !hasError).
@@ -253,6 +257,7 @@ async def test_a_folder_that_disappears_mid_run_says_so(
     assert str(folder) in failed.error
     assert "could not be reached" in failed.error
     assert "Errno" not in failed.error
+    assert failed.error.endswith(DETECTION_KEPT)
 
 
 async def test_a_failure_with_the_folder_still_there_keeps_the_raw_error(
@@ -266,6 +271,71 @@ async def test_a_failure_with_the_folder_still_there_keeps_the_raw_error(
     failed = db.get(DeploymentQueue, entries[0].id)
     assert "could not be reached" not in failed.error
     assert "Not a directory" in failed.error or "addaxai" in failed.error
+
+
+class _DetectorThatStops:
+    """MegaDetector dying mid-run, after ``saved`` images reached its checkpoint.
+
+    Writes the checkpoint the real script would have left (a dict with a
+    "checkpoint" list) to the path the worker hands it, then raises what
+    `detect_to_json` raises when the script exits non-zero.
+    """
+
+    saved = 0
+
+    def __init__(self, *a, **kw):
+        pass
+
+    def detect_to_json(self, *, checkpoint_path, **kw):
+        if self.saved:
+            entries = [{"file": f"IMG_{i}.jpg"} for i in range(self.saved)]
+            checkpoint_path.write_text(json.dumps({"checkpoint": entries}))
+        raise RuntimeError(
+            "MegaDetector execution failed: exited with code 1: "
+            "OSError: [Errno 22] Invalid argument"
+        )
+
+
+async def _run_until_detection_stops(db, tmp_path, monkeypatch, saved: int):
+    """One photo folder whose detection stops. Returns the stored error."""
+    from PIL import Image
+
+    detector = type("Detector", (_DetectorThatStops,), {"saved": saved})
+    monkeypatch.setattr(detection_worker, "MegaDetectorV1000", detector)
+    folder = _empty_folder(tmp_path, "photos")
+    Image.new("RGB", (8, 8)).save(folder / "IMG_0001.jpg")
+    project, job, entries = _seed(db, tmp_path, [folder])
+
+    await _process_batch_job(job.id, project.id, [e.id for e in entries], db)
+
+    failed = db.get(DeploymentQueue, entries[0].id)
+    assert failed.status == "failed"
+    return failed.error
+
+
+async def test_a_failure_after_a_checkpoint_says_the_work_is_kept(
+    db, tmp_path, monkeypatch
+):
+    """A run that dies with a checkpoint on disk says how to continue.
+
+    A 189k-image run died at 1h36 on a checkpoint write (2026-11-17). Its
+    checkpoint survived, but the entry showed only the raw error, so
+    nobody knew that adding the folder again would continue it.
+    """
+    error = await _run_until_detection_stops(db, tmp_path, monkeypatch, saved=1)
+
+    assert error.startswith("MegaDetector execution failed")
+    assert "Invalid argument. " + DETECTION_KEPT in error
+
+
+async def test_a_failure_before_any_checkpoint_promises_nothing(
+    db, tmp_path, monkeypatch
+):
+    """No checkpoint, no promise: the next run would start from zero."""
+    error = await _run_until_detection_stops(db, tmp_path, monkeypatch, saved=0)
+
+    assert "Invalid argument" in error
+    assert DETECTION_KEPT not in error
 
 
 async def test_failed_entry_leaves_no_placeholder_deployment(db, tmp_path):

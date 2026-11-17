@@ -46,7 +46,15 @@ from app.utils.windows_security import with_smart_app_control_hint
 logger = get_logger(__name__)
 
 
-def _failure_message(error: Exception, folder: Path | None) -> str:
+# True in both modes: a project continues when the folder is added again,
+# a folder run through Re-run analysis and Continue.
+DETECTION_KEPT = (
+    "Detection work that was already finished is kept: analyse this "
+    "folder again with the same detection settings to continue."
+)
+
+
+def _failure_message(error: Exception, folder: Path | None, detection_kept: bool) -> str:
     """The text a failed queue entry shows the user.
 
     A folder that can no longer be reached is the one failure whose cause
@@ -56,6 +64,11 @@ def _failure_message(error: Exception, folder: Path | None) -> str:
     subprocess's stack text. So we ask the folder, not the exception.
     Anything else is unexplained and keeps the raw error plus the Smart
     App Control hint.
+
+    ``detection_kept`` says a resumable checkpoint exists for this run's
+    settings. Without that sentence nobody learns that adding the folder
+    again continues the run (a 189k-image run lost at 1h36, 2026-11-17).
+    An unreachable folder cannot be asked, so that message keeps it as is.
     """
     if folder is not None:
         try:
@@ -66,10 +79,12 @@ def _failure_message(error: Exception, folder: Path | None) -> str:
             return (
                 f"The folder {folder} could not be reached any more during "
                 "the run. If it is on an external or network drive, check "
-                "the connection and try again. Detection work "
-                "that was already finished is kept."
+                f"the connection. {DETECTION_KEPT}"
             )
-    return with_smart_app_control_hint(str(error))
+    message = str(error)
+    if detection_kept:
+        message = f"{message.rstrip('. ')}. {DETECTION_KEPT}"
+    return with_smart_app_control_hint(message)
 
 
 def video_frame_failure_warnings(failures: list[dict]) -> list[dict]:
@@ -182,6 +197,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
             # Reset too: the failure handler asks this folder whether it
             # is still there, and must never ask the previous entry's.
             folder_path: Path | None = None
+            # Set once image detection knows its settings; the failure
+            # handler asks whether a checkpoint under them survived.
+            checkpoint_meta: ckpt.CheckpointMeta | None = None
             try:
                 # Get queue entry
                 entry = queue_crud.get_queue_entry(db, entry_id)
@@ -1271,11 +1289,21 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                             f"failure: {rb}"
                         )
                         db.rollback()
+                # The same check the next run makes before it continues,
+                # so the message never promises what the retry discards.
+                detection_kept = (
+                    checkpoint_meta is not None
+                    and folder_path is not None
+                    and ckpt.inspect(
+                        ckpt.artifacts_dir(folder_path, project_id), checkpoint_meta
+                    )
+                    is not None
+                )
                 queue_crud.update_queue_status(
                     db,
                     entry_id,
                     status="failed",
-                    error=_failure_message(e, folder_path),
+                    error=_failure_message(e, folder_path, detection_kept),
                 )
 
         # How the run ended is read back off the queue rows themselves,
