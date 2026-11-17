@@ -97,6 +97,63 @@ def test_iter_wanted_frames_stops_early_when_last_wanted_reached(tiny_video):
     assert [fn for fn, _ in yielded] == [2]
 
 
+def test_iter_wanted_frames_survives_two_head_frames_in_another_pixel_format(tmp_path):
+    """Trail-camera MJPEG AVIs write their first one or two frames as
+    4:2:2 and the rest as 4:2:0. OpenCV never rebuilds its conversion for
+    a new pixel format, so converting a head frame and a later frame on
+    one capture garbles the later ones (macOS) or kills the process
+    (Windows, Linux). Reading only frame 0 apart was not enough for a
+    camera with two such frames: wanting frame 1 garbled the rest. Every
+    yielded frame must be the frame a plain ffmpeg decode gives."""
+    import shutil
+    import subprocess
+
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        pytest.skip("ffmpeg not on PATH")
+    # Raw MJPEG is a run of whole JPEGs, so two streams joined end to end
+    # are one valid stream: frames 0-1 as 4:2:2, frames 2-11 as 4:2:0.
+    source = "testsrc=size=320x240:rate=10:duration=1.2"
+    joined = b""
+    for pick, pix_fmt in (("lt(n\\,2)", "yuvj422p"), ("gte(n\\,2)", "yuvj420p")):
+        joined += subprocess.run(
+            [
+                ffmpeg, "-v", "error", "-f", "lavfi", "-i", source,
+                "-vf", f"select={pick}", "-pix_fmt", pix_fmt, "-q:v", "2", "-f", "mjpeg", "-",
+            ],
+            capture_output=True,
+            check=True,
+        ).stdout
+    (tmp_path / "mixed.mjpeg").write_bytes(joined)
+    video = tmp_path / "mixed.avi"
+    subprocess.run(
+        [
+            ffmpeg, "-v", "error", "-r", "10", "-f", "mjpeg",
+            "-i", str(tmp_path / "mixed.mjpeg"), "-c", "copy", str(video),
+        ],
+        check=True,
+    )
+    raw = subprocess.run(
+        [ffmpeg, "-v", "error", "-i", str(video), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+        capture_output=True,
+        check=True,
+    ).stdout
+    expected = np.frombuffer(raw, np.uint8).reshape(-1, 240, 320, 3).astype(int)
+    assert len(expected) == 12
+
+    cap = open_video(video)
+    assert cap is not None
+    try:
+        yielded = list(iter_wanted_frames(cap, {0, 1, 2, 5, 11}, video))
+    finally:
+        cap.release()
+
+    assert [fn for fn, _ in yielded] == [0, 1, 2, 5, 11]
+    for fn, image in yielded:
+        error = float(np.abs(np.asarray(image).astype(int) - expected[fn]).mean())
+        assert error < 3, (fn, error)
+
+
 def test_sample_indices_returns_evenly_spaced_indices():
     assert sample_indices(total=10, count=3) == [0, 3, 6]
     assert sample_indices(total=2, count=3) == [0, 1]

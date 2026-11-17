@@ -160,15 +160,27 @@ def read_frame_by_seek(
     return Image.fromarray(cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB))
 
 
-def _read_frame_zero(video_path: Path | str) -> Image.Image | None:
+# How many frames at the start of a clip may be in another pixel format
+# than the rest. Bushnell AVIs have one such frame, a tester's trail
+# camera (2026-11) two; no camera seen so far has more. Each of them is
+# read on a capture of its own, see `iter_wanted_frames`.
+ODD_FORMAT_HEAD_FRAMES = 2
+
+
+def _read_head_frame(video_path: Path | str, frame_number: int) -> Image.Image | None:
     """
-    Read frame 0 on a capture of its own. See `iter_wanted_frames` for
-    why frame 0 must never share a conversion context with later frames.
+    Read one of the first frames on a capture of its own. See
+    `iter_wanted_frames` for why such a frame must never share a
+    conversion context with later frames. The frames before it are only
+    `grab()`ed, so this capture converts exactly one frame.
     """
     cap = open_video(video_path)
     if cap is None:
         return None
     try:
+        for _ in range(frame_number):
+            if not cap.grab():
+                return None
         success, image_bgr = cap.read()
         if not success or image_bgr is None:
             return None
@@ -189,18 +201,20 @@ def iter_wanted_frames(
     Empty `wanted` yields nothing without touching the capture.
 
     `video_path` must name the same file `cap` was opened on. It exists
-    because frame 0 is read on a capture of its own, never on the shared
-    walk capture. Some cameras (Bushnell MJPEG AVIs) encode frame 0 in a
-    different pixel format (yuvj422p) than every frame after it
-    (yuvj420p), and OpenCV's FFmpeg wrapper rebuilds its colour
-    conversion context only when the frame *dimensions* change
-    (cap_ffmpeg_impl.hpp), never on a pixel format change. Converting
-    frame 0 and a later frame on one capture therefore reads the later
-    frame with the wrong plane layout: silently corrupted frames on
-    macOS, an access-violation process death on Windows and Linux. A
-    capture that converts only frame 0, or only frames >= 1, never mixes
-    formats. On the shared capture frame 0 is only `grab()`ed, which
-    demuxes and decodes but never converts, so it is safe.
+    because the first `ODD_FORMAT_HEAD_FRAMES` frames are each read on a
+    capture of their own, never on the shared walk capture. Some cameras
+    (MJPEG AVIs from Bushnell and other trail cameras) encode the first
+    one or two frames in a different pixel format (yuvj422p) than every
+    frame after them (yuvj420p), and OpenCV's FFmpeg wrapper rebuilds
+    its colour conversion context only when the frame *dimensions*
+    change (cap_ffmpeg_impl.hpp), never on a pixel format change.
+    Converting a head frame and a later frame on one capture therefore
+    reads the later frame with the wrong plane layout: silently
+    corrupted frames on macOS, an access-violation process death on
+    Windows and Linux. A capture that converts one head frame, or only
+    frames after the head, never mixes formats. On the shared capture
+    the head frames are only `grab()`ed, which demuxes and decodes but
+    never converts, so it is safe.
 
     Frames we are skipping past are `grab()`ed rather than `read()`, which
     decodes them (unavoidable, an inter-frame codec needs them to build
@@ -216,13 +230,18 @@ def iter_wanted_frames(
     if not wanted:
         return
 
-    if 0 in wanted and len(wanted) > 1:
-        first = _read_frame_zero(video_path)
-        if first is not None:
-            yield 0, first
-        else:
-            logger.warning(f"Could not read frame 0 of {video_path}")
-        wanted = wanted - {0}
+    # A single wanted frame converts once whichever capture reads it.
+    if len(wanted) > 1:
+        head = sorted(n for n in wanted if n < ODD_FORMAT_HEAD_FRAMES)
+        for frame_number in head:
+            image = _read_head_frame(video_path, frame_number)
+            if image is not None:
+                yield frame_number, image
+            else:
+                logger.warning(f"Could not read frame {frame_number} of {video_path}")
+        wanted = wanted - set(head)
+        if not wanted:
+            return
 
     last_wanted = max(wanted)
     frame_number = 0
