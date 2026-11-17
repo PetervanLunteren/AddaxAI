@@ -33,7 +33,11 @@ import {
   LabelSelectionField,
   useLabelSelectionCaption,
 } from "../taxonomy/LabelSelectionField";
-import { clearSpeciesSelection, toApiCountryCode } from "../../lib/speciesSelection";
+import {
+  clearSpeciesSelection,
+  taxaMappingField,
+  toApiCountryCode,
+} from "../../lib/speciesSelection";
 import { FieldHeader } from "../ui/field-header";
 import { SETTING_CAPTIONS } from "../../lib/settingCaptions";
 import {
@@ -58,6 +62,7 @@ const duplicateSchema = z.object({
   description: z.string().max(500, "Description too long").optional(),
   classification_model_id: z.string().nullable().optional(),
   excluded_classes: z.array(z.string()),
+  taxa_mapping: taxaMappingField,
   country_code: z.string().optional().nullable(),
   state_code: z.string().optional().nullable(),
 });
@@ -114,6 +119,7 @@ export function DuplicateProjectDialog({
       description: "",
       classification_model_id: null,
       excluded_classes: [],
+      taxa_mapping: null,
       country_code: null,
       state_code: null,
     },
@@ -129,6 +135,7 @@ export function DuplicateProjectDialog({
       description: "",
       classification_model_id: source.classification_model_id ?? null,
       excluded_classes: source.excluded_classes ?? [],
+      taxa_mapping: source.taxa_mapping ?? null,
       country_code: source.country_code ?? null,
       state_code: source.state_code ?? null,
     });
@@ -184,6 +191,7 @@ export function DuplicateProjectDialog({
           ? data.classification_model_id
           : null,
         excluded_classes: data.excluded_classes,
+        taxa_mapping: hasClassifier ? (data.taxa_mapping ?? null) : null,
         // ALL is a form-only sentinel; the API knows ISO codes or null.
         country_code: toApiCountryCode(data.country_code),
         state_code: data.state_code ?? null,
@@ -336,6 +344,10 @@ export function DuplicateProjectDialog({
                     form.setValue("country_code", c, { shouldDirty: true });
                     form.setValue("state_code", s, { shouldDirty: true });
                   }}
+                  taxaMapping={form.watch("taxa_mapping")}
+                  onTaxaMappingChange={(m) =>
+                    form.setValue("taxa_mapping", m, { shouldDirty: true })
+                  }
                 />
               </FormItem>
             )}

@@ -14,6 +14,7 @@ import type {
   ModelInfo,
   ModelPrepareResponse,
   ModelStatusResponse,
+  TaxaMapping,
   TaxonomyResponse,
 } from "./types";
 
@@ -86,4 +87,15 @@ export const modelsApi = {
     const query = params.toString();
     return api.get<GeofenceResponse>(`/api/ml/models/${modelId}/geofence${query ? `?${query}` : ""}`);
   },
+
+  /**
+   * Read a custom SpeciesNet taxa list (.csv) for this model. Rejects with
+   * an ApiError whose detail carries `problems` (every bad row) when the
+   * file cannot be used.
+   */
+  readTaxaList: (modelId: string, fileName: string, text: string) =>
+    api.post<TaxaMapping>(`/api/ml/models/${modelId}/taxa-list`, {
+      file_name: fileName,
+      text,
+    }),
 };

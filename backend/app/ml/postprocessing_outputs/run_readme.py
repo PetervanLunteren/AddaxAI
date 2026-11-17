@@ -344,6 +344,16 @@ def _build_readme_text(
     lines.append(_kv("Country (geofence)", project.country_code or "(none)"))
     lines.append(_kv("State (geofence)", project.state_code or "(none)"))
     lines.append(_kv("Species (geofence)", geofence_summary))
+    if project.taxa_mapping:
+        from app.ml.taxa_mapping import mapped_labels
+
+        lines.append(
+            _kv(
+                "Taxa list",
+                f"{project.taxa_mapping['file_name']} "
+                f"({len(mapped_labels(project.taxa_mapping['rows']))} labels)",
+            )
+        )
 
     lines.append(_section("Classification & smoothing"))
     lines.append(

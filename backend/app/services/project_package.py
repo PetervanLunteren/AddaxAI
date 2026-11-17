@@ -778,7 +778,8 @@ def import_package(
                 )
             )
 
-            # Labels: same id, else same model and name (MIN(id) in case
+            # Labels: same id, else same model, scope and name (a taxa
+            # list's row is not the model's row; MIN(id) in case
             # a machine holds duplicates; SQLite's UNIQUE ignores the NULL
             # project_id), else created with the package's id.
             raw.execute("CREATE TEMP TABLE tax_map (old_id TEXT PRIMARY KEY, new_id TEXT NOT NULL)")
@@ -788,10 +789,12 @@ def import_package(
                 "  (SELECT l.id FROM main.label_taxonomy l WHERE l.id = p.id),"
                 "  (SELECT MIN(l.id) FROM main.label_taxonomy l "
                 "   WHERE l.classification_model_id = p.classification_model_id "
+                "   AND l.project_id IS p.project_id "
                 "   AND lower(l.name) = lower(p.name))"
                 ") FROM pkg.label_taxonomy p "
                 "WHERE EXISTS (SELECT 1 FROM main.label_taxonomy l WHERE l.id = p.id "
                 "  OR (l.classification_model_id = p.classification_model_id "
+                "      AND l.project_id IS p.project_id "
                 "      AND lower(l.name) = lower(p.name)))"
             )
             raw.execute(

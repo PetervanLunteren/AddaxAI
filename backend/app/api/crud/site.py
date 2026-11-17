@@ -320,7 +320,7 @@ def get_site_info(db: Session, site_id: str):
             .select_from(EventObservation)
             .join(Event, Event.id == EventObservation.event_id)
             .outerjoin(
-                LabelTaxonomy, LabelTaxonomy.name == EventObservation.label
+                LabelTaxonomy, LabelTaxonomy.id == EventObservation.label_taxonomy_id
             )
             .where(Event.deployment_id.in_(deployment_ids))
             .where(is_wildlife_category(EventObservation.category))

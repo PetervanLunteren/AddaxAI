@@ -29,7 +29,15 @@ That 65% is fixed. It is the same for every model and every project, and you can
 
 It is a trade-off: a broader label tells you less, but it is more likely to be right. You can still relabel it to a species yourself if you can tell them apart. Rollup is on by default and you can turn it off in the project settings. See [species names](./species-names.md).
 
-## 4. Labels are smoothed
+## 4. Your own taxa list (SpeciesNet only)
+
+Instead of a country, you can give SpeciesNet a taxa list: a .csv that maps SpeciesNet's taxa to the labels you use. Pick "Custom taxa list (.csv)" in the country dropdown. It is the file MegaDetector's `restrict_to_taxa_list` reads, and AddaxAI runs it the same way. The file needs two columns: `input_latin`, a SpeciesNet taxon (`aepyceros`, `accipitridae`), and `user_taxon_name`, the label you want for it ("impala", "bird of prey"). Several rows can share a label. Other columns are ignored.
+
+Each prediction walks up the tree from the species until it reaches a taxon in your list, and gets that row's label. So with `aepyceros` mapped to "impala", every impala prediction reads "impala", and with `accipitridae` and `strigiformes` both mapped to "bird of prey", hawks, eagles and owls all read "bird of prey". A prediction can also stop at a group above your taxa: with only birds of prey in the list, a stork reads "bird". A prediction with nothing from your list above it reads "animal". People are never changed.
+
+A file loads completely or not at all: if a row names a taxon SpeciesNet does not know, or lists one twice, you get the list of bad rows and nothing changes. The list replaces the country and your species selection, so there is no "Edit species" with a list loaded. In the label filter and the exports, a label gets the lowest taxon its rows share: "impala" on the genus is a genus, "bird of prey" is the class Aves.
+
+## 5. Labels are smoothed
 
 It runs twice: first within a single photo, across the boxes in it, then across all the files in an event. Inside one event the same animal usually triggers many photos. If the model labels 11 of them deer and 1 of them elk, smoothing treats the odd one out as a mistake and makes all 12 deer.
 
@@ -41,6 +49,6 @@ Two things follow from the steps above. Your own corrections are never touched, 
 
 ## Changing it
 
-Steps 3 and 4 are project settings. You can turn rollup off, and you can make smoothing milder or stronger or turn it off. Steps 1 and 2 always run.
+Steps 3 to 5 are project settings. You can turn rollup off, load or remove a taxa list, and make smoothing milder or stronger or turn it off. Steps 1 and 2 always run.
 
 Rollup also decides what happens to species you left out of your selection. With rollup on, a photo the model reads as a species you excluded is moved up to the nearest group you did allow, with the model's full confidence. With rollup off, the excluded species are simply dropped and the next best species from your selection becomes the label, at the score the model gave it. If that score is below 1%, the animal stays unlabelled instead.

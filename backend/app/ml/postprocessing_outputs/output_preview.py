@@ -410,9 +410,12 @@ def _load_taxonomy_map(
     model_id = project.classification_model_id
     if not model_id:
         return {}
+    from app.ml.taxonomy_db import model_scope, project_row_last
+
+    # The project's own rows (a taxa list's labels) last, so they win.
     rows = db.execute(
-        select(LabelTaxonomy).where(
-            LabelTaxonomy.classification_model_id == model_id
-        )
+        select(LabelTaxonomy)
+        .where(model_scope(model_id, project.id))
+        .order_by(project_row_last())
     ).scalars().all()
     return {row.name: row for row in rows}

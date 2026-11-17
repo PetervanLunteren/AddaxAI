@@ -905,3 +905,38 @@ def get_model_geofence(
             status_code=500,
             detail=f"Failed to compute geofence: {str(e)}",
         ) from None
+
+
+class TaxaListUpload(BaseModel):
+    """A taxa list .csv as the user picked it."""
+
+    file_name: str
+    text: str
+
+
+@router.post("/models/{model_id}/taxa-list")
+def read_taxa_list(model_id: str, upload: TaxaListUpload) -> dict:
+    """
+    Read a custom SpeciesNet taxa list (.csv) for this model.
+
+    Returns the loaded list ({"file_name", "rows"}) for the form to save
+    with the project. 422 with every bad row when the file cannot be
+    used: it loads completely or not at all.
+    """
+    from app.ml.taxa_mapping import TaxaListError, parse_taxa_list, taxa_for_model
+
+    # A catalog id, never a path: the id is joined into the models folder.
+    manifest_mgr, _, _ = _get_managers()
+    try:
+        manifest_mgr.get_model(model_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from None
+
+    try:
+        rows = parse_taxa_list(upload.text, taxa_for_model(model_id))
+    except TaxaListError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"message": "This taxa list cannot be used", "problems": e.problems},
+        ) from None
+    return {"file_name": upload.file_name, "rows": rows}

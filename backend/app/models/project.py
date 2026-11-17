@@ -65,6 +65,11 @@ class Project(Base):
     excluded_classes: Mapped[list[str]] = mapped_column(
         JSON, nullable=False, default=list
     )
+    # A custom SpeciesNet taxa list, used instead of the country geofence:
+    # {"file_name": str, "rows": [{"input_latin", "user_taxon_name"}]}
+    # (app.ml.taxa_mapping). NULL = no list. Saving one clears
+    # country_code, state_code and excluded_classes.
+    taxa_mapping: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     # Geographic location for geofenced models
     country_code: Mapped[str | None] = mapped_column(

@@ -54,7 +54,11 @@ import {
   LabelSelectionField,
   useLabelSelectionCaption,
 } from "../taxonomy/LabelSelectionField";
-import { clearSpeciesSelection, toApiCountryCode } from "../../lib/speciesSelection";
+import {
+  clearSpeciesSelection,
+  taxaMappingField,
+  toApiCountryCode,
+} from "../../lib/speciesSelection";
 import { ModelSelect } from "../models/ModelSelect";
 import { ModelSelectItem } from "../models/ModelSelectItem";
 import { toApiModelId } from "@/lib/model-id";
@@ -82,6 +86,7 @@ const projectSchema = z.object({
   classification_model_id: z.string().nullable().optional(),
   embedding_model_id: z.string().nullable(),
   excluded_classes: z.array(z.string()),
+  taxa_mapping: taxaMappingField,
   country_code: z.string().optional().nullable(),
   state_code: z.string().optional().nullable(),
   counting_threshold: z.number().min(0).max(1),
@@ -155,6 +160,7 @@ export function CreateProjectDialog({
       classification_model_id: lastSelection?.classification_model_id ?? null,
       embedding_model_id: lastSelection?.embedding_model_id ?? "DINOV2-VITS14",
       excluded_classes: lastSelection?.excluded_classes ?? [],
+      taxa_mapping: null,
       country_code: lastSelection?.country_code ?? null,
       state_code: lastSelection?.state_code ?? null,
       counting_threshold: DEFAULT_COUNTING_THRESHOLD,
@@ -365,7 +371,7 @@ export function CreateProjectDialog({
     // country, or knowingly "All labels". Enforced here rather than in
     // the zod schema because the requirement depends on the selected
     // model's geofence, which lives in a query, not in the form data.
-    if (requiresCountryChoice && data.country_code == null) {
+    if (requiresCountryChoice && data.country_code == null && !data.taxa_mapping) {
       form.setError("country_code", {
         type: "required",
         message: "Choose a country, or pick All labels to run unfiltered.",
@@ -563,6 +569,11 @@ export function CreateProjectDialog({
                       form.clearErrors("country_code");
                       form.setValue("country_code", country, { shouldDirty: true });
                       form.setValue("state_code", state, { shouldDirty: true });
+                    }}
+                    taxaMapping={form.watch("taxa_mapping")}
+                    onTaxaMappingChange={(mapping) => {
+                      form.clearErrors("country_code");
+                      form.setValue("taxa_mapping", mapping, { shouldDirty: true });
                     }}
                     error={form.formState.errors.country_code?.message}
                   />

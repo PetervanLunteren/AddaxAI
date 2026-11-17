@@ -20,6 +20,7 @@ import { useQuery } from "@tanstack/react-query";
 import { modelsApi } from "../api/models";
 import { projectsApi } from "../api/projects";
 import { resolveSpeciesName } from "../lib/species-name-mode";
+import { mappedLabels } from "../lib/speciesSelection";
 
 export interface LabelOption {
   value: string;
@@ -133,6 +134,16 @@ export function useLabelOptions(
     staleTime: Infinity,
   });
 
+  // The project's taxa list, if any (same cache entry the callers read).
+  // With one, the species are the list's own labels, not the 2,500
+  // SpeciesNet classes the list maps onto them.
+  const { data: project } = useQuery({
+    queryKey: ["project", projectId],
+    queryFn: () => projectsApi.get(projectId),
+    enabled: !!projectId,
+  });
+  const taxaMapping = project?.taxa_mapping ?? null;
+
   const isLoading =
     (hasClassificationModel && taxonomyLoading) ||
     (!!projectId && customLoading);
@@ -145,8 +156,11 @@ export function useLabelOptions(
       taxonomyCaption: buildTaxonomyCaption(taxonomyMap?.[c]),
     }));
 
-    if (hasClassificationModel && taxonomy?.all_classes) {
-      for (const cls of taxonomy.all_classes) {
+    const speciesClasses = taxaMapping
+      ? mappedLabels(taxaMapping)
+      : taxonomy?.all_classes;
+    if (hasClassificationModel && speciesClasses) {
+      for (const cls of speciesClasses) {
         const entry = taxonomyMap?.[cls];
         result.push({
           value: cls,
@@ -192,7 +206,7 @@ export function useLabelOptions(
     }
 
     return result;
-  }, [hasClassificationModel, taxonomy, customLabels, taxonomyMap, categories]);
+  }, [hasClassificationModel, taxonomy, taxaMapping, customLabels, taxonomyMap, categories]);
 
   return { options, isLoading };
 }

@@ -21,6 +21,7 @@ export const REPROCESS_TRIGGER_FIELDS = [
   "taxonomic_rollup",
   "independence_interval",
   "excluded_classes",
+  "taxa_mapping",
 ] as const;
 
 /** True when any reprocess-triggering setting differs between two form
@@ -37,7 +38,10 @@ export function hasReprocessChanges(
     const b = after[key];
     if (Array.isArray(a) && Array.isArray(b)) {
       if (a.length !== b.length || a.some((v, i) => v !== b[i])) return true;
-    } else if (a !== b) {
+    } else if (a && b && typeof a === "object" && typeof b === "object") {
+      // A taxa list: a reloaded copy of the same file is no change.
+      if (JSON.stringify(a) !== JSON.stringify(b)) return true;
+    } else if ((a ?? null) !== (b ?? null)) {
       return true;
     }
   }

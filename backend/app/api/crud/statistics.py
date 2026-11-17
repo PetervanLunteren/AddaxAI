@@ -814,7 +814,7 @@ def _event_decimal_hours_for_species(
             ),
         )
         query = query.outerjoin(
-            LabelTaxonomy, LabelTaxonomy.name == EventObservation.label
+            LabelTaxonomy, LabelTaxonomy.id == EventObservation.label_taxonomy_id
         )
         query = query.where(display_label == species)
     else:
@@ -833,7 +833,7 @@ def _event_decimal_hours_for_species(
                 else_=literal(NO_TAXONOMY),
             )
             query = query.outerjoin(
-                LabelTaxonomy, LabelTaxonomy.name == EventObservation.label
+                LabelTaxonomy, LabelTaxonomy.id == EventObservation.label_taxonomy_id
             )
             query = query.where(label_expr == species)
         else:

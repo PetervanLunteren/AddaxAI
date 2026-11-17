@@ -29,6 +29,7 @@ from app.ml.taxonomic_rank import (
     TaxonomicRank,
     resolve_rank,
 )
+from app.ml.taxonomy_db import model_scope, project_row_last
 from app.models.deployment import Deployment
 from app.models.detection import Detection
 from app.models.file import File
@@ -91,11 +92,8 @@ def build_taxonomy_lookup(
 
     rows = (
         db.query(LabelTaxonomy)
-        .filter(LabelTaxonomy.classification_model_id == project.classification_model_id)
-        .filter(
-            (LabelTaxonomy.project_id == None)  # noqa: E711
-            | (LabelTaxonomy.project_id == project.id)
-        )
+        .filter(model_scope(project.classification_model_id, project.id))
+        .order_by(project_row_last())
         .all()
     )
     lookup: dict[str, LabelTaxonomy] = {}

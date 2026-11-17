@@ -25,6 +25,14 @@ export type ProjectMode = "folder_run" | "research";
  *  add files an earlier analysis skipped. */
 export type MediaFilter = "all" | "images" | "videos";
 
+/** A custom SpeciesNet taxa list (.csv), run instead of a country. Mirrors
+ *  the backend's TaxaMapping (api/schemas/project.py); the rows come back
+ *  from `modelsApi.readTaxaList` already checked and lowercased. */
+export interface TaxaMapping {
+  file_name: string;
+  rows: { input_latin: string; user_taxon_name: string }[];
+}
+
 export interface ProjectCreate {
   name: string;
   description?: string | null;
@@ -32,6 +40,7 @@ export interface ProjectCreate {
   classification_model_id: string | null;
   embedding_model_id: string | null;
   excluded_classes: string[];
+  taxa_mapping?: TaxaMapping | null;
   shortcut_labels: Record<string, { value: string; category: string; label: string | null }>;
   country_code?: string | null;
   state_code?: string | null;
@@ -64,6 +73,8 @@ export interface ProjectUpdate {
   classification_model_id?: string | null;
   embedding_model_id?: string | null;
   excluded_classes?: string[] | null;
+  /** null removes the list; left out keeps it. */
+  taxa_mapping?: TaxaMapping | null;
   shortcut_labels?: Record<string, { value: string; category: string; label: string | null }> | null;
   country_code?: string | null;
   state_code?: string | null;
@@ -97,6 +108,7 @@ export interface ProjectResponse {
   classification_model_id: string | null;
   embedding_model_id: string | null;
   excluded_classes: string[];
+  taxa_mapping: TaxaMapping | null;
   shortcut_labels: Record<string, { value: string; category: string; label: string | null }>;
   country_code: string | null;
   state_code: string | null;

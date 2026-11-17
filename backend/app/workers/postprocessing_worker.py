@@ -96,7 +96,11 @@ async def process_postprocessing_job(job_id: str) -> None:
         job_crud.update_job_status(db, job_id, "running")
         await ws_manager.send_progress(job_id, "Starting postprocessing...", 0.0)
 
-        smoothing_enabled = project.event_smoothing or project.taxonomic_rollup
+        smoothing_enabled = (
+            project.event_smoothing
+            or project.taxonomic_rollup
+            or bool(project.taxa_mapping)
+        )
 
         # Find all deployments with classifications
         deployments_with_cls = (

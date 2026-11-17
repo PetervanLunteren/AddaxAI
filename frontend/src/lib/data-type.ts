@@ -36,7 +36,7 @@ import type {
   UseFormSetValue,
 } from "react-hook-form";
 
-import type { ModelInfo } from "../api/types";
+import type { ModelInfo, TaxaMapping } from "../api/types";
 import { NO_MODEL_VALUE } from "./model-id";
 
 export type DataType = "camera_trap" | "underwater";
@@ -152,6 +152,7 @@ type DataTypeFields = {
   excluded_classes: string[];
   country_code?: string | null;
   state_code?: string | null;
+  taxa_mapping?: TaxaMapping | null;
 };
 
 /**
@@ -194,6 +195,7 @@ export function fitFormToDataType<T extends FieldValues>(
       set("excluded_classes", []);
       set("country_code", null);
       set("state_code", null);
+      set("taxa_mapping", null);
     }
   }
 }
