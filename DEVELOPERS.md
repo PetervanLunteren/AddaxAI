@@ -866,6 +866,12 @@ The flag is chosen on the queue entry (form checkbox or the `paired_cameras` CSV
 
 Not built, on purpose: per-camera statistics inside a paired deployment, and Camera Base's left/right flank tagging.
 
+## Rates are scaled in one place
+
+A rate is observations (or events) over trap nights, times a multiplier: the user's rate unit, 1, 7, 30 or 100 trap nights, picked under View → Rate unit. The backend and the exports always speak per 100 trap nights (`rate_per_100`, `observation_rate_per_100_trap_nights`, `detection_rate_per_100`) and never learn the unit. `frontend/src/lib/trap-night-rate.ts` is the only place that scales, rounds and names a rate: `rateValue` for a count and its effort, `rateFromPer100` / `describeRatePer100` for a backend rate, `formatRate` and `rateLabel` for the text. A component that writes its own `* 100` or "per 100 trap nights" is a bug.
+
+Each unit has its own number of decimals (4, 3, 3, 2), so a rare species does not show as 0 per trap night. Map colours are computed from `rate_per_100` against the p66 of the visible sites, so the unit cancels out and the colours never change with it. The unit is a device-global display preference like species names (localStorage, reload on change), not a project setting: it changes no result, and exports stay comparable whatever the reader picked.
+
 ## Species colours
 
 Every species-coloured surface (Labels grid chips and boxes, Counts chips, video overlays, the map popup, the annotated JPEG export) reads one map, assigned per project by `assign_label_colors` in `backend/app/api/crud/label_colors.py`. The rule:

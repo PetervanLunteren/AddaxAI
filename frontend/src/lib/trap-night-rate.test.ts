@@ -7,9 +7,18 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  describeRatePer100,
+  formatRate,
+  getRateUnit,
+  isRateUnit,
+  parseRateUnit,
+  rateFromPer100,
+  rateLabel,
+  rateValue,
   wildlifeAxisTitle,
   wildlifeBarValue,
   wildlifeTooltipLabel,
+  type RateUnit,
 } from "./trap-night-rate";
 
 describe("with trap nights", () => {
@@ -45,5 +54,81 @@ describe("without trap nights", () => {
     expect(wildlifeTooltipLabel("events", 45, 0)).toBe("45 events");
     expect(wildlifeAxisTitle("events", 0)).toBe("Independent events");
     expect(wildlifeAxisTitle("max_n", 0)).toBe("Observations");
+  });
+
+  it("does so in every rate unit", () => {
+    for (const unit of UNITS) {
+      expect(wildlifeBarValue(45, 0, unit)).toBe(45);
+      expect(wildlifeTooltipLabel("max_n", 1, 0, unit)).toBe("1 individual");
+      expect(wildlifeAxisTitle("events", 0, unit)).toBe("Independent events");
+    }
+  });
+});
+
+/*
+ * DOC New Zealand reports deer per week, others per day or per month.
+ * They are the same ratio with another multiplier, so the unit is a
+ * display choice and these pin that every unit scales and reads right.
+ */
+const UNITS: RateUnit[] = ["night", "week", "month", "hundred"];
+
+describe("rate units", () => {
+  it("scales one count and effort into each unit", () => {
+    expect(UNITS.map((u) => rateValue(14, 200, u))).toEqual([0.07, 0.49, 2.1, 7]);
+  });
+
+  it("scales a rate the backend already gave per 100 the same way", () => {
+    expect(UNITS.map((u) => rateFromPer100(7, u))).toEqual([0.07, 0.49, 2.1, 7]);
+  });
+
+  it("keeps a rare species above zero per trap night", () => {
+    expect(rateValue(1, 2500, "night")).toBe(0.0004);
+    expect(rateFromPer100(0.04, "night")).toBe(0.0004);
+  });
+
+  it("writes a rate without trailing zeros and with separators", () => {
+    expect(formatRate(7, "hundred")).toBe("7");
+    expect(formatRate(0.07, "night")).toBe("0.07");
+    expect(formatRate(0.0004, "night")).toBe("0.0004");
+    expect(formatRate(4500, "hundred")).toBe("4,500");
+    expect(formatRate(12.345678, "week")).toBe("12.346");
+  });
+
+  it("names each unit", () => {
+    expect(UNITS.map((u) => rateLabel(u))).toEqual([
+      "per trap night",
+      "per 7 trap nights",
+      "per 30 trap nights",
+      "per 100 trap nights",
+    ]);
+  });
+
+  it("writes a backend rate out with its unit", () => {
+    expect(describeRatePer100(7, "week")).toBe("0.49 per 7 trap nights");
+    expect(describeRatePer100(12.5, "hundred")).toBe("12.5 per 100 trap nights");
+    expect(describeRatePer100(0, "night")).toBe("0 per trap night");
+  });
+
+  it("carries the unit into the wildlife chart's axis and tooltip", () => {
+    expect(wildlifeBarValue(14, 200, "week")).toBe(0.49);
+    expect(wildlifeAxisTitle("max_n", 200, "week")).toBe(
+      "Observations per 7 trap nights",
+    );
+    expect(wildlifeTooltipLabel("events", 14, 200, "night")).toBe(
+      "0.07 per trap night (14 events over 200 trap nights)",
+    );
+  });
+
+  it("reads anything that is not a unit as per 100 trap nights", () => {
+    for (const stored of [null, undefined, "", "weekly", "100", 7]) {
+      expect(parseRateUnit(stored)).toBe("hundred");
+    }
+    expect(parseRateUnit("week")).toBe("week");
+    // A key every object has is not a unit.
+    expect(isRateUnit("toString")).toBe(false);
+  });
+
+  it("starts on per 100 trap nights when nothing is stored", () => {
+    expect(getRateUnit()).toBe("hundred");
   });
 });

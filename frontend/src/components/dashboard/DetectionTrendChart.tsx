@@ -30,6 +30,12 @@ import { WideSpanNotice } from "./WideSpanNotice";
 import { exceedsChartYears, yearSpan } from "../../lib/date-span";
 import { statisticsApi } from "../../api/statistics";
 import type { DetectionTrendPoint, DashboardScope } from "../../api/statistics";
+import {
+  formatRate,
+  rateLabel,
+  rateValue,
+  wildlifeAxisTitle,
+} from "../../lib/trap-night-rate";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler);
 
@@ -170,7 +176,7 @@ function trailingMovingAverage(
 interface DetectionTrendChartProps {
   projectId: string;
   scope: DashboardScope;
-  /** Trap nights in the same scope, so the line reads per 100 nights. */
+  /** Trap nights in the same scope, so the line reads as a rate. */
   trapNights?: number;
 }
 
@@ -184,7 +190,7 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
   const rangeStart = scope.dateFrom ?? null;
   const rangeEnd = scope.dateTo ?? null;
 
-  const norm = (n: number) => trapNights && trapNights > 0 ? +(n / trapNights * 100).toFixed(2) : n;
+  const norm = (n: number) => trapNights && trapNights > 0 ? rateValue(n, trapNights) : n;
 
   const { data: trendData, isLoading } = useQuery({
     queryKey: ["statistics", "detection-trend", projectId, scope],
@@ -309,7 +315,10 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
           label: (context) => {
             const y = context.parsed.y;
             if (y == null) return "";
-            return `${context.dataset.label}: ${y.toLocaleString()} per 100 trap nights`;
+            // Without effort the line is plain counts, not a rate.
+            return trapNights && trapNights > 0
+              ? `${context.dataset.label}: ${formatRate(y)} ${rateLabel()}`
+              : `${context.dataset.label}: ${y.toLocaleString()}`;
           },
         },
       },
@@ -325,7 +334,11 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
       },
       y: {
         beginAtZero: true,
-        title: { display: true, text: "Per 100 trap nights", color: colors.axis },
+        title: {
+          display: true,
+          text: wildlifeAxisTitle("max_n", trapNights ?? 0),
+          color: colors.axis,
+        },
         ticks: {
           callback: (value) => Number(value).toLocaleString(),
           color: colors.axis,
@@ -346,7 +359,7 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
             <p>
               Observations per bin (each event's confirmed count, or
               the AI's count where not yet confirmed), not
-              detections, per 100 trap nights, of the labels, sites
+              detections, as a rate against trap nights, of the labels, sites
               and dates chosen above. Bin by day, week, or month.
             </p>
           </>

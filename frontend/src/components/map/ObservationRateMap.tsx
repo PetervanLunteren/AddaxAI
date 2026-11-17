@@ -1,6 +1,8 @@
 /**
- * Observation rate map — shows sites colored by their
- * "observations per 100 trap nights" rate.
+ * Observation rate map: shows sites colored by their observation rate.
+ * Colours come from the backend's rate per 100 trap nights; they are
+ * normalised against the visible sites, so the rate unit cannot change
+ * them.
  *
  * A site can have multiple deployments over time. Each marker
  * aggregates across the site's deployments that pass the active

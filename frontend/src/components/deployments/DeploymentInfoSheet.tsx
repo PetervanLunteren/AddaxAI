@@ -17,6 +17,7 @@ import { deploymentsApi, type DeploymentInfo } from "../../api/deployments";
 import { formatCameraDateTime } from "../../lib/datetime";
 import { isElectron } from "../../lib/platform";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
+import { describeRatePer100 } from "../../lib/trap-night-rate";
 import { Button } from "../ui/button";
 import {
   IdWithCopy,
@@ -217,12 +218,12 @@ function InfoBody({ info }: { info: DeploymentInfo }) {
           value={info.observation_count.toLocaleString()}
         />
         <Row
-          label="Rate per 100 trap nights"
+          label="Rate"
           value={
             info.observation_rate_per_100_trap_nights === null ? (
               <NotSet />
             ) : (
-              info.observation_rate_per_100_trap_nights.toFixed(2)
+              describeRatePer100(info.observation_rate_per_100_trap_nights)
             )
           }
         />

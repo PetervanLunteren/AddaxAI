@@ -14,6 +14,7 @@ import { ExternalLink, Pencil, Trash2 } from "lucide-react";
 import { sitesApi, type SiteInfo } from "../../api/sites";
 import { formatCameraDateTime } from "../../lib/datetime";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
+import { describeRatePer100 } from "../../lib/trap-night-rate";
 import { Button } from "../ui/button";
 import {
   IdWithCopy,
@@ -224,12 +225,12 @@ function InfoBody({ info }: { info: SiteInfo }) {
           value={info.observation_count.toLocaleString()}
         />
         <Row
-          label="Rate per 100 trap nights"
+          label="Rate"
           value={
             info.observation_rate_per_100_trap_nights === null ? (
               <NotSet />
             ) : (
-              info.observation_rate_per_100_trap_nights.toFixed(2)
+              describeRatePer100(info.observation_rate_per_100_trap_nights)
             )
           }
         />

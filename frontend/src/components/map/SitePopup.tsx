@@ -10,6 +10,7 @@
 import type { ObservationRateMapFeature } from "../../api/statistics";
 import { formatCameraDate } from "../../lib/datetime";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
+import { describeRatePer100 } from "../../lib/trap-night-rate";
 import {
   getSpeciesColor,
   getContrastTextColor,
@@ -60,7 +61,7 @@ export function SitePopup({ feature }: SitePopupProps) {
         <div className="flex justify-between border-t pt-1 mt-1">
           <span className="text-muted-foreground">Rate</span>
           <span className="font-semibold">
-            {rate_per_100.toFixed(2)} / 100 trap nights
+            {describeRatePer100(rate_per_100)}
           </span>
         </div>
       </div>

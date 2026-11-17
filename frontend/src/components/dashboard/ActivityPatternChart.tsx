@@ -4,8 +4,8 @@
  * Pure SVG clock ported from AddaxAI-Connect: 24 radial bars around
  * a circle with hour 0 at the top, color-coded by time of day.
  * Hovering over any bar snaps to the nearest hour and shows the
- * count in the center. Counts are normalized to "per 100 trap
- * nights" when the parent supplies a trapNights prop. What it counts
+ * count in the center. Counts become a rate in the user's rate unit
+ * when the parent supplies a trapNights prop. What it counts
  * comes from the page as one `scope` (taxon, sites, dates).
  */
 
@@ -22,6 +22,7 @@ import {
   type DashboardScope,
 } from "../../api/statistics";
 import { overlapsSunBand } from "../../lib/sun-bands";
+import { RATE_UNITS, formatRate, getRateUnit, rateValue } from "../../lib/trap-night-rate";
 
 // Time-of-day color bands. Fed by project-specific sunrise/sunset
 // (astral, backend) so the dawn/day/dusk/night boundaries reflect
@@ -213,7 +214,7 @@ function ActivityClock({ hours, normalized, sunBands }: ActivityClockProps) {
             className="text-muted-foreground"
           >
             {normalized
-              ? `${hoveredEntry.count.toFixed(2)} / 100 nights`
+              ? `${formatRate(hoveredEntry.count)} ${RATE_UNITS[getRateUnit()].short}`
               : `${hoveredEntry.count} observation${hoveredEntry.count === 1 ? "" : "s"}`}
           </text>
         </g>
@@ -225,7 +226,7 @@ function ActivityClock({ hours, normalized, sunBands }: ActivityClockProps) {
 interface ActivityPatternChartProps {
   projectId: string;
   scope: DashboardScope;
-  /** Trap nights in the same scope, so bars read per 100 nights. */
+  /** Trap nights in the same scope, so bars read as a rate. */
   trapNights?: number;
   /** Activity overlap with the same sites and dates. */
   compareHref: string;
@@ -244,10 +245,10 @@ export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
 
   const normalized = !!trapNights && trapNights > 0;
   const norm = (n: number) =>
-    normalized ? +((n / (trapNights as number)) * 100).toFixed(2) : n;
+    normalized ? rateValue(n, trapNights as number) : n;
 
   // Build a full 24-hour array, filling missing hours with 0, applying
-  // the per-100-trap-nights normalization if requested.
+  // the rate if requested.
   const hours = useMemo(() => {
     const hourMap = new Map<number, number>();
     activityData?.hours.forEach((h) => hourMap.set(h.hour, h.count));

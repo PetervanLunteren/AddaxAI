@@ -5,6 +5,7 @@
  */
 
 import type { HexCell } from "../../lib/hex-grid";
+import { describeRatePer100 } from "../../lib/trap-night-rate";
 
 interface HexPopupProps {
   hexCell: HexCell;
@@ -45,7 +46,7 @@ export function HexPopup({ hexCell }: HexPopupProps) {
           <div className="flex justify-between">
             <span className="text-muted-foreground">Rate</span>
             <span className="font-medium">
-              {rate_per_100.toFixed(2)} / 100 trap nights
+              {describeRatePer100(rate_per_100)}
             </span>
           </div>
         </div>
@@ -82,7 +83,7 @@ export function HexPopup({ hexCell }: HexPopupProps) {
                 </div>
                 {!isZero && (
                   <div className="text-muted-foreground">
-                    Rate: {site.rate_per_100.toFixed(2)} / 100 trap nights
+                    Rate: {describeRatePer100(site.rate_per_100)}
                   </div>
                 )}
               </div>

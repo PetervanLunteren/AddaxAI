@@ -213,8 +213,8 @@ export function MapPage() {
           what={
             <>
               <p>
-                A marker per site, coloured by its observation rate per
-                100 trap nights. A site can have multiple deployments
+                A marker per site, coloured by its observation rate.
+                A site can have multiple deployments
                 over time; each marker aggregates across them. Three
                 layer modes: hexbins aggregate nearby sites onto a hex
                 grid, points show each site individually, and clusters
@@ -233,7 +233,8 @@ export function MapPage() {
           }
           how={
             <p>
-              rate = observations / trap_nights × 100, summed per site
+              rate = observations / trap_nights, shown in the unit
+              chosen under View &gt; Rate unit, summed per site
               across its deployments and restricted to the active date
               and label filters. Events respect the project's detection
               threshold with the verified override applied, so verified

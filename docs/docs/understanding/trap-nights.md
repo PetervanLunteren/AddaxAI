@@ -43,7 +43,7 @@ Because of this, the effort stays right even if you analyse a whole season of ca
 
 The one exception is a deployment with "Paired cameras" ticked: its subfolders are dependent cameras, so the effort runs from the first file of any camera to the last, once. See [paired cameras](./how-a-project-is-organised.mdx#paired-cameras).
 
-## Rates per 100 trap nights
+## Rates
 
 Most charts show a rate, not a raw count:
 
@@ -52,6 +52,8 @@ rate = observations / trap nights x 100
 ```
 
 This lets you compare a camera that was out for two weeks with one that was out for two months. A site with 40 observations over 20 trap nights (200 per 100 trap nights) is busier than a site with 60 observations over 60 trap nights (100 per 100 trap nights), even though the second has more observations.
+
+Rates start per 100 trap nights. Under View > Rate unit you can also show them per trap night, per week (7 trap nights) or per month (30 trap nights). The choice changes the display only. Exports always carry the rate per 100 trap nights.
 
 ## Where to check the number
 

@@ -208,6 +208,26 @@ import { Camera, Plus, Settings } from "lucide-react";
 <Camera className="h-6 w-6" />     // Medium icons (headers)
 ```
 
+## Where a control lives
+
+Two questions decide where a new setting goes. Does it change the
+results, or only how they are shown? And if it is display only, does it
+apply everywhere or on one page?
+
+| Place | What lives there | Stored in | Examples |
+|---|---|---|---|
+| Settings page | Belongs to one project and changes what the app computes or stores | Database, `Project` table | Models, species selection, thresholds, independence interval |
+| View menu | Display only, belongs to this device, applies to every project | localStorage | Species names, theme, rate unit |
+| On the page itself | Display only, for one page, remembered per device | localStorage, through `lib/local-settings.ts` | Map style, tile size, panel heights |
+
+A View menu preference follows `lib/species-name-mode.ts`: one module
+owns the stored value, and changing it reloads the page so every screen
+flips at once.
+
+Data type (camera trap or underwater) sits in the View menu although it
+is more than display. That is a deliberate exception, explained under
+"What a file is about" in `DEVELOPERS.md`.
+
 ## Component Patterns
 
 ### shadcn/ui Components

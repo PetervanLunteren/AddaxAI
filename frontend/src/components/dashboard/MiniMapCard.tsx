@@ -2,7 +2,7 @@
  * A small, still map of where the Explore selection was observed, ported
  * from AddaxAI Connect.
  *
- * Every site is a soft blob coloured by observations per 100 trap nights,
+ * Every site is a soft blob coloured by its observation rate,
  * from the same endpoint and colour scale as the Insights map, with the
  * same labels, sites and dates, so the two can never disagree. It is deliberately dead as an instrument: no zoom, no
  * pan, no popups. The whole card opens the full map with the same labels,
@@ -59,7 +59,7 @@ export function MiniMapCard({
     <Card className={cn("group relative flex flex-col", className)}>
       <DashboardCardHeader
         title="Where"
-        caption="Darker sites have more observations per 100 trap nights"
+        caption="Darker sites have a higher observation rate"
       />
       <CardContent className="flex flex-1 flex-col">
         {isLoading ? (

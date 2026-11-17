@@ -2,6 +2,8 @@
  * TypeScript declarations for Electron APIs exposed via preload script
  */
 
+import type { RateUnit } from "../lib/trap-night-rate";
+
 export interface ElectronAPI {
   /**
    * Host OS as reported by Node's `process.platform`. Synchronous —
@@ -87,6 +89,11 @@ export interface ElectronAPI {
    * correct checkmark. One-way, like the species-name mode above.
    */
   setDataTypeMenuMode: (dataType: "camera_trap" | "underwater") => void;
+  /**
+   * Report the stored rate unit so the View → Rate unit radio shows the
+   * correct checkmark. One-way, like the species-name mode above.
+   */
+  setRateUnitMenuMode?: (unit: RateUnit) => void;
   /**
    * Report whether first-run setup has finished so the setup-only menu
    * items (Home, backup/restore, backups folder, species names) are

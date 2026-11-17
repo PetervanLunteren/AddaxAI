@@ -3,7 +3,7 @@
  *
  * Uses a Leaflet Control (not a React component) so it participates
  * in Leaflet's control stack. The legend label mirrors the dashboard
- * metric: "Observations per 100 trap nights".
+ * metric: observations in the user's rate unit.
  */
 
 import { useEffect } from "react";
@@ -11,6 +11,10 @@ import L from "leaflet";
 import { useMap } from "react-leaflet";
 
 import type { RateScaleDomain } from "../../lib/heat-color-scale";
+import { formatRate, rateFromPer100, rateLabel } from "../../lib/trap-night-rate";
+
+/** A legend tick: the domain is per 100 trap nights, like the backend. */
+const tick = (ratePer100: number) => formatRate(rateFromPer100(ratePer100));
 
 interface MapLegendProps {
   domain: RateScaleDomain;
@@ -39,7 +43,7 @@ export function MapLegend({ domain }: MapLegendProps) {
 
       div.innerHTML = `
         <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px; line-height: 1.3;">
-          Observations per<br>100 trap nights
+          Observations<br>${rateLabel()}
         </div>
         <div style="display: flex; align-items: center;">
           <div style="
@@ -57,8 +61,8 @@ export function MapLegend({ domain }: MapLegendProps) {
             height: 150px;
             font-size: 11px;
           ">
-            <div>${Math.round(domain.max)}</div>
-            <div>${Math.round(middleValue)}</div>
+            <div>${tick(domain.max)}</div>
+            <div>${tick(middleValue)}</div>
             <div>0</div>
           </div>
         </div>

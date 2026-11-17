@@ -2,7 +2,7 @@
  * Survey effort at a glance: when the cameras were running, as a calendar
  * of weeks (columns) by years (rows), darker for more cameras.
  *
- * Every rate per 100 trap nights rests on this effort, and a gap in it is
+ * Every rate against trap nights rests on this effort, and a gap in it is
  * the first thing to see before reading any trend. The data is the
  * deployment timeline's own cameras-running series, fetched without the
  * per-site daily file counts it does not use (megabytes on a big
