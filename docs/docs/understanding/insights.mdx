@@ -29,7 +29,7 @@ The Overview's chart and random animal show wildlife only, which their titles sa
 
 ## Map
 
-Each camera site on a map, coloured by its observation rate (see [rates](./trap-nights.md#rates)). You can switch how the sites are drawn: one marker per site, nearby sites merged into a hex grid, or nearby sites grouped into clusters. Deployments with no site do not appear. Map style changes the background: Light, Satellite, or OpenStreetMap. Satellite is the useful one when you want to see the habitat around a camera, like where the forest gives way to open ground.
+Each camera site on a map, coloured by its observation rate (see [rates](./trap-nights.md#rates)). You can switch how the sites are drawn: one marker per site, nearby sites merged into a hex grid, or nearby sites grouped into clusters. Deployments with no site do not appear. Map style changes the background: Light, Satellite, or OpenStreetMap. Satellite is the useful one when you want to see the habitat around a camera, like where the forest gives way to open ground. The download icon saves one row per site with its trap nights, observations and rate as data (CSV), for every site in your filters, not only those in view.
 
 <AppShot name="mapSatellite" />
 
@@ -39,7 +39,7 @@ How the observation rate changes over time, and how sure you can be of it. Each 
 
 A site counts in a week or month when it was active on at least 80% of its days, so a camera that started or stopped partway does not distort that period. A period without such a site is a gap in the line. That includes a week or month your date range cuts short: a few days are too few to be a point. Deployments with no site are left out.
 
-Download CSV, at the top of this page and of Species rates, saves the rows the page shows, in your [rate unit](./trap-nights.md#rates), with the filters written in.
+The download icon at the top of the page saves the rows the page shows as data (CSV), in your [rate unit](./trap-nights.md#rates) and with the filters written in, or the chart as an image (PNG). Species rates has the same icon for its table.
 
 The average of the site rates is not the same number as the single rate on the dashboard when your sites ran for different lengths of time. On the dashboard every trap night weighs the same. Here every site does.
 
@@ -51,7 +51,7 @@ To compare before and after, such as a control operation, set the date range to 
 
 ## Activity overlap
 
-Compare the daily activity of one or two species. With two species selected, the chart also shows the overlap coefficient: 0 means the two are never active at the same hours, 1 means their patterns are identical. Each species is also labelled diurnal (day), nocturnal (night), crepuscular (dawn and dusk) or cathemeral (no clear preference, active day and night). In the demo, the opossum comes out nocturnal and the chipmunk diurnal.
+Compare the daily activity of one or two species. With two species selected, the chart also shows the overlap coefficient: 0 means the two are never active at the same hours, 1 means their patterns are identical. Each species is also labelled diurnal (day), nocturnal (night), crepuscular (dawn and dusk) or cathemeral (no clear preference, active day and night). In the demo, the opossum comes out nocturnal and the chipmunk diurnal. The download icon saves the chart as an image (PNG). It offers no data file: the curves are smoothed estimates, and the event times behind them are on the Export page.
 
 You can read the day on two different clocks. Clock time is the plain 24 hour day. Sun time stretches each day so that sunrise and sunset line up across the whole survey. Use it when your data spans seasons or sites: 06:00 in December and 06:00 in June are not the same moment relative to dawn, and clock time would blur that difference away. It needs site coordinates to work out the sun.
 
@@ -65,7 +65,7 @@ One bar per deployment, showing when each camera was active and what it recorded
 
 ## Confusion matrix and class performance
 
-Where you have verified labels, these two views compare the AI's labels against your verified ones. The confusion matrix shows where the AI mixes up species. Class performance shows accuracy per species. Both only use detections you verified, so they stay empty until you have checked some labels.
+Where you have verified labels, these two views compare the AI's labels against your verified ones. The confusion matrix shows where the AI mixes up species. Class performance shows accuracy per species. Both only use detections you verified, so they stay empty until you have checked some labels. The download icon saves the counts behind the matrix as data (CSV), one row per pair of labels whatever the view shows, and the class performance table with its two averages.
 
 <AppShot name="confusionMatrix" />
 

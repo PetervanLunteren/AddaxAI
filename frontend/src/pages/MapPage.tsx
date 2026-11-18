@@ -17,7 +17,11 @@ import { useQuery } from "@tanstack/react-query";
 import { eventsApi } from "../api/events";
 import { sitesApi } from "../api/sites";
 import { speciesLabelMap } from "../lib/species-name-mode";
-import type { ObservationRateMapFilters } from "../api/statistics";
+import {
+  statisticsApi,
+  type ObservationRateMapFeature,
+  type ObservationRateMapFilters,
+} from "../api/statistics";
 import {
   MapFilterBar,
   type BaseLayer,
@@ -40,6 +44,9 @@ import {
   filtersToSearchParams,
   type FilterSchema,
 } from "../lib/filter-url";
+import { PageHeader } from "../components/layout/PageHeader";
+import { DATA_CSV, DownloadMenu } from "../components/plots/DownloadMenu";
+import { mapSitesCsv, rateCsvScope, saveCsv } from "../lib/insights-csv";
 
 const FILTER_SCHEMA: FilterSchema = {
   site_ids: "string[]",
@@ -116,7 +123,29 @@ export function MapPage() {
     [filters]
   );
 
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["observation-rate-map", projectId, apiFilters],
+    queryFn: () => statisticsApi.getObservationRateMap(projectId!, apiFilters),
+    enabled: !!projectId,
+  });
+
   const { data: noSite } = useNoSiteDeployments(projectId);
+
+  // Every site in the filters, not only those in view.
+  const saveSitesCsv = (features: ObservationRateMapFeature[]) => {
+    const scope = rateCsvScope({
+      dateFrom: filters.date_from,
+      dateTo: filters.date_to,
+      siteIds: filters.site_ids,
+      siteNames: buildSiteNameMap(sites),
+      labelIds: filters.labels,
+      labelNames: filterOptions ? speciesLabelMap(filterOptions) : {},
+    });
+    saveCsv("map-sites", mapSitesCsv(features, scope), {
+      from: scope.dateFrom,
+      to: scope.dateTo,
+    });
+  };
 
   const { data: sites } = useQuery({
     queryKey: ["sites", projectId],
@@ -169,19 +198,19 @@ export function MapPage() {
 
   return (
     <div className="min-h-screen">
-      {/* Header */}
-      <header className="border-b bg-card/80 backdrop-blur-sm">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Map</h1>
-              <p className="text-sm text-muted-foreground">
-                Compare observation rates across your sites
-              </p>
-            </div>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title="Map"
+        subtitle="Compare observation rates across your sites"
+        actions={
+          <DownloadMenu
+            items={
+              data?.features.length
+                ? [{ label: DATA_CSV, onSelect: () => saveSitesCsv(data.features) }]
+                : []
+            }
+          />
+        }
+      />
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
         <NoSiteBanner
@@ -202,8 +231,9 @@ export function MapPage() {
           onClearAll={clearAllDataFilters}
         />
         <ObservationRateMap
-          projectId={projectId}
-          filters={apiFilters}
+          data={data}
+          isLoading={isLoading}
+          error={error}
           viewMode={viewMode}
           baseLayer={baseLayer}
         />

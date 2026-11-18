@@ -9,12 +9,15 @@ import type { RateTrendResponse, TrendPeriod, TrendPeriodSize } from "../../api/
 import { exceedsChartYears, yearSpan } from "../../lib/date-span";
 import { formatRate, rateFromPer100, rateLabel } from "../../lib/trap-night-rate";
 import { WideSpanNotice } from "../dashboard/WideSpanNotice";
+import type { DrawnChartRef } from "../../lib/chart-image";
 import { TrendLineChart } from "./TrendLineChart";
 
 interface RateTrendChartProps {
   data: RateTrendResponse | undefined;
   isLoading: boolean;
   periodSize: TrendPeriodSize;
+  /** The Chart.js instance while a chart is drawn, for the PNG download. */
+  chartRef?: DrawnChartRef;
 }
 
 /** The backend's rates are per 100 trap nights; the chart is in the
@@ -41,7 +44,7 @@ function Message({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function RateTrendChart({ data, isLoading, periodSize }: RateTrendChartProps) {
+export function RateTrendChart({ data, isLoading, periodSize, chartRef }: RateTrendChartProps) {
   const periods = data?.periods ?? [];
   const span =
     data?.first_date && data.last_date
@@ -72,6 +75,7 @@ export function RateTrendChart({ data, isLoading, periodSize }: RateTrendChartPr
         </Message>
       ) : (
         <TrendLineChart
+          chartRef={chartRef}
           labels={periods.map((p) => p.period)}
           spans={periods}
           line={{ label: "Mean rate", values: periods.map((p) => scaled(p.mean)) }}

@@ -19,7 +19,8 @@ import { PlotExplainer } from "../components/plots/PlotExplainer";
 import { RatePageLayout } from "../components/plots/RatePageLayout";
 import { SpeciesRateTable } from "../components/plots/SpeciesRateTable";
 import { SOLLMANN_2013, SWEETAPPLE_HICKLING_2024 } from "../lib/rate-references";
-import { speciesRatesCsv } from "../lib/trend-csv";
+import { DATA_CSV } from "../components/plots/DownloadMenu";
+import { saveCsv, speciesRatesCsv } from "../lib/insights-csv";
 import { useExploreFilters } from "./dashboard/useExploreFilters";
 
 export function SpeciesRatesPage() {
@@ -41,13 +42,16 @@ export function SpeciesRatesPage() {
       subtitle="Observation rate per species, with its uncertainty"
       explore={explore}
       dates={data && { first: data.first_date, last: data.last_date }}
-      download={
+      downloads={
         data?.species.length
-          ? {
-              name: "species-rates",
-              csv: (fileScope) => speciesRatesCsv(data.species, fileScope),
-            }
-          : undefined
+          ? [
+              {
+                label: DATA_CSV,
+                save: (fileScope, dates) =>
+                  saveCsv("species-rates", speciesRatesCsv(data.species, fileScope), dates),
+              },
+            ]
+          : []
       }
       explainer={
         <PlotExplainer

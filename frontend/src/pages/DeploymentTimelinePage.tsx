@@ -36,6 +36,7 @@ import {
   filtersToSearchParams,
   type FilterSchema,
 } from "../lib/filter-url";
+import { PageHeader } from "../components/layout/PageHeader";
 
 const FILTER_SCHEMA: FilterSchema = {
   site_ids: "string[]",
@@ -220,18 +221,10 @@ export function DeploymentTimelinePage() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b bg-card/80 backdrop-blur-sm">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Deployment timeline</h1>
-              <p className="text-sm text-muted-foreground">
-                Survey effort over time, grouped by site
-              </p>
-            </div>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title="Deployment timeline"
+        subtitle="Survey effort over time, grouped by site"
+      />
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
         <NoSiteBanner
           projectId={projectId}

@@ -891,7 +891,7 @@ The rules, each pinned in `tests/api/test_statistics_trend.py`:
 
 **Two pages, two endpoints, one frame.** Trend (`GET /api/statistics/rate-trend`, `get_rate_trend`) answers "when", Species rates (`species-rates`, `get_species_rates`) answers "which species". They share the loader (`_load_scope`) and each computes only what it shows. Both pages are built on `components/plots/RatePageLayout.tsx`: the page header with its Download CSV button, the banners, the Explore tab's filter bar (`useExploreFilters`, `ExploreFilterBar`, so a link from Explore lands on the same selection), and "About this view". The chart and the table sit in plain boxes without a header of their own, like every Insights page's one chart or table; the page header says what it is. Trend's period size is a `FilterField` in the filter bar, like the Map's view mode. The chart is `components/plots/TrendLineChart.tsx`, shared with the Explore card. Effort per period comes from `nights_per_day` in `crud/trap_nights.py`, which sums to the trap nights every other rate uses.
 
-Download CSV writes what the page shows (`lib/trend-csv.ts`), in the user's rate unit, with `per_trap_nights` naming that unit and the filters repeated on every row. It is built in the frontend because only the frontend knows the unit. The Export page is not involved.
+Download CSV writes what the page shows (`lib/insights-csv.ts`, the rule is in `FRONTEND_CONVENTIONS.md`), in the user's rate unit, with `per_trap_nights` naming that unit and the filters repeated on every row. It is built in the frontend because only the frontend knows the unit. The Export page is not involved.
 
 ## Species colours
 

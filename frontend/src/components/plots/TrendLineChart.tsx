@@ -27,6 +27,7 @@ import {
 } from "chart.js";
 
 import { formatCameraDate } from "../../lib/datetime";
+import type { DrawnChartRef } from "../../lib/chart-image";
 import { useChartColors } from "../../lib/theme";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler);
@@ -64,6 +65,8 @@ interface TrendLineChartProps {
   yTitle: string;
   /** Tooltip text for a point; an array is one row per entry. */
   tooltip: (series: TrendSeries, index: number, value: number) => string | string[];
+  /** The drawn chart, for a page that saves it as an image. */
+  chartRef?: DrawnChartRef;
 }
 
 export function TrendLineChart({
@@ -74,6 +77,7 @@ export function TrendLineChart({
   band,
   yTitle,
   tooltip,
+  chartRef,
 }: TrendLineChartProps) {
   // One series at a time, so the color carries no information: always
   // teal ink from the theme (lighter in dark, where raw brand teal
@@ -210,5 +214,5 @@ export function TrendLineChart({
     },
   };
 
-  return <Line data={{ labels, datasets }} options={options} />;
+  return <Line ref={chartRef} data={{ labels, datasets }} options={options} />;
 }

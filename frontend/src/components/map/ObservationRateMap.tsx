@@ -9,11 +9,11 @@
  * filters. The three view modes (hexbins / points / clusters) and the
  * base layer are controlled via props so they can live in the
  * MapPage's filter bar alongside the data filters. All state lifted
- * to the parent: filters, view mode, base layer.
+ * to the parent: the data (the page fetches it, so its Download CSV
+ * saves the same sites), view mode, base layer.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import L, { latLngBounds } from "leaflet";
 import { Info } from "lucide-react";
 import { MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
@@ -21,10 +21,9 @@ import { MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import { OSM_LAYER } from "./basemap-styles";
 import { StreetBaseLayer } from "./StreetBaseLayer";
 
-import { statisticsApi } from "../../api/statistics";
 import type {
   ObservationRateMapFeature,
-  ObservationRateMapFilters,
+  ObservationRateMapResponse,
 } from "../../api/statistics";
 import { calculateRateDomain, getRateColor } from "../../lib/heat-color-scale";
 import { ClusterLayer } from "./ClusterLayer";
@@ -35,8 +34,9 @@ import { SiteMarker } from "./SiteMarker";
 import type { BaseLayer, ViewMode } from "./MapFilterBar";
 
 interface ObservationRateMapProps {
-  projectId: string;
-  filters: ObservationRateMapFilters;
+  data: ObservationRateMapResponse | undefined;
+  isLoading: boolean;
+  error: Error | null;
   viewMode: ViewMode;
   baseLayer: BaseLayer;
 }
@@ -110,8 +110,9 @@ function getRasterLayer(base: Exclude<BaseLayer, "positron">) {
 }
 
 export function ObservationRateMap({
-  projectId,
-  filters,
+  data,
+  isLoading,
+  error,
   viewMode,
   baseLayer,
 }: ObservationRateMapProps) {
@@ -123,12 +124,6 @@ export function ObservationRateMap({
     (bounds: L.LatLngBounds) => setMapBounds(bounds),
     []
   );
-
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["observation-rate-map", projectId, filters],
-    queryFn: () => statisticsApi.getObservationRateMap(projectId, filters),
-    enabled: !!projectId,
-  });
 
   const sites: ObservationRateMapFeature[] = data?.features ?? [];
 

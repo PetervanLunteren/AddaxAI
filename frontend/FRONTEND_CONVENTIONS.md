@@ -228,6 +228,41 @@ Data type (camera trap or underwater) sits in the View menu although it
 is more than display. That is a deliberate exception, explained under
 "What a file is about" in `DEVELOPERS.md`.
 
+## Downloads on Insights pages
+
+A download icon at the right of an Insights page's header saves what
+the view shows, so users can redraw or reuse it in their own tools. It
+always opens a small menu, also for one item: the same icon saves data
+on one page and a picture on another, and the menu says which.
+
+| Page | Data (CSV) | Image (PNG) |
+|---|---|---|
+| Trend | yes | yes |
+| Activity overlap | no | yes |
+| Map, Species rates, Confusion matrix, Class performance | yes | no |
+| Deployment timeline, Calibration | no icon | no icon |
+
+- **Where**: the page header's `actions`, through `PageHeader`
+  (`components/layout/PageHeader.tsx`), with `DownloadMenu`
+  (`components/plots/DownloadMenu.tsx`). An empty item list disables the
+  icon: nothing to save yet. New pages use `PageHeader` instead of
+  writing the header markup out.
+- **Data (CSV)**, where the view is a set of numbers: exactly those
+  numbers and the filters that produced them. One pure builder per view
+  in `lib/insights-csv.ts`: one row per thing on screen, in long format
+  rather than a grid, values as numbers (fractions, rates in the user's
+  unit), and the filters as columns on every row (`viewCsv`).
+- **Image (PNG)**, where the view is one Chart.js chart: the chart as on
+  screen, on the card colour (`saveChartPng`, `useDrawnChart` in
+  `lib/chart-image.ts`). Maps, SVG charts, tables and pages of several
+  small charts are left to a screenshot: exporting them is fragile or
+  of little use.
+- **File names**: `downloadFileName` builds every one, with the dates
+  when the view has them.
+- **Not**: raw data. That is the Export page. Activity overlap draws
+  smoothed curves, estimates from event times, so it offers the picture
+  and no data; Calibration is a threshold tool with a curve per label.
+
 ## Component Patterns
 
 ### shadcn/ui Components

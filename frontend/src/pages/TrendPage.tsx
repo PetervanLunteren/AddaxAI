@@ -28,7 +28,16 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { ROVERO_MARSHALL_2009, SWEETAPPLE_HICKLING_2024 } from "../lib/rate-references";
-import { trendPeriodsCsv } from "../lib/trend-csv";
+import { DATA_CSV, IMAGE_PNG } from "../components/plots/DownloadMenu";
+import { saveChartPng, useDrawnChart } from "../lib/chart-image";
+import {
+  downloadFileName,
+  saveCsv,
+  trendPeriodsCsv,
+  type FileDates,
+  type RateCsvScope,
+} from "../lib/insights-csv";
+import { useChartColors } from "../lib/theme";
 import { useExploreFilters } from "./dashboard/useExploreFilters";
 
 export function TrendPage() {
@@ -46,6 +55,10 @@ export function TrendPage() {
     queryFn: () => statisticsApi.getRateTrend(id, scope, picked),
     enabled: explore.ready && !explore.noSiteMatch,
   });
+  // The chart while one is drawn, so "Image (PNG)" is offered only then.
+  const [chart, chartRef] = useDrawnChart();
+  const chartColors = useChartColors();
+
   const periodSize: TrendPeriodSize =
     picked ?? (data?.granularity === "month" ? "month" : "week");
 
@@ -56,14 +69,31 @@ export function TrendPage() {
       subtitle="Observation rate over time, with its uncertainty"
       explore={explore}
       dates={data && { first: data.first_date, last: data.last_date }}
-      download={
-        data?.periods.length
-          ? {
-              name: `trend-${periodSize}`,
-              csv: (fileScope) => trendPeriodsCsv(data.periods, fileScope),
-            }
-          : undefined
-      }
+      downloads={[
+        ...(data?.periods.length
+          ? [
+              {
+                label: DATA_CSV,
+                save: (fileScope: RateCsvScope, dates: FileDates) =>
+                  saveCsv(`trend-${periodSize}`, trendPeriodsCsv(data.periods, fileScope), dates),
+              },
+            ]
+          : []),
+        // Only while a chart is drawn: not on the single-week or empty states.
+        ...(chart
+          ? [
+              {
+                label: IMAGE_PNG,
+                save: (_scope: RateCsvScope, dates: FileDates) =>
+                  saveChartPng(
+                    chart,
+                    chartColors.card,
+                    downloadFileName(`trend-${periodSize}`, "png", dates),
+                  ),
+              },
+            ]
+          : []),
+      ]}
       filterExtra={
         <FilterField label="Period">
           <Select value={periodSize} onValueChange={(v) => setPicked(v as TrendPeriodSize)}>
@@ -120,7 +150,12 @@ export function TrendPage() {
         />
       }
     >
-      <RateTrendChart data={data} isLoading={isLoading} periodSize={periodSize} />
+      <RateTrendChart
+        data={data}
+        isLoading={isLoading}
+        periodSize={periodSize}
+        chartRef={chartRef}
+      />
     </RatePageLayout>
   );
 }

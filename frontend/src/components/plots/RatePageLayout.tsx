@@ -13,14 +13,20 @@ import { useQuery } from "@tanstack/react-query";
 import { eventsApi } from "../../api/events";
 import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
 import { speciesLabelMap } from "../../lib/species-name-mode";
-import { saveTrendCsv, trendCsvScope, type TrendCsvScope } from "../../lib/trend-csv";
+import { rateCsvScope, type FileDates, type RateCsvScope } from "../../lib/insights-csv";
 import type { useExploreFilters } from "../../pages/dashboard/useExploreFilters";
 import { ExploreFilterBar } from "../dashboard/ExploreFilterBar";
+import { PageHeader } from "../layout/PageHeader";
 import { MissingDatesBanner } from "../dashboard/MissingDatesWarning";
 import { NoSiteBanner } from "../deployments/NoSiteBanner";
 import { Callout } from "../ui/callout";
-import { DownloadCsvButton } from "./DownloadCsvButton";
+import { DownloadMenu } from "./DownloadMenu";
 import { buildSiteNameMap } from "./InsightsFilterChips";
+
+export interface RateDownload {
+  label: string;
+  save: (scope: RateCsvScope, dates: FileDates) => void;
+}
 
 interface RatePageLayoutProps {
   projectId: string;
@@ -29,9 +35,10 @@ interface RatePageLayoutProps {
   explore: ReturnType<typeof useExploreFilters>;
   /** First and last day with effort in scope, from the page's response. */
   dates: { first: string | null; last: string | null } | undefined;
-  /** What Download CSV saves: a file name and the rows as CSV. Left out
-   *  while there is nothing to save, which disables the button. */
-  download?: { name: string; csv: (scope: TrendCsvScope) => string };
+  /** What the download menu offers right now. Each item gets the file's
+   *  scope (the filters as text) and its dates when it is chosen. An
+   *  empty list disables the icon. */
+  downloads: RateDownload[];
   /** The page's own display control in the filter bar. */
   filterExtra?: React.ReactNode;
   /** The page's `PlotExplainer`. */
@@ -46,7 +53,7 @@ export function RatePageLayout({
   subtitle,
   explore,
   dates,
-  download,
+  downloads,
   filterExtra,
   explainer,
   children,
@@ -59,9 +66,8 @@ export function RatePageLayout({
     queryFn: () => eventsApi.getFilterOptions(projectId),
   });
 
-  const save = () => {
-    if (!download) return;
-    const fileScope = trendCsvScope({
+  const save = (download: RateDownload) => {
+    const fileScope = rateCsvScope({
       dateFrom: scope.dateFrom,
       dateTo: scope.dateTo,
       firstDate: dates?.first,
@@ -71,23 +77,20 @@ export function RatePageLayout({
       labelIds: scope.labelTaxonomyIds,
       labelNames: filterOptions ? speciesLabelMap(filterOptions) : {},
     });
-    saveTrendCsv(download.name, fileScope, download.csv(fileScope));
+    download.save(fileScope, { from: fileScope.dateFrom, to: fileScope.dateTo });
   };
 
   return (
     <div className="min-h-screen">
-      {/* Header */}
-      <header className="border-b bg-card/80 backdrop-blur-sm">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
-              <p className="text-sm text-muted-foreground">{subtitle}</p>
-            </div>
-            <DownloadCsvButton onClick={save} disabled={!download} />
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title={title}
+        subtitle={subtitle}
+        actions={
+          <DownloadMenu
+            items={downloads.map((d) => ({ label: d.label, onSelect: () => save(d) }))}
+          />
+        }
+      />
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
         <NoSiteBanner

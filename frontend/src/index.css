@@ -34,6 +34,15 @@ html {
 html:has([data-full-bleed]) {
   scrollbar-gutter: auto;
 }
+/* While a menu, dialog or select is open, Radix locks page scrolling and
+ * gives the body a right margin as wide as the scrollbar it hides, so the
+ * page does not jump. The gutter above already keeps that space, so here
+ * the margin came on top: the page narrowed by ~15px and a white band
+ * showed at the right. Not on the full-bleed pages, which have no gutter
+ * and need the margin. */
+html:not(:has([data-full-bleed])) body[data-scroll-locked] {
+  margin-right: 0 !important;
+}
 
 html, body {
   font-family: "Twemoji Country Flags", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";

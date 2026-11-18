@@ -58,6 +58,11 @@ import {
   type FilterSchema,
 } from "../lib/filter-url";
 import { resolveSpeciesName } from "../lib/species-name-mode";
+import { PageHeader } from "../components/layout/PageHeader";
+import { DownloadMenu, IMAGE_PNG } from "../components/plots/DownloadMenu";
+import { saveChartPng, useDrawnChart } from "../lib/chart-image";
+import { downloadFileName } from "../lib/insights-csv";
+import { useChartColors } from "../lib/theme";
 
 const FILTER_SCHEMA: FilterSchema = {
   species_a: "string",
@@ -445,6 +450,10 @@ export function ActivityOverlapPage() {
 
   const enabled = !!projectId && !!filters.speciesA;
 
+  // The chart while one is drawn, so the download is offered only then.
+  const [chart, chartRef] = useDrawnChart();
+  const chartColors = useChartColors();
+
   const { data, isLoading, isFetching } = useQuery({
     queryKey: [
       "statistics",
@@ -475,18 +484,34 @@ export function ActivityOverlapPage() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b bg-card/80 backdrop-blur-sm">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Activity overlap</h1>
-              <p className="text-sm text-muted-foreground">
-                Compare daily activity patterns between species
-              </p>
-            </div>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title="Activity overlap"
+        subtitle="Compare daily activity patterns between species"
+        actions={
+          // A picture only: the curves are smoothed estimates, and the
+          // event times behind them are on the Export page.
+          <DownloadMenu
+            items={
+              chart
+                ? [
+                    {
+                      label: IMAGE_PNG,
+                      onSelect: () =>
+                        saveChartPng(
+                          chart,
+                          chartColors.card,
+                          downloadFileName("activity-overlap", "png", {
+                            from: filters.dateFrom ?? "",
+                            to: filters.dateTo ?? "",
+                          }),
+                        ),
+                    },
+                  ]
+                : []
+            }
+          />
+        }
+      />
 
       <main className="mx-auto max-w-7xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
         {filters.timeAxis === "sun" && data && data.anchor_sun_bands === null && (
@@ -533,6 +558,7 @@ export function ActivityOverlapPage() {
           <div className="flex h-[600px] flex-col space-y-4 rounded-lg border bg-card p-4">
             <div className="min-h-0 flex-1">
               <ActivityOverlapChart
+                chartRef={chartRef}
                 data={data}
                 speciesAName={resolveSpeciesName({
                   scientific_name: data.species_a.label,
