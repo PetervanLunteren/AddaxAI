@@ -40,9 +40,7 @@ export const SETTING_CAPTIONS = {
   // Detector row caption. True for every detector: MegaDetector finds
   // animals, people and vehicles, SharkTrack sharks and rays, the fish
   // detector fish, so it names none of those classes.
-  detectionModel:
-    "Finds the animals in each image or video frame. Everything else builds " +
-    "on what it finds. Model details says what this model looks for.",
+  detectionModel: "Finds the animals in each image or video frame.",
   // Two things this wording has to do at once. It must say how far the
   // setting reaches, because the Detection confidence filter under More
   // filters looks almost identical and reaches nowhere. And it must stay
