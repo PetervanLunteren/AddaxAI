@@ -44,7 +44,7 @@ export function MiniMapCard({
 
   const features = useMemo(() => data?.features ?? [], [data]);
   const maxRate = useMemo(
-    () => calculateRateDomain(features.map((f) => f.rate_per_100)).p66,
+    () => calculateRateDomain(features.map((f) => f.rate_per_100)).cap,
     [features],
   );
   const bounds = useMemo(

@@ -24,7 +24,6 @@ import {
 } from "../api/statistics";
 import {
   MapFilterBar,
-  type BaseLayer,
   type MapFilters,
   type ViewMode,
 } from "../components/map/MapFilterBar";
@@ -46,6 +45,7 @@ import {
 } from "../lib/filter-url";
 import { PageHeader } from "../components/layout/PageHeader";
 import { DATA_CSV, DownloadMenu } from "../components/plots/DownloadMenu";
+import { isRateRamp, type RateRamp } from "../lib/heat-color-scale";
 import { mapSitesCsv, rateCsvScope, saveCsv } from "../lib/insights-csv";
 
 const FILTER_SCHEMA: FilterSchema = {
@@ -56,7 +56,7 @@ const FILTER_SCHEMA: FilterSchema = {
 };
 
 const VIEW_MODE_KEY = "addaxai:map-view-mode";
-const BASE_LAYER_KEY = "addaxai:map-base-layer";
+const RAMP_KEY = "addaxai:map-color-ramp";
 
 function readStoredViewMode(): ViewMode {
   const saved = localStorage.getItem(VIEW_MODE_KEY);
@@ -66,12 +66,9 @@ function readStoredViewMode(): ViewMode {
   return "hexbins";
 }
 
-function readStoredBaseLayer(): BaseLayer {
-  const saved = localStorage.getItem(BASE_LAYER_KEY);
-  if (saved === "positron" || saved === "satellite" || saved === "osm") {
-    return saved;
-  }
-  return "positron";
+function readStoredRamp(): RateRamp {
+  const saved = localStorage.getItem(RAMP_KEY);
+  return isRateRamp(saved) ? saved : "teal";
 }
 
 export function MapPage() {
@@ -79,15 +76,15 @@ export function MapPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [viewMode, setViewMode] = useState<ViewMode>(readStoredViewMode);
-  const [baseLayer, setBaseLayer] = useState<BaseLayer>(readStoredBaseLayer);
+  const [ramp, setRamp] = useState<RateRamp>(readStoredRamp);
 
   useEffect(() => {
     localStorage.setItem(VIEW_MODE_KEY, viewMode);
   }, [viewMode]);
 
   useEffect(() => {
-    localStorage.setItem(BASE_LAYER_KEY, baseLayer);
-  }, [baseLayer]);
+    localStorage.setItem(RAMP_KEY, ramp);
+  }, [ramp]);
 
   const filters = useMemo<MapFilters>(() => {
     const parsed = filtersFromSearchParams(searchParams, FILTER_SCHEMA);
@@ -225,8 +222,8 @@ export function MapPage() {
           onChange={handleFiltersChange}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
-          baseLayer={baseLayer}
-          onBaseLayerChange={setBaseLayer}
+          ramp={ramp}
+          onRampChange={setRamp}
           chips={chips}
           onClearAll={clearAllDataFilters}
         />
@@ -235,7 +232,7 @@ export function MapPage() {
           isLoading={isLoading}
           error={error}
           viewMode={viewMode}
-          baseLayer={baseLayer}
+          ramp={ramp}
         />
 
         <PlotExplainer

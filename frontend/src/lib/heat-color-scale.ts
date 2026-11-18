@@ -1,58 +1,91 @@
 /**
- * Heat color scale for the observation rate map.
+ * Heat color scale: a value mapped onto a colour ramp, for the
+ * observation rate map, the Explore mini map and the Deployment
+ * timeline heatmap.
  *
- * Gradient per FRONTEND_CONVENTIONS.md:
+ * The app's gradient is the teal one (FRONTEND_CONVENTIONS.md):
  *   #f9f871 (light yellow, low)  ->  #0f6064 (dark teal, high)
- *
- * Ported from AddaxAI-Connect's color-scale.ts. Renamed functions
- * from "detection rate" to "rate" / "heat" since WebUI counts
- * observations (MaxN per event), not raw detections.
+ * The Map page alone offers two more, because its background changes:
+ * dark teal sinks into satellite imagery, and there the highest rates
+ * are the ones that must stand out.
  */
 
 import chroma from "chroma-js";
 
-const GRADIENT = chroma.scale(["#f9f871", "#0f6064"]).mode("lab");
+/** Every ramp the app knows. The first is the default. */
+export const RATE_RAMPS = [
+  { id: "teal", label: "Teal", scale: chroma.scale(["#f9f871", "#0f6064"]).mode("lab") },
+  // ColorBrewer yellow-orange-red, stopped at its bright red: its last
+  // quarter runs into a dark burgundy that sinks into dark imagery as
+  // much as teal does, and there the highest rates must stand out.
+  { id: "heat", label: "Heat", scale: chroma.scale("YlOrRd").padding([0, 0.25]) },
+  // Colour-blind safe, and the usual choice in scientific figures.
+  { id: "viridis", label: "Viridis", scale: chroma.scale("viridis") },
+  // The two classic heat map looks, offered because people know them.
+  // Rainbow ("jet") has uneven steps and fails colour-blind readers, so
+  // it is a choice, never a default. Thermal ("hot") starts at black.
+  {
+    id: "rainbow",
+    label: "Rainbow",
+    scale: chroma.scale(["#0000ff", "#00ffff", "#00ff00", "#ffff00", "#ff0000"]),
+  },
+  {
+    id: "thermal",
+    label: "Thermal",
+    scale: chroma.scale(["#000000", "#ff0000", "#ffff00", "#ffffff"]),
+  },
+] as const;
+
+export type RateRamp = (typeof RATE_RAMPS)[number]["id"];
+
+export function isRateRamp(value: unknown): value is RateRamp {
+  return RATE_RAMPS.some((ramp) => ramp.id === value);
+}
+
+function scaleOf(ramp: RateRamp) {
+  return RATE_RAMPS.find((r) => r.id === ramp)!.scale;
+}
 
 /**
- * Pick a color for a single rate value against a normalization max.
+ * The colour of one value. The ramp runs from zero to `cap`; a value
+ * at or above the cap gets the last colour.
  *
- * Zero always returns the lightest yellow, so deployments with effort
- * but no observations are visually distinct from high-rate hotspots.
+ * Zero gets the first colour, so a site with effort but no
+ * observations is visually distinct from a hotspot.
  */
-export function getRateColor(rate: number, maxRate?: number): string {
-  if (rate <= 0) {
-    return "#f9f871";
-  }
-  const normalized =
-    maxRate && maxRate > 0 ? Math.min(rate / maxRate, 1.0) : 0.5;
-  return GRADIENT(normalized).hex();
+export function getRateColor(rate: number, cap?: number, ramp: RateRamp = "teal"): string {
+  const scale = scaleOf(ramp);
+  if (rate <= 0) return scale(0).hex();
+  return scale(cap && cap > 0 ? Math.min(rate / cap, 1) : 0.5).hex();
+}
+
+/** The ramp as a CSS gradient, for a legend bar. */
+export function rampGradient(ramp: RateRamp, direction: string): string {
+  // Eleven stops: enough to follow a ramp with several colours.
+  const stops = Array.from({ length: 11 }, (_, i) => scaleOf(ramp)(i / 10).hex());
+  return `linear-gradient(${direction}, ${stops.join(", ")})`;
 }
 
 export interface RateScaleDomain {
-  min: number;
+  /** The highest value. */
   max: number;
-  p33: number;
-  p66: number;
+  /** Where the ramp ends: the 95th percentile of the non-zero values. */
+  cap: number;
 }
 
 /**
- * Compute min/max + p33/p66 percentiles over the *non-zero* rates.
+ * The scale for a set of values, over the non-zero ones.
  *
- * Using percentiles instead of raw max prevents a single outlier from
- * flattening the gradient. p66 is the recommended normalization max
- * when coloring markers.
+ * The ramp ends at the 95th percentile instead of the maximum, so one
+ * outlier does not make every other value pale. With fewer than 20
+ * values the 95th percentile is the maximum itself. A legend must
+ * print `cap`, with a "+" when `max` lies above it.
  */
 export function calculateRateDomain(rates: number[]): RateScaleDomain {
-  const nonZero = rates.filter((r) => r > 0);
-  if (nonZero.length === 0) {
-    return { min: 0, max: 0, p33: 0, p66: 0 };
-  }
-
-  const sorted = [...nonZero].sort((a, b) => a - b);
+  const sorted = rates.filter((r) => r > 0).sort((a, b) => a - b);
+  if (sorted.length === 0) return { max: 0, cap: 0 };
   return {
-    min: sorted[0],
     max: sorted[sorted.length - 1],
-    p33: sorted[Math.floor(sorted.length * 0.33)],
-    p66: sorted[Math.floor(sorted.length * 0.66)],
+    cap: sorted[Math.floor(sorted.length * 0.95)],
   };
 }

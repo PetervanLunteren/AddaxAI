@@ -357,9 +357,9 @@ function binUnitLabel(binDays: number): string {
  * interpolates in sRGB, which drifted noticeably in the middle. Sampling
  * the real scale at a few points keeps the legend honest.
  */
-function legendGradient(p66: number): string {
+function legendGradient(cap: number): string {
   const stops = [0, 0.25, 0.5, 0.75, 1].map((f) =>
-    getRateColor(Math.max(1, f * p66), p66),
+    getRateColor(Math.max(1, f * cap), cap),
   );
   return `linear-gradient(to right, ${stops.join(", ")})`;
 }
@@ -1040,7 +1040,7 @@ export function DeploymentTimelineChart({
                       y={cellY}
                       width={w}
                       height={densityConfig.barHeight}
-                      fill={getRateColor(count, heatmap.domain.p66)}
+                      fill={getRateColor(count, heatmap.domain.cap)}
                       onMouseEnter={() =>
                         setCellHover({
                           x: x + w / 2,
@@ -1204,7 +1204,7 @@ export function DeploymentTimelineChart({
       {viewMode === "heatmap" && heatmap && heatmap.domain.max > 0 && (
         <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
           <span>Files per {binUnitLabel(binDays)}</span>
-          {heatmap.domain.p66 <= 1 ? (
+          {heatmap.domain.cap <= 1 ? (
             // Every cell holds the same count, so there is no scale to
             // show. A gradient reading "1 … 1+" looks broken.
             <>
@@ -1219,9 +1219,12 @@ export function DeploymentTimelineChart({
               <span>1</span>
               <div
                 className="h-2 w-24 rounded-sm"
-                style={{ background: legendGradient(heatmap.domain.p66) }}
+                style={{ background: legendGradient(heatmap.domain.cap) }}
               />
-              <span>{heatmap.domain.p66.toLocaleString()}+</span>
+              <span>
+                {heatmap.domain.cap.toLocaleString()}
+                {heatmap.domain.max > heatmap.domain.cap && "+"}
+              </span>
             </>
           )}
         </div>

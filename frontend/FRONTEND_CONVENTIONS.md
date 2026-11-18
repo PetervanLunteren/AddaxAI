@@ -105,6 +105,14 @@ For example for gradients in heatmaps or other multi level color scales
 from (dark, first alphabetically) = #0f6064
 to (light, last alphabetically)   = #f9f871
 
+The Map page alone also offers Heat, Viridis, Rainbow and Thermal under
+Colours, because its background changes and dark teal sinks into
+satellite imagery. A new ramp is one entry in `RATE_RAMPS`
+(`lib/heat-color-scale.ts`). The backgrounds are one list too,
+`BASE_LAYERS` in `components/map/basemap-styles.ts`. A scale ends at the
+95th percentile of its values (`calculateRateDomain`), so a legend
+prints that value with a "+" when values lie above it.
+
 ### Species colours
 Species are categories, not a scale, so they do not use the gradient. The
 backend assigns them per project (`backend/app/api/crud/label_colors.py`, see
@@ -219,6 +227,10 @@ apply everywhere or on one page?
 | Settings page | Belongs to one project and changes what the app computes or stores | Database, `Project` table | Models, species selection, thresholds, independence interval |
 | View menu | Display only, belongs to this device, applies to every project | localStorage | Species names, theme, rate unit |
 | On the page itself | Display only, for one page, remembered per device | localStorage, through `lib/local-settings.ts` | Map style, tile size, panel heights |
+
+A filter bar holds at most five fields. A control that belongs to the
+map or chart itself goes inside it: the Map's background is chosen with
+the layers button on the map, not in the filter bar.
 
 A View menu preference follows `lib/species-name-mode.ts`: one module
 owns the stored value, and changing it reloads the page so every screen

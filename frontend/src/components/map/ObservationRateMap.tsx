@@ -16,29 +16,47 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L, { latLngBounds } from "leaflet";
 import { Info } from "lucide-react";
-import { MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import { LayersControl, MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
 
-import { OSM_LAYER } from "./basemap-styles";
+import { BASE_LAYERS, isBaseLayer, type BaseLayer } from "./basemap-styles";
 import { StreetBaseLayer } from "./StreetBaseLayer";
 
 import type {
   ObservationRateMapFeature,
   ObservationRateMapResponse,
 } from "../../api/statistics";
-import { calculateRateDomain, getRateColor } from "../../lib/heat-color-scale";
+import { calculateRateDomain, getRateColor, type RateRamp } from "../../lib/heat-color-scale";
 import { ClusterLayer } from "./ClusterLayer";
 import { FullscreenControl } from "./FullscreenControl";
 import { HexbinLayer } from "./HexbinLayer";
 import { MapLegend } from "./MapLegend";
 import { SiteMarker } from "./SiteMarker";
-import type { BaseLayer, ViewMode } from "./MapFilterBar";
+import type { ViewMode } from "./MapFilterBar";
 
 interface ObservationRateMapProps {
   data: ObservationRateMapResponse | undefined;
   isLoading: boolean;
   error: Error | null;
   viewMode: ViewMode;
-  baseLayer: BaseLayer;
+  ramp: RateRamp;
+}
+
+const BASE_LAYER_KEY = "addaxai:map-base-layer";
+
+function readStoredBaseLayer(): BaseLayer {
+  const saved = localStorage.getItem(BASE_LAYER_KEY);
+  return isBaseLayer(saved) ? saved : "positron";
+}
+
+/** Reports the background picked in the layers control. */
+function BaseLayerListener({ onChange }: { onChange: (layer: BaseLayer) => void }) {
+  useMapEvents({
+    baselayerchange: (event) => {
+      const picked = BASE_LAYERS.find((layer) => layer.name === event.name);
+      if (picked) onChange(picked.id);
+    },
+  });
+  return null;
 }
 
 /**
@@ -95,27 +113,23 @@ function FitBounds({ points }: { points: [number, number][] }) {
   return null;
 }
 
-function getRasterLayer(base: Exclude<BaseLayer, "positron">) {
-  switch (base) {
-    case "satellite":
-      return {
-        url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-        attribution:
-          "Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community",
-      };
-    case "osm":
-    default:
-      return OSM_LAYER;
-  }
-}
-
 export function ObservationRateMap({
   data,
   isLoading,
   error,
   viewMode,
-  baseLayer,
+  ramp,
 }: ObservationRateMapProps) {
+  // The background is the map's own choice, made in its layers control
+  // and remembered per device. The state follows the control: the
+  // street map is rebuilt when the theme changes, and a stale "checked"
+  // would put it back on top of the chosen background.
+  const [baseLayer, setBaseLayer] = useState<BaseLayer>(readStoredBaseLayer);
+  const handleBaseLayerChange = useCallback((layer: BaseLayer) => {
+    setBaseLayer(layer);
+    localStorage.setItem(BASE_LAYER_KEY, layer);
+  }, []);
+
   const [zoomLevel, setZoomLevel] = useState(12);
   const [mapBounds, setMapBounds] = useState<L.LatLngBounds | null>(null);
 
@@ -134,7 +148,7 @@ export function ObservationRateMap({
 
   const colorDomain = useMemo(() => {
     if (visibleSites.length === 0) {
-      return { min: 0, max: 0, p33: 0, p66: 0 };
+      return { max: 0, cap: 0 };
     }
     return calculateRateDomain(visibleSites.map((f) => f.rate_per_100));
   }, [visibleSites]);
@@ -186,10 +200,6 @@ export function ObservationRateMap({
     );
   }
 
-  // The default street map is the shared StreetBaseLayer (OpenFreeMap
-  // vector, OSM raster without WebGL2); the other choices are raster.
-  const raster = baseLayer === "positron" ? null : getRasterLayer(baseLayer);
-
   return (
     <div className="flex h-[600px] flex-col overflow-hidden rounded-lg border bg-card">
       <MapContainer
@@ -202,15 +212,28 @@ export function ObservationRateMap({
         style={{ width: "100%" }}
         className="min-h-0 flex-1"
       >
-        {raster === null ? (
-          <StreetBaseLayer />
-        ) : (
-          <TileLayer
-            key={raster.url}
-            attribution={raster.attribution}
-            url={raster.url}
-          />
-        )}
+        {/* The backgrounds: the shared street map (OpenFreeMap vector,
+            OSM raster without WebGL2) and the raster ones. */}
+        <LayersControl position="topright">
+          {BASE_LAYERS.map((layer) => (
+            <LayersControl.BaseLayer
+              key={layer.id}
+              name={layer.name}
+              checked={layer.id === baseLayer}
+            >
+              {"url" in layer ? (
+                <TileLayer
+                  url={layer.url}
+                  attribution={layer.attribution}
+                  maxNativeZoom={"maxNativeZoom" in layer ? layer.maxNativeZoom : undefined}
+                />
+              ) : (
+                <StreetBaseLayer />
+              )}
+            </LayersControl.BaseLayer>
+          ))}
+        </LayersControl>
+        <BaseLayerListener onChange={handleBaseLayerChange} />
 
         <MapEventHandler
           onZoomChange={handleZoomChange}
@@ -223,14 +246,15 @@ export function ObservationRateMap({
             <SiteMarker
               key={feature.site_id}
               feature={feature}
-              color={getRateColor(feature.rate_per_100, colorDomain.p66)}
+              color={getRateColor(feature.rate_per_100, colorDomain.cap, ramp)}
             />
           ))}
 
         {viewMode === "clusters" && (
           <ClusterLayer
             sites={visibleSites}
-            maxRate={colorDomain.p66}
+            maxRate={colorDomain.cap}
+            ramp={ramp}
           />
         )}
 
@@ -239,11 +263,12 @@ export function ObservationRateMap({
             sites={visibleSites}
             zoomLevel={zoomLevel}
             viewportBounds={mapBounds}
-            maxRate={colorDomain.p66}
+            maxRate={colorDomain.cap}
+            ramp={ramp}
           />
         )}
 
-        <MapLegend domain={colorDomain} />
+        <MapLegend domain={colorDomain} ramp={ramp} />
         <FullscreenControl />
       </MapContainer>
 
