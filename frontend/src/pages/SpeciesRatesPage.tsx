@@ -29,7 +29,7 @@ export function SpeciesRatesPage() {
   const explore = useExploreFilters(id);
   const { scope } = explore;
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ["statistics", "species-rates", id, scope],
     queryFn: () => statisticsApi.getSpeciesRates(id, scope),
     enabled: explore.ready && !explore.noSiteMatch,
@@ -42,6 +42,7 @@ export function SpeciesRatesPage() {
       subtitle="Observation rate per species, with its uncertainty"
       explore={explore}
       dates={data && { first: data.first_date, last: data.last_date }}
+      error={error}
       downloads={
         data?.species.length
           ? [

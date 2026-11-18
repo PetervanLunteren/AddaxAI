@@ -50,7 +50,7 @@ export function TrendPage() {
   // the span of the data.
   const [picked, setPicked] = useState<TrendPeriodSize>();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ["statistics", "rate-trend", id, scope, picked],
     queryFn: () => statisticsApi.getRateTrend(id, scope, picked),
     enabled: explore.ready && !explore.noSiteMatch,
@@ -69,6 +69,7 @@ export function TrendPage() {
       subtitle="Observation rate over time, with its uncertainty"
       explore={explore}
       dates={data && { first: data.first_date, last: data.last_date }}
+      error={error}
       downloads={[
         ...(data?.periods.length
           ? [

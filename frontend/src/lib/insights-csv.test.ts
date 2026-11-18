@@ -12,6 +12,7 @@ import {
   classPerformanceCsv,
   confusionMatrixCsv,
   downloadFileName,
+  fileSlug,
   mapSitesCsv,
   performanceFilters,
   rateCsvScope,
@@ -125,6 +126,9 @@ describe("every view", () => {
     expect(downloadFileName("activity-overlap", "png", { from: "2024-01-01", to: "" })).toBe(
       "addaxai-activity-overlap.png",
     );
+    // A species in a file name has no spaces or dots.
+    expect(fileSlug("V. vulpes")).toBe("v-vulpes");
+    expect(fileSlug("Odocoileus virginianus (deer)")).toBe("odocoileus-virginianus-deer");
     // Data and image of one view differ in the extension only.
     const dates = { from: "2024-01-01", to: "2024-03-31" };
     expect(downloadFileName("trend-week", "csv", dates)).toBe(
@@ -233,12 +237,13 @@ describe("classification performance downloads", () => {
     expect(classPerformanceCsv(data, filters).split("\r\n")).toEqual([
       "row_type,class,common_name,scientific_name,support,precision,recall,f1," +
         "sites,taxonomic_rank,top_n",
-      "class,deer,Red deer,Cervus elaphus,10,1,0.8,0.888889,Site A,species,20",
-      "class,pig,Feral pig,Sus scrofa,5,0.714286,1,0.833333,Site A,species,20",
+      // Metrics rounded to 4 decimals: 0.888889 and 0.714286 in the response.
+      "class,deer,Red deer,Cervus elaphus,10,1,0.8,0.8889,Site A,species,20",
+      "class,pig,Feral pig,Sus scrofa,5,0.7143,1,0.8333,Site A,species,20",
       // Goat had no verified detections: not in the table, not in the file.
-      "average,macro average,,,,0.857143,0.9,0.861111,Site A,species,20",
+      "average,macro average,,,,0.8571,0.9,0.8611,Site A,species,20",
       // A metric that cannot be computed is an empty cell.
-      "average,weighted average,,,,0.904762,0.866667,,Site A,species,20",
+      "average,weighted average,,,,0.9048,0.8667,,Site A,species,20",
       "",
     ]);
   });

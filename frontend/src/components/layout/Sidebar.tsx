@@ -395,7 +395,9 @@ function LeafNavLink({ item, collapsed }: { item: NavItem; collapsed: boolean })
  * own) showing a chevron that rotates with the expanded state; children
  * render as NavLinks underneath. Expanded/collapsed of the group is
  * persisted to localStorage per parent path. Default on first visit:
- * collapsed, to keep the menu short (Insights has eight pages).
+ * collapsed, to keep the menu short (Insights has eight pages), unless
+ * the visit lands on one of its pages: then the list shows where you
+ * are and what is next to it.
  *
  * Collapsed rail: renders as a single icon that opens the children in a
  * hover flyout instead (see CollapsedNavGroupFlyout).
@@ -407,7 +409,7 @@ function CollapsibleNavGroup({ item, collapsed }: { item: NavItem; collapsed: bo
   const storageKey = `addaxai:sidebar-expand:${item.to}`;
   const [expanded, setExpanded] = useState<boolean>(() => {
     const saved = localStorage.getItem(storageKey);
-    return saved === "true";
+    return saved === null ? isActiveParent : saved === "true";
   });
 
   if (collapsed) {

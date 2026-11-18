@@ -17,7 +17,7 @@ import { Link } from "react-router-dom";
 
 import { statisticsApi } from "../../api/statistics";
 import type { DashboardScope, TrendGranularity } from "../../api/statistics";
-import { exceedsChartYears, yearSpan } from "../../lib/date-span";
+import { wideSpan } from "../../lib/date-span";
 import { TrendLineChart } from "../plots/TrendLineChart";
 import { Card, CardContent } from "../ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
@@ -76,11 +76,7 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
 
   // A corrupt capture year makes the range millennia wide; the backend
   // sends the two dates and no points, and the card says why.
-  const span =
-    data?.first_date && data.last_date
-      ? yearSpan(data.first_date, data.last_date)
-      : null;
-  const tooWide = span !== null && exceedsChartYears(span);
+  const tooWide = wideSpan(data?.first_date, data?.last_date);
 
   const smoothing = SMOOTHING[granularity];
   const counts = points.map((p) => p.count);
@@ -131,7 +127,7 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
             </div>
           ) : tooWide ? (
             <div className="flex items-center justify-center h-full">
-              <WideSpanNotice span={span} className="max-w-md" />
+              <WideSpanNotice span={tooWide} className="max-w-md" />
             </div>
           ) : points.length > 0 ? (
             <TrendLineChart

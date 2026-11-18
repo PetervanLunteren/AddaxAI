@@ -250,15 +250,17 @@ on one page and a picture on another, and the menu says which.
 - **Data (CSV)**, where the view is a set of numbers: exactly those
   numbers and the filters that produced them. One pure builder per view
   in `lib/insights-csv.ts`: one row per thing on screen, in long format
-  rather than a grid, values as numbers (fractions, rates in the user's
-  unit), and the filters as columns on every row (`viewCsv`).
+  rather than a grid, values as numbers (fractions rounded to 4
+  decimals, rates in the user's unit), and the filters as columns on
+  every row (`viewCsv`).
 - **Image (PNG)**, where the view is one Chart.js chart: the chart as on
   screen, on the card colour (`saveChartPng`, `useDrawnChart` in
   `lib/chart-image.ts`). Maps, SVG charts, tables and pages of several
   small charts are left to a screenshot: exporting them is fragile or
   of little use.
 - **File names**: `downloadFileName` builds every one, with the dates
-  when the view has them.
+  when the view has them. What the filter bar cannot say goes in the
+  name through `fileSlug`: the two species on Activity overlap.
 - **Not**: raw data. That is the Export page. Activity overlap draws
   smoothed curves, estimates from event times, so it offers the picture
   and no data; Calibration is a threshold tool with a curve per label.

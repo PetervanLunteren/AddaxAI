@@ -61,7 +61,7 @@ import { resolveSpeciesName } from "../lib/species-name-mode";
 import { PageHeader } from "../components/layout/PageHeader";
 import { DownloadMenu, IMAGE_PNG } from "../components/plots/DownloadMenu";
 import { saveChartPng, useDrawnChart } from "../lib/chart-image";
-import { downloadFileName } from "../lib/insights-csv";
+import { downloadFileName, fileSlug } from "../lib/insights-csv";
 import { useChartColors } from "../lib/theme";
 
 const FILTER_SCHEMA: FilterSchema = {
@@ -452,6 +452,10 @@ export function ActivityOverlapPage() {
 
   // The chart while one is drawn, so the download is offered only then.
   const [chart, chartRef] = useDrawnChart();
+  const overlapFileName = ["activity-overlap", filters.speciesA, filters.speciesB]
+    .filter((part): part is string => !!part)
+    .map(fileSlug)
+    .join("-");
   const chartColors = useChartColors();
 
   const { data, isLoading, isFetching } = useQuery({
@@ -500,7 +504,9 @@ export function ActivityOverlapPage() {
                         saveChartPng(
                           chart,
                           chartColors.card,
-                          downloadFileName("activity-overlap", "png", {
+                          // The species in the name, so two pairs saved
+                          // after each other can be told apart.
+                          downloadFileName(overlapFileName, "png", {
                             from: filters.dateFrom ?? "",
                             to: filters.dateTo ?? "",
                           }),

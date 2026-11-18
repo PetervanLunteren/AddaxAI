@@ -12,12 +12,14 @@ import { useQuery } from "@tanstack/react-query";
 
 import { eventsApi } from "../../api/events";
 import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
+import { wideSpan } from "../../lib/date-span";
 import { speciesLabelMap } from "../../lib/species-name-mode";
 import { rateCsvScope, type FileDates, type RateCsvScope } from "../../lib/insights-csv";
 import type { useExploreFilters } from "../../pages/dashboard/useExploreFilters";
 import { ExploreFilterBar } from "../dashboard/ExploreFilterBar";
 import { PageHeader } from "../layout/PageHeader";
 import { MissingDatesBanner } from "../dashboard/MissingDatesWarning";
+import { WideSpanNotice } from "../dashboard/WideSpanNotice";
 import { NoSiteBanner } from "../deployments/NoSiteBanner";
 import { Callout } from "../ui/callout";
 import { DownloadMenu } from "./DownloadMenu";
@@ -35,6 +37,9 @@ interface RatePageLayoutProps {
   explore: ReturnType<typeof useExploreFilters>;
   /** First and last day with effort in scope, from the page's response. */
   dates: { first: string | null; last: string | null } | undefined;
+  /** The page's request failed. Shown instead of the view: an empty
+   *  chart or table would read as "no data". */
+  error: Error | null;
   /** What the download menu offers right now. Each item gets the file's
    *  scope (the filters as text) and its dates when it is chosen. An
    *  empty list disables the icon. */
@@ -53,6 +58,7 @@ export function RatePageLayout({
   subtitle,
   explore,
   dates,
+  error,
   downloads,
   filterExtra,
   explainer,
@@ -65,6 +71,8 @@ export function RatePageLayout({
     queryKey: ["event-filter-options", projectId],
     queryFn: () => eventsApi.getFilterOptions(projectId),
   });
+
+  const tooWide = wideSpan(dates?.first, dates?.last);
 
   const save = (download: RateDownload) => {
     const fileScope = rateCsvScope({
@@ -116,6 +124,14 @@ export function RatePageLayout({
           </Callout>
         ) : !explore.ready ? (
           <p className="text-sm text-muted-foreground">Loading...</p>
+        ) : error ? (
+          <Callout variant="error">Could not load this page: {error.message}</Callout>
+        ) : tooWide ? (
+          // A corrupt capture year: the backend sends the two dates and
+          // no rows, so the view itself would only say it is empty.
+          <div className="rounded-lg border bg-card p-16">
+            <WideSpanNotice span={tooWide} className="mx-auto max-w-md" />
+          </div>
         ) : (
           children
         )}

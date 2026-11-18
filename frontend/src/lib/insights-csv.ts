@@ -64,6 +64,11 @@ export function downloadFileName(
   return `addaxai-${name}${range}.${extension}`;
 }
 
+/** A label as part of a file name: "V. vulpes" becomes "v-vulpes". */
+export function fileSlug(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
 export function saveCsv(name: string, csv: string, dates?: FileDates): void {
   downloadBlob(
     new Blob([csv], { type: "text/csv;charset=utf-8" }),
@@ -230,11 +235,13 @@ export function confusionMatrixCsv(data: PerformanceResponse, filters: CsvFilter
  * Class performance: the table's rows (classes with support), then its
  * two average rows. `row_type` tells them apart, so one filter removes
  * the averages before summing or plotting. Metrics are fractions, not
- * percent text; one that cannot be computed is an empty cell.
+ * percent text, rounded to 4 decimals (the table shows 3 digits); one
+ * that cannot be computed is an empty cell.
  */
 export function classPerformanceCsv(data: PerformanceResponse, filters: CsvFilters): string {
+  const metric = (value: number | null) => (value === null ? null : +value.toFixed(4));
   const average = (name: string, p: number | null, r: number | null, f1: number | null) =>
-    ["average", name, null, null, null, p, r, f1];
+    ["average", name, null, null, null, metric(p), metric(r), metric(f1)];
   return viewCsv(
     ["row_type", "class", "common_name", "scientific_name", "support", "precision", "recall", "f1"],
     [
@@ -242,7 +249,7 @@ export function classPerformanceCsv(data: PerformanceResponse, filters: CsvFilte
         .filter((c) => c.support > 0)
         .map((c) => [
           "class", c.class_name, c.common_name, c.scientific_name,
-          c.support, c.precision, c.recall, c.f1,
+          c.support, metric(c.precision), metric(c.recall), metric(c.f1),
         ]),
       average("macro average", data.macro_precision, data.macro_recall, data.macro_f1),
       average("weighted average", data.weighted_precision, data.weighted_recall, data.weighted_f1),

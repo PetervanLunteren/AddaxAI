@@ -25,3 +25,18 @@ export function yearSpan(from: string, to: string): YearSpan {
 export function exceedsChartYears(span: YearSpan): boolean {
   return span.last - span.first + 1 > MAX_CHART_YEARS;
 }
+
+/**
+ * The year span of a view's first and last date when it is too wide to
+ * chart, else null (also when a date is missing). The one check every
+ * time view makes before it draws, so they show `WideSpanNotice` for the
+ * same data.
+ */
+export function wideSpan(
+  first: string | null | undefined,
+  last: string | null | undefined,
+): YearSpan | null {
+  if (!first || !last) return null;
+  const span = yearSpan(first, last);
+  return exceedsChartYears(span) ? span : null;
+}

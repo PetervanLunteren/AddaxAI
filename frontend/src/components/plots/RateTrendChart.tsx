@@ -6,9 +6,7 @@
  */
 
 import type { RateTrendResponse, TrendPeriod, TrendPeriodSize } from "../../api/statistics";
-import { exceedsChartYears, yearSpan } from "../../lib/date-span";
 import { formatRate, rateFromPer100, rateLabel } from "../../lib/trap-night-rate";
-import { WideSpanNotice } from "../dashboard/WideSpanNotice";
 import type { DrawnChartRef } from "../../lib/chart-image";
 import { TrendLineChart } from "./TrendLineChart";
 
@@ -46,21 +44,12 @@ function Message({ children }: { children: React.ReactNode }) {
 
 export function RateTrendChart({ data, isLoading, periodSize, chartRef }: RateTrendChartProps) {
   const periods = data?.periods ?? [];
-  const span =
-    data?.first_date && data.last_date
-      ? yearSpan(data.first_date, data.last_date)
-      : null;
-  const tooWide = span !== null && exceedsChartYears(span);
   const hasMean = periods.some((p) => p.mean !== null);
 
   return (
     <div className="h-[28rem] rounded-lg border bg-card p-4">
       {isLoading ? (
         <Message>Loading...</Message>
-      ) : tooWide ? (
-        <div className="flex items-center justify-center h-full">
-          <WideSpanNotice span={span} className="max-w-md" />
-        </div>
       ) : periods.length === 0 ? (
         <Message>No site with camera effort in this selection</Message>
       ) : periods.length === 1 ? (
