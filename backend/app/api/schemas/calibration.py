@@ -37,11 +37,11 @@ class CalibrationLabel(BaseModel):
     curve: list[CalibrationPoint] | None = Field(
         ..., description="Over the answered score range only; None until the minimum"
     )
-    no_error_bound: float | None = Field(
+    lower_bound: float | None = Field(
         ...,
         description=(
-            "With answers but no wrong one: lower 95% bound on the share "
-            "right (rule of three)"
+            "Without a curve, with right answers and too few wrong ones for "
+            "a curve: lower 95% bound on the share right"
         ),
     )
 

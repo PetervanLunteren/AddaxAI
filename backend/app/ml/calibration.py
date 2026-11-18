@@ -32,6 +32,7 @@ Pure numpy, no DB, no FastAPI. Tested in
 `backend/tests/ml/test_calibration.py`.
 """
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -52,6 +53,10 @@ Z_95: float = 1.959963984540054
 # Newton iterations; the penalised problem converges in well under this.
 _MAX_ITER: int = 100
 _TOL: float = 1e-10
+# One-sided confidence of the bound shown while a label has no curve.
+BOUND_CONFIDENCE: float = 0.95
+# Halvings of [0, 1] when solving for that bound: exact to 15 decimals.
+_BISECTIONS: int = 50
 
 
 def score_to_logit(scores: np.ndarray) -> np.ndarray:
@@ -160,16 +165,43 @@ def has_enough_answers(n_right: int, n_wrong: int) -> bool:
     return n_right >= MIN_RIGHT and n_wrong >= MIN_WRONG
 
 
-def rule_of_three_bound(n_right: int) -> float | None:
-    """Lower 95% bound on the share right when none of `n_right` answers was wrong.
+def lower_bound(n_right: int, n_wrong: int) -> float:
+    """Lower 95% bound on the share right, for a label that has no curve yet.
 
-    "No errors in 60 answers: at least 95% right" (1 - 3/n). The sample
-    leans towards low scores, so for the label as a whole this is on the
-    cautious side. None below 3 answers, where the bound is not above 0.
+    "155 of 160 right: at least 93% right". The exact one-sided binomial
+    bound (Clopper-Pearson): the lowest share right under which this
+    many right answers or more still turn up 5% of the time. It never
+    claims more than 95% confidence, unlike the shorter approximations,
+    which are too optimistic for a label that is nearly always right.
+    Without a wrong answer it is the rule of three (about 1 - 3/n).
+
+    The sample leans towards low scores, so for the label as a whole
+    this is on the cautious side.
+
+    The bound has no closed form, so it is found by bisection on the
+    binomial tail, summed in logs so large counts cannot overflow.
     """
-    if n_right <= 3:
-        return None
-    return 1.0 - 3.0 / n_right
+    n = n_right + n_wrong
+    if n_right == 0:
+        return 0.0
+
+    def chance_of_this_many_right(p: float) -> float:
+        return sum(
+            math.exp(
+                math.lgamma(n + 1) - math.lgamma(k + 1) - math.lgamma(n - k + 1)
+                + k * math.log(p) + (n - k) * math.log1p(-p)
+            )
+            for k in range(n_right, n + 1)
+        )
+
+    low, high = 0.0, 1.0
+    for _ in range(_BISECTIONS):
+        middle = (low + high) / 2.0
+        if chance_of_this_many_right(middle) < 1.0 - BOUND_CONFIDENCE:
+            low = middle
+        else:
+            high = middle
+    return low
 
 
 def draw_sample(

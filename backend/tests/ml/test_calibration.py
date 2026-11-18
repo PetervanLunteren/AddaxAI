@@ -11,7 +11,7 @@ from app.ml.calibration import (
     draw_sample,
     fit_calibration,
     has_enough_answers,
-    rule_of_three_bound,
+    lower_bound,
     score_to_logit,
 )
 
@@ -128,9 +128,30 @@ def test_minimum_needs_ten_of_each() -> None:
     assert not has_enough_answers(9, 50)
 
 
-def test_rule_of_three() -> None:
-    assert rule_of_three_bound(60) == pytest.approx(0.95)
-    assert rule_of_three_bound(3) is None
+def test_lower_bound_without_errors_is_the_rule_of_three() -> None:
+    """No wrong answer has a closed form, 0.05^(1/n), which 1 - 3/n approximates."""
+    assert lower_bound(60, 0) == pytest.approx(0.05 ** (1 / 60))
+    assert lower_bound(60, 0) == pytest.approx(1 - 3 / 60, abs=0.005)
+
+
+def test_lower_bound_with_a_few_errors() -> None:
+    """Checked against scipy.stats.beta.ppf(0.05, right, wrong + 1)."""
+    assert lower_bound(97, 3) == pytest.approx(0.924289, abs=1e-6)
+    assert lower_bound(155, 5) == pytest.approx(0.935420, abs=1e-6)
+
+
+def test_lower_bound_stays_under_the_share_and_drops_with_each_error() -> None:
+    bounds = [lower_bound(100 - wrong, wrong) for wrong in range(10)]
+    assert all(b < (100 - wrong) / 100 for wrong, b in enumerate(bounds))
+    assert bounds == sorted(bounds, reverse=True)
+    assert len(set(bounds)) == len(bounds)
+
+
+def test_lower_bound_at_the_edges() -> None:
+    assert lower_bound(0, 132) == 0.0
+    assert lower_bound(1, 0) == pytest.approx(0.05)
+    # Counts far past what a page of answers reaches must not overflow.
+    assert 0.997 < lower_bound(4995, 5) < 0.999
 
 
 def test_sample_spreads_over_the_score_range() -> None:

@@ -31,7 +31,8 @@ export interface CalibrationLabel {
   wrong_needed: number;
   thresholds: CalibrationThreshold[] | null;
   curve: CalibrationPoint[] | null;
-  no_error_bound: number | null;
+  /** Lower 95% bound on the share right; null with a curve or too few right answers. */
+  lower_bound: number | null;
 }
 
 export interface CalibrationResponse {

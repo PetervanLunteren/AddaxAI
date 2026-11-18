@@ -33,7 +33,7 @@ from app.ml.calibration import (
     draw_sample,
     fit_calibration,
     has_enough_answers,
-    rule_of_three_bound,
+    lower_bound,
 )
 from app.ml.detection_visibility import on_visible_frame
 from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
@@ -97,7 +97,11 @@ def _summarise(
     wrong = sum(1 for _, a in answers if a == "wrong")
     unsure = sum(1 for _, a in answers if a == "unsure")
     if not has_enough_answers(right, wrong):
-        bound = rule_of_three_bound(right) if wrong == 0 else None
+        # A label that is nearly always right may never collect the wrong
+        # answers a curve needs, so until then it gets a bound on its
+        # share right. A label short of right answers gets none: there
+        # the bound sits near 0 and says nothing.
+        bound = lower_bound(right, wrong) if right > 0 and wrong < MIN_WRONG else None
         return right, wrong, unsure, None, None, bound
 
     judged = [(s, a) for s, a in answers if a != "unsure"]
@@ -165,7 +169,7 @@ def get_calibration(db: Session, project_id: str) -> CalibrationResponse:
                 wrong_needed=max(0, MIN_WRONG - wrong),
                 thresholds=thresholds,
                 curve=curve,
-                no_error_bound=bound,
+                lower_bound=bound,
             )
         )
     return CalibrationResponse(
