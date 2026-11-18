@@ -30,6 +30,7 @@ import { projectsApi } from "../../api/projects";
 import { API_BASE_URL } from "../../lib/api-client";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
 import { frameImageUrl } from "../../lib/clip-frames";
+import type { LabelScope } from "../../lib/label-scope";
 import { frameBoxes, samplingStep, trackGaps, trackPath } from "../../lib/track-utils";
 import { TrackSpan } from "./TrackTimeline";
 import {
@@ -96,6 +97,10 @@ interface DetectionDetailModalProps {
   position?: string;
   /** Project ID for fetching nearest neighbors. */
   projectId?: string;
+  /** Sites and dates the look-alikes are taken from: the scope the
+   *  page works in (`lib/label-scope.ts`), so they are the same crops
+   *  that vote on a suggestion. */
+  scope?: LabelScope;
   /** Available label options for the relabel picker. */
   labelOptions?: LabelOption[];
   labelOptionsLoading?: boolean;
@@ -163,6 +168,7 @@ export function DetectionDetailModal({
   onNavigate,
   position,
   projectId,
+  scope,
   labelOptions = [],
   labelOptionsLoading = false,
 }: DetectionDetailModalProps) {
@@ -401,7 +407,7 @@ export function DetectionDetailModal({
 
   // Fetch 10 nearest neighbors for the Label Agreement thumbnails
   const { data: neighborsData } = useQuery({
-    queryKey: ["detection-neighbors", detection?.detection_id],
+    queryKey: ["detection-neighbors", detection?.detection_id, scope],
     // Aborted by React Query when the modal closes or steps to another
     // crop before the answer arrives, so the backend stops the search.
     queryFn: ({ signal }) =>
@@ -409,6 +415,7 @@ export function DetectionDetailModal({
         projectId!,
         {
           anchor_detection_id: detection!.detection_id,
+          filters: scope,
           limit: 11,
         },
         signal,

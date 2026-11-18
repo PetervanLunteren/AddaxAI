@@ -3,6 +3,8 @@
  *
  * Lives inside the Labels VerifyToolbar. Reads the cohort count (sum of
  * cohort sizes) from the cohorts endpoint and offers a Review button.
+ * The count is for the scope, the sites and dates in the filter bar
+ * (`lib/label-scope.ts`), the same pool the review then searches.
  * The review itself is a focused view with its own bar and way back
  * (`FocusedViewBar`), and the toolbar is hidden while it is open, so
  * this pill only ever offers the way in.
@@ -16,22 +18,27 @@ import { useQuery } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
 
 import { labelsApi } from "../../api/labels";
+import type { LabelScope } from "../../lib/label-scope";
 import { Button } from "../ui/button";
 
 interface SuggestionsToolbarPillProps {
   projectId: string;
+  /** Sites and dates the suggestions are looked for in. */
+  scope: LabelScope;
   onEnter: () => void;
 }
 
 export function SuggestionsToolbarPill({
   projectId,
+  scope,
   onEnter,
 }: SuggestionsToolbarPillProps) {
   const { data } = useQuery({
-    queryKey: ["cohorts", projectId],
+    // Invalidated by its ["cohorts", projectId] prefix, whatever the scope.
+    queryKey: ["cohorts", projectId, scope],
     // React Query aborts the signal when the badge leaves the page mid-run,
     // which closes the request and stops the backend's subprocess.
-    queryFn: ({ signal }) => labelsApi.cohorts(projectId, signal),
+    queryFn: ({ signal }) => labelsApi.cohorts(projectId, scope, signal),
     // The same expensive ML pass that powers the suggestions sort.
     // Cache for 5 minutes so the toolbar doesn't re-fetch as the user
     // moves around the page; bulk-relabel invalidates the key.

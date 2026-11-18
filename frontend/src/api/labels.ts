@@ -12,6 +12,7 @@
  */
 
 import { api } from "../lib/api-client";
+import type { LabelScope } from "../lib/label-scope";
 import type {
   CohortsResponse,
   LabelsFilesParams,
@@ -277,21 +278,27 @@ export const labelsApi = {
    */
   cohorts: async (
     projectId: string,
+    scope: LabelScope,
     signal?: AbortSignal,
   ): Promise<CohortsResponse> => {
-    return labelsApi.cohortsStream(projectId, () => {}, signal);
+    return labelsApi.cohortsStream(projectId, scope, () => {}, signal);
   },
 
   cohortsStream: async (
     projectId: string,
+    scope: LabelScope,
     onProgress: (e: LabelsProgressEvent) => void,
     signal?: AbortSignal,
   ): Promise<CohortsResponse> => {
-    // GET request — no body. The endpoint reads `min_count` and
-    // `max_cohorts` from query params; defaults (5 / 20) are baked into
-    // the panel's expected workload, so callers don't override them.
+    // GET request, no body. The scope (sites and dates) goes in the
+    // query, as for `progress`. The endpoint's `min_count` and
+    // `max_cohorts` keep their defaults, so callers don't send them.
+    const sp = new URLSearchParams();
+    if (scope.site_ids?.length) sp.set("site_ids", scope.site_ids.join(","));
+    if (scope.date_from) sp.set("date_from", scope.date_from);
+    if (scope.date_to) sp.set("date_to", scope.date_to);
     return streamNdjson<CohortsResponse>(
-      `/api/projects/${projectId}/labels/cohorts`,
+      `/api/projects/${projectId}/labels/cohorts?${sp.toString()}`,
       undefined,
       onProgress,
       signal,

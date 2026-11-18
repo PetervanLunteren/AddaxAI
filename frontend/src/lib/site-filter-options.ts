@@ -21,13 +21,16 @@ export interface SiteFilterOption {
   label: string;
 }
 
+/** What the reserved "deployments without a site" option is called. */
+export const NO_SITE_LABEL = "(no site)";
+
 export function buildSiteOptions(
   sites: SiteLike[] | undefined,
   noSiteCount: number,
 ): SiteFilterOption[] {
   const base = (sites ?? []).map((s) => ({ value: s.id, label: s.name }));
   if (noSiteCount > 0) {
-    return [{ value: NO_SITE_SENTINEL, label: "(no site)" }, ...base];
+    return [{ value: NO_SITE_SENTINEL, label: NO_SITE_LABEL }, ...base];
   }
   return base;
 }

@@ -51,6 +51,20 @@ class LabelFilters(BaseModel):
     flagged: Literal["flagged", "not_flagged"] | None = None
     favorited: Literal["favorited", "not_favorited"] | None = None
 
+    def scope_only(self) -> "LabelFilters":
+        """The scope alone: where and when, without the selection.
+
+        Site and date say which part of the project someone works on.
+        Every other filter says what they look at. The suggestions vote
+        runs inside the scope and ignores the selection: a label or
+        Verified filter removes voters by the very thing they vote on.
+        This is the one place that says which filters are scope.
+        """
+        return LabelFilters(
+            site_ids=self.site_ids,
+            date_from=self.date_from,
+            date_to=self.date_to,
+        )
 
 
 class SortRequest(BaseModel):

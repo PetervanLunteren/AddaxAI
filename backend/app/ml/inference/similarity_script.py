@@ -1133,10 +1133,10 @@ def do_cohorts(db_path: str, project_id: str, params: dict) -> dict:
     """Group descendant-promotion suggestions for the cohort review panel.
 
     Loads every embedded detection in the project that passes the
-    caller-supplied filters (typically just the project's
-    `(confidence >= threshold OR verified)` floor, set by the service
-    layer so the pill counts the same population the suggestions grid
-    will actually load). Runs the same neighbour-agreement + strict-
+    caller-supplied filters (the scope, sites and dates, plus the
+    project's `(confidence >= threshold OR verified)` floor, set by the
+    service layer so the pill counts the same population the suggestions
+    grid will actually load). Runs the same neighbour-agreement + strict-
     descendant pass as do_sort, and buckets unverified detections with
     a surviving suggestion by `(current_label, suggested_label,
     category)`. Returns the top `max_cohorts` cohorts (default 200)

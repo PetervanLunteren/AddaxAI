@@ -42,7 +42,13 @@ from app.ml.inference.similarity_script import (
 )
 from app.models.detection_embedding import DetectionEmbedding
 from app.models.label_taxonomy import LabelTaxonomy
-from tests.conftest import make_deployment, make_detection, make_file, make_project
+from tests.conftest import (
+    make_deployment,
+    make_detection,
+    make_file,
+    make_project,
+    make_site,
+)
 
 # do_sort imports its sibling `observation_sort` by bare name (it runs as
 # a subprocess in production, where its own dir is on sys.path[0]). Make
@@ -100,13 +106,21 @@ def fake_faiss(monkeypatch):
     return module
 
 
+_UNIT_VECTOR = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
+
+
 def _embedded_detection(
-    session, deployment_id: str, *, label: str, captured_at: datetime
+    session,
+    deployment_id: str,
+    *,
+    label: str,
+    captured_at: datetime,
+    vector: np.ndarray = _UNIT_VECTOR,
 ):
     """One file + detection carrying `label`, with a unit embedding.
 
-    Every detection gets the same vector, so each one's nearest
-    neighbours are simply everything else. That makes the neighbour
+    By default every detection gets the same vector, so each one's
+    nearest neighbours are simply everything else. That makes the neighbour
     majority a function of the label mix alone, which is what the
     suggestions cohorting is about.
     """
@@ -118,7 +132,6 @@ def _embedded_detection(
         height_px=1080,
     )
     d = make_detection(session, file_id=f.id, confidence=0.9, label=label)
-    vector = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
     session.add(
         DetectionEmbedding(
             id=str(uuid.uuid4()),
@@ -515,3 +528,107 @@ def test_chunked_neighbour_search_matches_one_batch(monkeypatch, capsys):
     assert any(t is not None for t in chunked[1])  # the vote did something
     # 0/30 first, then one event per chunk of 4, ending on 30/30.
     assert [e["done"] for e in events] == [0, 4, 8, 12, 16, 20, 24, 28, 30]
+
+
+# ── the scope: suggestions for some sites and dates ──────────────────────
+
+_OTHER_VECTOR = np.array([0.0, 1.0, 0.0, 0.0], dtype=np.float32)
+
+
+def _two_sites(s):
+    """Two sites, each with 3 canis among 8 dogs.
+
+    Site A is dated January 2024, site B February. The sites' vectors
+    are orthogonal, so the ten look-alikes of every crop are the ten
+    others of its own site, whether or not the other site is in the pool.
+    """
+    p = make_project(s, classification_model_id=CLS_MODEL)
+    site_a = make_site(s, project_id=p.id)
+    site_b = make_site(s, project_id=p.id)
+    dep_a = make_deployment(s, site_id=site_a.id)
+    dep_b = make_deployment(s, site_id=site_b.id)
+    made_a = _canis_and_dogs(s, dep_a.id, canis=3, dogs=8)
+    made_b = [
+        _embedded_detection(
+            s, dep_b.id, label=label, vector=_OTHER_VECTOR,
+            captured_at=datetime(2024, 2, day, 12),
+        )
+        for day, label in enumerate(["canis"] * 3 + ["domestic dog"] * 8, start=1)
+    ]
+    return p, site_a, site_b, made_a, made_b
+
+
+def _review_ids(db_path, project_id, filters) -> set[str]:
+    result = do_sort(
+        db_path, project_id,
+        {"sort": "suggestions", "filters": filters, "min_count": 2},
+    )
+    return {d["detection_id"] for d in result["detections"]}
+
+
+def _pill_ids(db_path, project_id, filters) -> set[str]:
+    result = do_cohorts(
+        db_path, project_id,
+        {"filters": filters, "min_count": 2, "max_cohorts": 10},
+    )
+    return {i for c in result["cohorts"] for i in c["detection_ids"]}
+
+
+def test_without_a_scope_suggestions_cover_every_site(sort_db, fake_faiss):
+    db_path, s = sort_db
+    p, _a, _b, made_a, made_b = _two_sites(s)
+    s.commit()
+
+    canis = {d.id for d in made_a[:3] + made_b[:3]}
+    assert _review_ids(db_path, p.id, {}) == canis
+    assert _pill_ids(db_path, p.id, {}) == canis
+
+
+def test_a_site_scope_limits_the_review_and_the_pill_to_that_site(
+    sort_db, fake_faiss
+):
+    """What a team asked for (2026-11-13): one site each. The pool is the
+    scope, so the count that says how much was searched is the site's."""
+    db_path, s = sort_db
+    p, site_a, _b, made_a, _made_b = _two_sites(s)
+    s.commit()
+
+    scope = {"site_ids": [site_a.id]}
+    canis_a = {d.id for d in made_a[:3]}
+    assert _review_ids(db_path, p.id, scope) == canis_a
+    assert _pill_ids(db_path, p.id, scope) == canis_a
+
+    result = do_sort(
+        db_path, p.id, {"sort": "suggestions", "filters": scope, "min_count": 2}
+    )
+    assert result["total_loaded"] == 11
+    assert result["total_matching"] == 11
+
+
+def test_a_date_scope_limits_the_review_and_the_pill_to_those_dates(
+    sort_db, fake_faiss
+):
+    db_path, s = sort_db
+    p, _a, _b, _made_a, made_b = _two_sites(s)
+    s.commit()
+
+    scope = {"date_from": "2024-02-01 00:00:00"}
+    canis_b = {d.id for d in made_b[:3]}
+    assert _review_ids(db_path, p.id, scope) == canis_b
+    assert _pill_ids(db_path, p.id, scope) == canis_b
+
+
+def test_verified_crops_in_the_scope_still_vote(sort_db, fake_faiss):
+    """Why the selection stays out of the vote. With the dogs verified,
+    the scope alone still finds the canis cohort: their verified
+    look-alikes vote. Add the grid's default Verified filter, as the
+    review did until 2026-10-29, and the voters are gone with it."""
+    db_path, s = sort_db
+    p, site_a, _b, made_a, _made_b = _two_sites(s)
+    for dog in made_a[3:]:
+        dog.verified = True
+    s.commit()
+
+    scope = {"site_ids": [site_a.id]}
+    assert _review_ids(db_path, p.id, scope) == {d.id for d in made_a[:3]}
+    assert _review_ids(db_path, p.id, {**scope, "verified": False}) == set()
