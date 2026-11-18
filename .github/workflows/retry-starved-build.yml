@@ -1,0 +1,106 @@
+name: Retry build without runner
+
+# GitHub's hosted macOS arm64 pool is sometimes out of capacity. A job
+# then waits 15 minutes in the queue, never gets a runner and is
+# cancelled with zero steps, which fails the whole release build.
+# This workflow re-runs exactly those jobs until a runner picks them up.
+#
+# It only retries a job that never started (cancelled, no runner, no
+# steps). A job that ran and failed, such as a build error or a failed
+# notarization, is left alone. A run you cancel by hand is left alone
+# too: that run ends as "cancelled", not "failure".
+#
+# Triggers:
+# - workflow_run: after every "Build Electron App" run.
+# - workflow_dispatch: point it at an existing run by its id.
+on:
+  workflow_run:
+    workflows: ["Build Electron App"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Id of the "Build Electron App" run to watch and retry
+        required: true
+      max_attempts:
+        description: Stop when the run has reached this attempt number
+        required: false
+        default: "12"
+
+permissions:
+  actions: write  # Required to re-run a job
+  contents: read
+
+# One watcher per build run. A second one waits for the first, then
+# looks at the run as it is by then.
+concurrency:
+  group: retry-starved-build-${{ github.event.workflow_run.id || inputs.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  retry:
+    name: Retry jobs that never got a runner
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-22.04
+    # Twelve attempts of 15 minutes in the queue, plus one real build.
+    timeout-minutes: 300
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+      MAX_ATTEMPTS: ${{ inputs.max_attempts || '12' }}
+    steps:
+      - name: Re-run starved jobs until they get a runner
+        run: |
+          set -euo pipefail
+
+          while true; do
+            run=$(gh api "repos/$REPO/actions/runs/$RUN_ID")
+            status=$(jq -r '.status' <<<"$run")
+            conclusion=$(jq -r '.conclusion // ""' <<<"$run")
+            attempt=$(jq -r '.run_attempt' <<<"$run")
+
+            if [ "$status" != "completed" ]; then
+              echo "Attempt $attempt is $status. Checking again in a minute."
+              sleep 60
+              continue
+            fi
+
+            if [ "$conclusion" != "failure" ]; then
+              echo "Attempt $attempt ended as '$conclusion'. Nothing to retry."
+              exit 0
+            fi
+
+            # Jobs of this attempt that never started: cancelled, no
+            # runner assigned, no steps.
+            starved=$(gh api "repos/$REPO/actions/runs/$RUN_ID/attempts/$attempt/jobs?per_page=100" \
+              --jq '[.jobs[]
+                     | select(.conclusion == "cancelled"
+                              and ((.runner_id // 0) == 0)
+                              and ((.steps // []) | length == 0))]')
+            count=$(jq 'length' <<<"$starved")
+
+            if [ "$count" = "0" ]; then
+              echo "Attempt $attempt failed, but every job got a runner. This is a real failure, not retrying."
+              exit 0
+            fi
+
+            names=$(jq -r 'map(.name) | join(", ")' <<<"$starved")
+            if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
+              echo "::error::Still no runner for: $names. Gave up at attempt $attempt."
+              exit 1
+            fi
+
+            echo "::notice::Attempt $attempt: no runner for $names. Re-running."
+            if [ "$count" = "1" ]; then
+              # Only the starved job, so a real failure in another job
+              # is not repeated.
+              job_id=$(jq -r '.[0].id' <<<"$starved")
+              gh api -X POST "repos/$REPO/actions/jobs/$job_id/rerun" >/dev/null
+            else
+              gh run rerun "$RUN_ID" --repo "$REPO" --failed
+            fi
+
+            # Give GitHub time to open the new attempt before looking again.
+            sleep 60
+          done
