@@ -46,13 +46,15 @@ export function SpeciesRateTable({ species, isLoading }: SpeciesRateTableProps) 
   if (species.length === 0) return <Message>No observations in this selection</Message>;
 
   // Every site with effort counts for every species, so the number of
-  // sites is the same on every row: said once, in the caption.
+  // sites is the same on every row: said once, in the caption. Above
+  // the table, not under it: it is what the numbers mean, and under 55
+  // species nobody reads it.
   const sites = species[0].n_sites;
   return (
     <div className="rounded-lg border bg-card">
-      <Table>
-        <TableCaption className="mb-4">
-          Observations {rateLabel()}, across {sites} site{sites === 1 ? "" : "s"}
+      <Table className="caption-top">
+        <TableCaption className="mt-0 px-4 py-3 text-left">
+          Observations {rateLabel()}: the mean of {sites} site rate{sites === 1 ? "" : "s"}
         </TableCaption>
         <TableHeader>
           <TableRow>
