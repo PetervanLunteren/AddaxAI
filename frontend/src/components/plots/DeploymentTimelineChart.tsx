@@ -291,7 +291,10 @@ function buildHeatmapIndex(
   }
   const counts: number[] = [];
   for (const cells of cellsBySite.values()) counts.push(...cells.values());
-  return { cellsBySite, domain: calculateRateDomain(counts) };
+  // Most cells hold few files and a few hold very many. Ending the ramp
+  // at the 66th percentile keeps the many small cells visible on a
+  // light card; the legend prints that value with a "+".
+  return { cellsBySite, domain: calculateRateDomain(counts, 0.66) };
 }
 
 const HOVER_LABEL_HEIGHT = 20;

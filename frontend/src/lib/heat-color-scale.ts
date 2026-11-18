@@ -69,7 +69,7 @@ export function rampGradient(ramp: RateRamp, direction: string): string {
 export interface RateScaleDomain {
   /** The highest value. */
   max: number;
-  /** Where the ramp ends: the 95th percentile of the non-zero values. */
+  /** Where the ramp ends: a percentile of the non-zero values. */
   cap: number;
 }
 
@@ -80,12 +80,15 @@ export interface RateScaleDomain {
  * outlier does not make every other value pale. With fewer than 20
  * values the 95th percentile is the maximum itself. A legend must
  * print `cap`, with a "+" when `max` lies above it.
+ *
+ * `capAt` is for a view whose values are so skewed that 95% leaves
+ * most of them at the pale end: the Deployment timeline's file counts.
  */
-export function calculateRateDomain(rates: number[]): RateScaleDomain {
+export function calculateRateDomain(rates: number[], capAt = 0.95): RateScaleDomain {
   const sorted = rates.filter((r) => r > 0).sort((a, b) => a - b);
   if (sorted.length === 0) return { max: 0, cap: 0 };
   return {
     max: sorted[sorted.length - 1],
-    cap: sorted[Math.floor(sorted.length * 0.95)],
+    cap: sorted[Math.floor(sorted.length * capAt)],
   };
 }

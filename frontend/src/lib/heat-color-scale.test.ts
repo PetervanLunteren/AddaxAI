@@ -15,6 +15,11 @@ describe("calculateRateDomain", () => {
     expect(calculateRateDomain(rates)).toEqual({ max: 5000, cap: 96 });
   });
 
+  it("ends the ramp earlier when a view asks for it", () => {
+    const rates = Array.from({ length: 100 }, (_, i) => i + 1);
+    expect(calculateRateDomain(rates, 0.66)).toEqual({ max: 100, cap: 67 });
+  });
+
   it("uses the maximum for a small set, where 95% is the last value", () => {
     expect(calculateRateDomain([3, 1, 40, 2, 5])).toEqual({ max: 40, cap: 40 });
   });

@@ -111,7 +111,9 @@ satellite imagery. A new ramp is one entry in `RATE_RAMPS`
 (`lib/heat-color-scale.ts`). The backgrounds are one list too,
 `BASE_LAYERS` in `components/map/basemap-styles.ts`. A scale ends at the
 95th percentile of its values (`calculateRateDomain`), so a legend
-prints that value with a "+" when values lie above it.
+prints that value with a "+" when values lie above it. The Deployment
+timeline heatmap ends at the 66th, because its file counts are too
+skewed for 95.
 
 ### Species colours
 Species are categories, not a scale, so they do not use the gradient. The

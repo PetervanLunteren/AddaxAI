@@ -39,7 +39,8 @@ export const OSM_LAYER = {
  * they do not change.
  */
 export const BASE_LAYERS = [
-  { id: "positron", name: "Light" },
+  // "Street", not "Light": in dark mode it is drawn dark.
+  { id: "positron", name: "Street" },
   {
     id: "satellite",
     name: "Satellite",

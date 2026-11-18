@@ -60,6 +60,15 @@ export function MiniMapCard({
       <DashboardCardHeader
         title="Where"
         caption="Darker sites have a higher observation rate"
+        // Top right, where the other cards name where they lead. Not a
+        // second link: the whole card is one, below.
+        actions={
+          bounds !== null && (
+            <span aria-hidden className={CARD_HOVER_PILL}>
+              Open map
+            </span>
+          )
+        }
       />
       <CardContent className="flex flex-1 flex-col">
         {isLoading ? (
@@ -120,13 +129,9 @@ export function MiniMapCard({
       {bounds !== null && (
         <Link
           to={mapHref}
-          aria-label="Open the full map"
+          aria-label="Open map"
           className="absolute inset-0 z-[500] rounded-lg"
-        >
-          <span className={cn("absolute bottom-8 right-8", CARD_HOVER_PILL)}>
-            Open the full map
-          </span>
-        </Link>
+        />
       )}
     </Card>
   );

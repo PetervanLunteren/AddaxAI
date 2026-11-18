@@ -212,6 +212,13 @@ html, body {
   z-index: 0;
 }
 
+/* Leaflet's layers list keeps its white background in dark mode, so its
+ * radio buttons must not take the dark scheme: dark on white, the
+ * unselected ones looked filled in. */
+.leaflet-control-layers {
+  color-scheme: light;
+}
+
 /* Fullscreen toggle — the FullscreenControl button toggles this class
  * on the map container element. */
 .leaflet-container.map-fullscreen {
