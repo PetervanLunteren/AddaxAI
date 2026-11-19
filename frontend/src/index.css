@@ -191,6 +191,16 @@ html, body {
   }
 }
 
+/* Toasts must take clicks while a modal is open. A Radix modal sets
+ * pointer-events: none on <body> to block everything outside it, and the
+ * toaster lives there too, so a toast's View, Undo and close buttons were
+ * dead under any open viewer or dialog. The toaster box itself has no
+ * height (its toasts float in it), so this blocks nothing else. The
+ * dialog's own onPointerDownOutside keeps such a click from closing it. */
+[data-sonner-toaster] {
+  pointer-events: auto;
+}
+
 @keyframes toast-slide-up {
   from {
     opacity: 0;
