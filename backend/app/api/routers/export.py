@@ -4,7 +4,7 @@ answers with what it wrote; nothing is a browser download.
 
 - ``/tables``: Summary, Counts, Detections, Files and Deployments, as one
   XLSX workbook or five CSV / TSV files. CSV / TSV also write the Frames
-  table when the scope holds a video.
+  table when asked and the scope holds a video.
 - ``/spatial``: GIS layers as GeoPackage, GeoJSON or a Shapefile ZIP.
 - ``/camtrap-dp/prepare``: a job writing a Camera Trap Data Package ZIP.
 - ``/recognition-json/prepare``: a job writing the Timelapse recognition
@@ -170,8 +170,10 @@ async def export_tables(
     XLSX writes one workbook with five sheets, CSV and TSV write five
     files; either way every table is streamed to disk row by row. CSV and
     TSV add the Frames table (every box of every track, one row per
-    sampled frame) when the scope holds a video. It is never a sheet: a
-    marine project outgrows Excel's row limit.
+    sampled frame) when ``include_frames`` is on and the scope holds a
+    video. It is opt-in because it is the largest table by far and only
+    per-frame work needs it. It is never a sheet: a marine project
+    outgrows Excel's row limit.
     """
     project = _resolve_project(project_id, db)
     scope = _scope(db, project, body.deployment_ids)
@@ -196,7 +198,7 @@ async def export_tables(
             )
             export_formats.write_csv(path, headers, rows, delimiter=delimiter)
             names.append(path.name)
-        if export_crud.scope_has_videos(db, project, scope):
+        if body.include_frames and export_crud.scope_has_videos(db, project, scope):
             path = export_formats.unique_export_path(
                 folder, export_formats.export_file_name(project.name, "frames", body.format)
             )

@@ -78,7 +78,7 @@ def _export_peak_bytes(client, project_id: str) -> int:
     try:
         resp = client.post(
             f"/api/projects/{project_id}/export/tables",
-            json={"output_dir": folder, "format": "csv"},
+            json={"output_dir": folder, "format": "csv", "include_frames": True},
         )
         _current, peak = tracemalloc.get_traced_memory()
     finally:

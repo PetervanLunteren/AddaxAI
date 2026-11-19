@@ -19,6 +19,13 @@ import {
 } from "../../api/export";
 import { projectsApi } from "../../api/projects";
 import { NO_SITE_SENTINEL } from "../../lib/filter-url";
+import {
+  FRAMES_TABLE_LABEL,
+  framesTableCaption,
+  loadIncludeFrames,
+  saveIncludeFrames,
+} from "../../lib/frames-table";
+import { cn } from "../../lib/utils";
 import { Callout } from "../ui/callout";
 import { CaptionedRadioGroup } from "../ui/captioned-radio-group";
 import { ExportDialog, ExportSection, type ExportResultView } from "./ExportDialog";
@@ -95,8 +102,7 @@ const TABLE_FORMATS = [
   {
     value: "csv" as const,
     label: "CSV",
-    caption:
-      "The same five tables as five files, for R, Python or any spreadsheet. Videos add a frames table.",
+    caption: "The same five tables as five files, for R, Python or any spreadsheet.",
   },
   {
     value: "tsv" as const,
@@ -108,17 +114,26 @@ const TABLE_FORMATS = [
 export function SpreadsheetExportDialog({ projectId, onClose }: ExportDialogComponentProps) {
   const [scope, setScope] = useState<ExportScope | undefined>();
   const [format, setFormat] = useState<ObservationFormat>("xlsx");
+  const [includeFrames, setIncludeFrames] = useState(loadIncludeFrames);
+  const excel = format === "xlsx";
   return (
     <ExportDialog
       projectId={projectId}
       title="Spreadsheet"
-      description="Summary, counts, detections, files and deployments, including species labels and your corrections. For videos, CSV and TSV also save every frame."
+      description="Summary, counts, detections, files and deployments, including species labels and your corrections."
       onClose={onClose}
       scope={scope}
       onScopeChange={setScope}
-      start={async (outputDir) => ({
-        result: await exportApi.writeTables(projectId, { ...target(outputDir, scope), format }),
-      })}
+      start={async (outputDir) => {
+        saveIncludeFrames(includeFrames);
+        return {
+          result: await exportApi.writeTables(projectId, {
+            ...target(outputDir, scope),
+            format,
+            include_frames: includeFrames,
+          }),
+        };
+      }}
       describeResult={describeWritten}
     >
       <ExportSection title="Format">
@@ -128,6 +143,26 @@ export function SpreadsheetExportDialog({ projectId, onClose }: ExportDialogComp
           onChange={setFormat}
           options={TABLE_FORMATS}
         />
+        <label
+          className={cn(
+            "flex items-start gap-3 rounded-md border px-3 py-3 text-sm",
+            excel ? "cursor-not-allowed text-muted-foreground" : "cursor-pointer",
+          )}
+        >
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+            checked={includeFrames}
+            disabled={excel}
+            onChange={(e) => setIncludeFrames(e.target.checked)}
+          />
+          <span>
+            {FRAMES_TABLE_LABEL}
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              {framesTableCaption(excel)}
+            </span>
+          </span>
+        </label>
       </ExportSection>
     </ExportDialog>
   );

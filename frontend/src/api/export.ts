@@ -67,7 +67,7 @@ export const exportApi = {
    *  workbook, or five CSV / TSV files. */
   writeTables: (
     projectId: string,
-    body: ExportTarget & { format: ObservationFormat },
+    body: ExportTarget & { format: ObservationFormat; include_frames: boolean },
   ): Promise<WrittenFiles> =>
     api.post<WrittenFiles>(`/api/projects/${projectId}/export/tables`, body),
 
