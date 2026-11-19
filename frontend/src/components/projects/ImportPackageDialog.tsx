@@ -192,6 +192,7 @@ export function ImportPackageDialog({ open, onOpenChange }: ImportPackageDialogP
 
           <div className="space-y-4">
             <FolderSelector
+              variant="source"
               value={path || null}
               onChange={(p) => {
                 setPath(p);

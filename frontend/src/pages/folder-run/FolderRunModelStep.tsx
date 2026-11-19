@@ -956,6 +956,7 @@ export function FolderRunModelStep() {
                           <div className="space-y-1">
                             <FormControl>
                               <FolderSelector
+                                variant="source"
                                 value={field.value || null}
                                 onChange={(v) => {
                                   field.onChange(v ?? "");

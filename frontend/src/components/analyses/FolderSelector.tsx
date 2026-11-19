@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Folder,
   FolderInput,
+  FolderOpen,
   Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -64,6 +65,14 @@ const TEST_DEPLOYMENTS: { scope: string; path: string }[] = [
 interface FolderSelectorProps {
   value: string | null;
   onChange: (path: string) => void;
+  /** What the folder is for, which decides the empty state. A source
+   *  (a camera folder, a bundle) gets the large drop card: the folder is
+   *  usually open in Finder or Explorer already, so dragging it in is
+   *  natural. A destination gets one "Choose folder" row, the way save
+   *  and export dialogs pick a location: it is often not open anywhere,
+   *  may not exist yet, and only the native picker can make a new one.
+   *  The row still takes a dropped folder, it just does not ask for one. */
+  variant: "source" | "destination";
   error?: string;
   /** Current datetime offset in seconds (0 = no offset). */
   datetimeOffsetSeconds?: number;
@@ -107,6 +116,7 @@ interface FolderSelectorProps {
 export function FolderSelector({
   value,
   onChange,
+  variant,
   error,
   datetimeOffsetSeconds = 0,
   cameraOffsets = {},
@@ -173,7 +183,7 @@ export function FolderSelector({
 
   // Resolve a dropped file's absolute path through the Electron preload.
   // Single-folder drops only — additional items are ignored.
-  const handleDrop = (e: React.DragEvent<HTMLButtonElement>) => {
+  const handleDrop = (e: React.DragEvent<HTMLElement>) => {
     e.preventDefault();
     setIsDragOver(false);
     const file = e.dataTransfer.files[0];
@@ -215,6 +225,28 @@ export function FolderSelector({
             error={!!error}
             onClear={() => onChange("")}
           />
+        ) : inElectron && variant === "destination" ? (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleElectronSelect}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragOver(true);
+            }}
+            onDragLeave={() => setIsDragOver(false)}
+            onDrop={handleDrop}
+            className={
+              isDragOver
+                ? "border-primary bg-primary/5"
+                : error
+                  ? "border-destructive"
+                  : undefined
+            }
+          >
+            <FolderOpen className="h-4 w-4" />
+            Choose folder…
+          </Button>
         ) : inElectron ? (
           <button
             type="button"

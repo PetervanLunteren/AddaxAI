@@ -174,6 +174,7 @@ export function OutputFolderField({
           </span>
         </div>
         <FolderSelector
+          variant="destination"
           value={value || null}
           onChange={onChange}
           hideLabel

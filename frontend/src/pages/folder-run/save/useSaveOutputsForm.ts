@@ -28,7 +28,6 @@ import {
 import { projectsApi } from "../../../api/projects";
 import { DEFAULT_COUNTING_THRESHOLD } from "../../../lib/confidence";
 import { invalidateProjectData } from "../../../lib/invalidate-project";
-import { isElectron } from "../../../lib/platform";
 import {
   loadLastUsedSaveOutputs,
   saveLastUsedSaveOutputs,
@@ -105,7 +104,6 @@ export interface UseSaveOutputsFormResult extends MediaFormHandles {
   /** Reset the completion screen back to the form. */
   clearResult: () => void;
 
-  handleBrowse: () => Promise<void>;
   handleOpenResults: () => Promise<void>;
 
   exportPicked: boolean;
@@ -340,12 +338,6 @@ export function useSaveOutputsForm({
 
   const clearResult = () => setResult(null);
 
-  const handleBrowse = async () => {
-    if (!isElectron() || !window.electronAPI?.selectFolder) return;
-    const folder = await window.electronAPI.selectFolder();
-    if (folder) setOutputDir(folder);
-  };
-
   const handleOpenResults = async () => {
     if (!result || !window.electronAPI?.openPath) return;
     await window.electronAPI.openPath(result.output_dir);
@@ -390,7 +382,6 @@ export function useSaveOutputsForm({
     onJobError,
     onJobCancelled,
     clearResult,
-    handleBrowse,
     handleOpenResults,
     exportPicked,
     canSave,

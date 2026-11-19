@@ -309,6 +309,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
         <CardContent className="space-y-6">
           {/* Folder selector */}
           <FolderSelector
+            variant="source"
             value={folderPath}
             onChange={(path) => {
               setFolderPath(path);

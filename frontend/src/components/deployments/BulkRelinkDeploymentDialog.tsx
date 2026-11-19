@@ -174,6 +174,7 @@ export function BulkRelinkDeploymentDialog({
             <div className="space-y-2">
               <Label>Is now</Label>
               <FolderSelector
+                variant="source"
                 value={newParentPath}
                 onChange={setNewParentPath}
                 hideLabel
