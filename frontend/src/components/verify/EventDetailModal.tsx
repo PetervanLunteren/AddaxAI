@@ -61,7 +61,7 @@ import type {
 import { EventFilmstrip } from "./EventFilmstrip";
 import { ShortcutKey } from "./LabelsKeyboardPopover";
 import { ViewerToolRail } from "./ViewerToolRail";
-import { useFileTriage, useImageAdjust } from "./viewer-tools";
+import { useFileTriage, useHoldToPeek, useImageAdjust } from "./viewer-tools";
 import type { TileSize } from "./CropGrid";
 import { AnnotationCanvas } from "./AnnotationCanvas";
 import { EventCountPanel } from "./EventCountPanel";
@@ -383,6 +383,9 @@ export function EventDetailModal({
     queryClient.invalidateQueries({ queryKey: ["events"] });
   }, [queryClient, eventId]);
   const triage = useFileTriage(invalidateEventCaches);
+  // Hold I: every stored box of the still. Off while the player is up.
+  const playing = viewMode === "video" && !!currentFile && isPlayableVideo(currentFile);
+  const peek = useHoldToPeek(!!currentFile && !playing);
 
   // In-place single-box relabel: clicking a label pill on the focus image
   // relabels that one detection through the same path the Labels page uses
@@ -797,6 +800,7 @@ export function EventDetailModal({
                     : "Download image"
                 }
                 onDownload={handleDownload}
+                peek={{ ...peek, disabled: playing }}
                 flagKey="T"
               >
                 {/* Loop event — cine-loop the event's frames to see
@@ -889,6 +893,7 @@ export function EventDetailModal({
                     onLoadingChange={warmNeighbourFrames}
                     imageFilter={imageFilter}
                     boxesHidden={boxesHidden}
+                    showAllBoxes={peek.peeking}
                     exportFnRef={exportFnRef}
                     frameNumber={
                       shownFrame != null && shownFrame !== currentFile.best_frame_number
@@ -1119,6 +1124,7 @@ export function EventDetailModal({
                     ["P", "Watch focused video"],
                     ["T", "Flag / unflag"],
                     ["B", "Show / hide AI boxes"],
+                    ["Hold I", "Show all stored boxes"],
                     ["Esc", "Close"],
                   ].map(([key, action]) => (
                     <div key={key} className="flex items-center text-xs gap-3 h-7">

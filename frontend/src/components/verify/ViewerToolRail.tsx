@@ -24,13 +24,14 @@ import {
   Flag,
   FolderOpen,
   Heart,
+  SquareDashed,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useRevealInFolder } from "@/lib/file-reveal";
 import { Button } from "../ui/button";
 import { ViewControls } from "./ViewControls";
-import type { FileTriage, RailFile } from "./viewer-tools";
+import type { FileTriage, HoldToPeek, RailFile } from "./viewer-tools";
 
 interface ViewerToolRailProps {
   boxesHidden: boolean;
@@ -44,6 +45,10 @@ interface ViewerToolRailProps {
   /** The flag shortcut shown in the tooltip. The Counts modal says "T"
    *  because its count panel owns F (sex: female). */
   flagKey?: string;
+  /** "Hold to show all stored boxes" (`useHoldToPeek`). Only the
+   *  viewers that show a whole file pass it: the Detections modal judges
+   *  one detection and has no button. `disabled` while a clip plays. */
+  peek?: HoldToPeek & { disabled: boolean };
   /** Extra rail tools between the box toggle and the flag (the Counts
    *  modal's event loop). */
   children?: ReactNode;
@@ -57,6 +62,7 @@ export function ViewerToolRail({
   downloadLabel,
   onDownload,
   flagKey = "F",
+  peek,
   children,
 }: ViewerToolRailProps) {
   const revealInFolder = useRevealInFolder();
@@ -76,6 +82,24 @@ export function ViewerToolRail({
       >
         {boxesHidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
       </Button>
+      {/* Every stored box of the frame, for as long as it is held, so
+          a person can see what a lower threshold would show. */}
+      {peek && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn("h-8 w-8", peek.peeking && "bg-accent text-primary-ink")}
+          disabled={peek.disabled}
+          title={
+            peek.disabled
+              ? "Pause the video to show all stored boxes"
+              : "Hold to show all stored boxes (I)"
+          }
+          {...peek.holdProps}
+        >
+          <SquareDashed className="h-4 w-4" />
+        </Button>
+      )}
       {children}
       {/* Flag for review — the one triage action worth its own key. */}
       <Button

@@ -27,7 +27,10 @@ import { detectionsApi } from "../../api/detections";
 import { reportMissingMedia } from "../../hooks/useBrokenDeployments";
 import { getDetectionColor } from "../../lib/detection-utils";
 import { canvasImage, frameImageUrl } from "../../lib/clip-frames";
-import { frameBoxes } from "../../lib/track-utils";
+import { frameBoxes, hiddenFrameBoxes } from "../../lib/track-utils";
+
+/** Konva name of a box drawn by "show all stored boxes". */
+const STORED_BOX = "stored-box";
 import { basename } from "../../lib/path-utils";
 import {
   roundedRectPath,
@@ -95,6 +98,10 @@ interface AnnotationCanvasProps {
   defaultCategory?: string;
   defaultLabel?: string;
   boxesHidden?: boolean;
+  /** Also draw every stored box the frame does not show (below the
+   *  threshold, marked false, on a track not on show), dashed and not
+   *  clickable. True only while "show all stored boxes" is held. */
+  showAllBoxes: boolean;
   exportFnRef?: React.MutableRefObject<(() => void) | null>;
   zoomFnRef?: React.MutableRefObject<{
     zoomIn: () => void;
@@ -129,6 +136,7 @@ export function AnnotationCanvas({
   defaultCategory,
   defaultLabel,
   boxesHidden,
+  showAllBoxes,
   exportFnRef,
   zoomFnRef,
 }: AnnotationCanvasProps) {
@@ -178,6 +186,13 @@ export function AnnotationCanvas({
   // The boxes of the frame the canvas is rendering, by the one rule
   // every rendered still and the player share (`frameBoxes`).
   const filteredDetections = frameBoxes(file, detectionThreshold, frameNumber);
+  // Lowest score first, so where they overlap the likelier box is drawn
+  // last, on top, and its pill is the one you can read.
+  const storedOnlyBoxes = showAllBoxes
+    ? hiddenFrameBoxes(file, detectionThreshold, frameNumber).sort(
+        (a, b) => a.confidence - b.confidence,
+      )
+    : [];
   // Every box on an editable still can be moved and resized, a clip's
   // frame like a photo (2026-11-03; a clip's boxes were fixed before).
   // The Counts modal mounts the canvas read-only, so only the Files
@@ -315,7 +330,10 @@ export function AnnotationCanvas({
       // just for the export and restore it after.
       const pills = stage.find(".label-pill");
       const spots = stage.find(".spotlight");
+      // Boxes shown by holding I are not results: never in the download.
+      const stored = stage.find(`.${STORED_BOX}`);
       [...pills, ...spots].forEach((n) => n.visible(true));
+      stored.forEach((n) => n.visible(false));
       stage.batchDraw();
 
       const pixelRatio = Math.max(1, imgWidth / stage.width());
@@ -326,6 +344,7 @@ export function AnnotationCanvas({
       transformer?.visible(wasVisible ?? true);
       pills.forEach((n) => n.visible(true));
       spots.forEach((n) => n.visible(!readOnly));
+      stored.forEach((n) => n.visible(true));
       stage.scale(savedScale);
       stage.position(savedPos);
       stage.batchDraw();
@@ -751,6 +770,63 @@ export function AnnotationCanvas({
               listening={false}
             />
           )}
+
+          {/* "Show all stored boxes": dashed and never clickable. Drawn
+              under the real boxes: a weak box is often a near copy of a
+              strong one, and its pill must not cover the result's. Named
+              STORED_BOX so the annotated download hides them. */}
+          {!loading &&
+            storedOnlyBoxes.map((detection) => {
+              const box = {
+                x: normToPixel(detection.bbox_x, imgWidth),
+                y: normToPixel(detection.bbox_y, imgHeight),
+                width: normToPixel(detection.bbox_width, imgWidth),
+                height: normToPixel(detection.bbox_height, imgHeight),
+              };
+              const pill = computePillLayout(detection);
+              const at = placePill(
+                box,
+                { width: pill.pillWidth, height: pill.pillHeight },
+                stageSize,
+              );
+              return (
+                <Group key={detection.id} name={STORED_BOX} listening={false}>
+                  <Rect
+                    {...box}
+                    stroke={pill.color}
+                    strokeWidth={2 / zoom}
+                    dash={[6 / zoom, 4 / zoom]}
+                    cornerRadius={BBOX_CORNER_RADIUS}
+                  />
+                  <Group x={at.x} y={at.y}>
+                    <Rect
+                      width={pill.pillWidth}
+                      height={pill.pillHeight}
+                      fill={PILL_BG}
+                      cornerRadius={BBOX_CORNER_RADIUS}
+                    />
+                    <Text
+                      x={TEXT_START_X}
+                      y={PILL_PAD_Y}
+                      text={pill.categoryText}
+                      fill="white"
+                      fontSize={FONT}
+                      fontFamily={OVERLAY_FONT_FAMILY}
+                    />
+                    {pill.hasLabel && (
+                      <Text
+                        x={TEXT_START_X}
+                        y={PILL_PAD_Y + FONT + LINE_GAP}
+                        text={pill.labelText}
+                        fill="white"
+                        fontSize={FONT}
+                        fontFamily={OVERLAY_FONT_FAMILY}
+                      />
+                    )}
+                  </Group>
+                </Group>
+              );
+            })}
 
           {!loading && !boxesHidden && filteredDetections.map((detection) => {
             const x = normToPixel(detection.bbox_x, imgWidth);

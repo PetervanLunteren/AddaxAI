@@ -709,6 +709,7 @@ export function DetectionDetailModal({
             }}
             onCreated={setDrawnId}
             boxesHidden={boxesHidden}
+            showAllBoxes={false}
             imageFilter={imageFilter}
           />
         ) : (
