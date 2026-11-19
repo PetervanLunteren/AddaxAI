@@ -15,6 +15,7 @@
  * would be saved with the new frame's number.
  */
 
+import { toast } from "sonner";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Stage, Layer, Rect, Text, Image as KonvaImage, Transformer, Shape, Group } from "react-konva";
 import { useMutation } from "@tanstack/react-query";
@@ -413,6 +414,9 @@ export function AnnotationCanvas({
       onMutated?.();
       onCreated?.(created.id);
     },
+    // A box that could not be saved vanishes from the canvas, so say why
+    // (a video frame missing, a detector the catalog gives no class to).
+    onError: (err: Error) => toast.error("Could not save the box", { description: err.message }),
   });
 
   // Update detection mutation (for move/resize)
