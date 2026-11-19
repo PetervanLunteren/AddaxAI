@@ -41,6 +41,7 @@ from app.ml.environment_manager import (
 from app.ml.manifest_manager import ManifestManager
 from app.ml.model_storage import ModelStorage
 from app.ml.schemas.model_manifest import ExampleImage, ModelManifest
+from app.utils.windows_security import with_smart_app_control_hint
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/ml", tags=["ML Models"])
@@ -598,7 +599,13 @@ async def _prepare_model_task(
         )
     except Exception as e:
         logger.error(f"Failed to prepare model {model_id}: {e}", exc_info=True)
-        await ws_manager.send_error(task_id, f"Preparation failed: {e}")
+        # No known cause. Where Smart App Control is enforced it is the
+        # likeliest one: it blocks the unsigned programs a package runs
+        # while its env installs (gdk-pixbuf's post-link step, beta report
+        # 2026-11-18), so name it as the analysis failures do.
+        await ws_manager.send_error(
+            task_id, with_smart_app_control_hint(f"Preparation failed: {e}")
+        )
     finally:
         _active_prepares.discard(task_id)
         # Drop the cancel flag so a re-prepare under the same task_id isn't

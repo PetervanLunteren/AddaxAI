@@ -623,3 +623,35 @@ async def test_the_disable_switch_holds_when_the_sync_fails(monkeypatch):
     await main.update_model_catalog(app)
 
     assert app.state.model_updates["disabled"] is True
+
+
+@pytest.mark.parametrize(
+    ("sac_value", "hinted"), [(1, True), (0, False), (2, False), (None, False)]
+)
+async def test_a_failed_env_build_names_smart_app_control_only_where_enforced(
+    monkeypatch, mock_managers, sac_value, hinted
+):
+    """An env build that dies for no known reason names SAC, as analysis
+    failures do, because SAC blocking a package's post-link program is
+    the likeliest cause (beta report 2026-11-18)."""
+    from unittest.mock import AsyncMock
+
+    from app.api.routers import ml_models
+    from app.utils import windows_security
+
+    _, mock_env, mock_storage = mock_managers
+    mock_storage.check_weights_ready.return_value = True
+    mock_env._validate_env.return_value = False
+    mock_env.get_or_create_env.side_effect = RuntimeError(
+        "failed to execute pre/post link script for gdk-pixbuf"
+    )
+    monkeypatch.setattr(windows_security, "_read_policy_value", lambda: sac_value)
+    ws = MagicMock(send_progress=AsyncMock(), send_error=AsyncMock())
+    monkeypatch.setattr(ml_models, "ws_manager", ws)
+
+    manifest = MagicMock(env="ultralytics")
+    await ml_models._prepare_model_task("MD1000-SORREL-0-0", manifest, "task-sac")
+
+    message = ws.send_error.await_args.args[1]
+    assert message.startswith("Preparation failed: failed to execute pre/post link script")
+    assert ("Smart App Control" in message) is hinted
