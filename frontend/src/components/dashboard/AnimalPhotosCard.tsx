@@ -25,6 +25,10 @@ import { AnimalPhotoTile } from "./AnimalPhotoTile";
 
 const WALL_SIZE = 6;
 
+// The hero crop is 1024 px wide, so a smaller box blows up into a blur.
+// The wall gets no floor: it shows the user's selection, small or not.
+const HERO_MIN_BOX_PX = 256;
+
 interface AnimalPhotosCardProps {
   projectId: string;
   variant: "hero" | "wall";
@@ -44,7 +48,9 @@ export function AnimalPhotosCard({
     // The hero's title promises an animal, so it asks for wildlife; the
     // wall shows whatever Explore has selected.
     queryKey: ["statistics", "animal-photos", projectId, limit, scope, hero],
-    queryFn: () => statisticsApi.getAnimalPhotos(projectId, limit, scope, hero),
+    queryFn: () => statisticsApi.getAnimalPhotos(
+      projectId, limit, scope, hero, hero ? HERO_MIN_BOX_PX : undefined,
+    ),
     staleTime: 0,
     gcTime: 0,
     refetchOnWindowFocus: false,

@@ -275,6 +275,7 @@ def animal_photos(
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
     wildlife_only: bool = Query(False),
+    min_box_px: int | None = Query(None, ge=1),
     db: Session = Depends(get_db),
 ) -> list[AnimalPhoto]:
     """Random confident detections for the dashboard photos."""
@@ -282,7 +283,7 @@ def animal_photos(
         db, project_id, limit, _parse_taxon_ids(label_taxonomy_ids),
         _parse_site_ids(site_ids),
         _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),
-        wildlife_only,
+        wildlife_only, min_box_px,
     )
 
 

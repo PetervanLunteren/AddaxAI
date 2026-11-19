@@ -1447,6 +1447,7 @@ def get_animal_photos(
     date_from: str | None = None,
     date_to: str | None = None,
     wildlife_only: bool = False,
+    min_box_px: int | None = None,
 ) -> list[AnimalPhoto]:
     """Random confident detections, for the dashboard photos.
 
@@ -1458,6 +1459,10 @@ def get_animal_photos(
     crop endpoint can cut (a bbox; for a video the box on its track's
     representative frame, `on_visible_frame`). Among those the pick is
     random, so every dashboard visit shows another one.
+
+    `min_box_px` keeps out boxes whose long side in source pixels is too
+    small to blow up sharply. A floor, not a weight, so the pick above it
+    stays uniform; when too few reach it, any box will do.
     """
     floor = max(PHOTO_MIN_CONFIDENCE, _get_counting_threshold(db, project_id))
     query = (
@@ -1496,6 +1501,14 @@ def get_animal_photos(
         query = query.where(_wildlife_clause(Detection.category, Detection.label))
     query = _apply_filters(query, project_id, site_ids, date_from, date_to)
 
+    rows = []
+    if min_box_px is not None:
+        rows = db.execute(query.where(or_(
+            Detection.bbox_width * File.width_px >= min_box_px,
+            Detection.bbox_height * File.height_px >= min_box_px,
+        ))).all()
+    if len(rows) < limit:
+        rows = db.execute(query).all()
     return [
         AnimalPhoto(
             detection_id=r.detection_id,
@@ -1510,5 +1523,5 @@ def get_animal_photos(
                 r.captured_at_local.date() if r.captured_at_local else None
             ),
         )
-        for r in db.execute(query).all()
+        for r in rows
     ]

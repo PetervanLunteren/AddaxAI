@@ -430,10 +430,12 @@ export const statisticsApi = {
     limit: number,
     scope?: DashboardScope,
     wildlifeOnly = false,
+    minBoxPx?: number,
   ) => {
     const params = scopeParams(projectId, scope);
     params.set("limit", String(limit));
     if (wildlifeOnly) params.set("wildlife_only", "true");
+    if (minBoxPx !== undefined) params.set("min_box_px", String(minBoxPx));
     return api.get<AnimalPhoto[]>(`/api/statistics/animal-photos?${params}`);
   },
 
