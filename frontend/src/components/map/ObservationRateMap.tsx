@@ -139,7 +139,10 @@ export function ObservationRateMap({
     []
   );
 
-  const sites: ObservationRateMapFeature[] = data?.features ?? [];
+  const sites = useMemo(
+    (): ObservationRateMapFeature[] => data?.features ?? [],
+    [data]
+  );
 
   const visibleSites = useMemo(() => {
     if (!mapBounds) return sites;

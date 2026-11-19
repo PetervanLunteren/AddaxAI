@@ -372,7 +372,18 @@ The arrow is drawn in because the default template had one and it is the only th
 
 ## Linting (CI enforcement)
 
-GitHub Actions runs **ruff** on every push and PR (`ruff check app tests`). The build fails if there are any errors, so check locally before pushing:
+The frontend is linted with **eslint** on every push and PR, next to the typecheck and the unit tests. Warnings fail the build too, so a rule is either on or off:
+
+```bash
+cd frontend
+npm run lint                  # eslint . --max-warnings 0
+npm run typecheck             # tsc -b
+npm test                      # vitest
+```
+
+`frontend/eslint.config.js` switches off the React Compiler rules that `eslint-plugin-react-hooks` 7 ships, because the app does not use the compiler. Turn them on together with it. An `eslint-disable` comment needs a reason next to it, and one that no longer silences anything is an error.
+
+For the backend, GitHub Actions runs **ruff** on every push and PR (`ruff check app tests`). The build fails if there are any errors, so check locally before pushing:
 
 ```bash
 cd backend

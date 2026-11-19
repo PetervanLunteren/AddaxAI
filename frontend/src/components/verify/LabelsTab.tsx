@@ -1508,7 +1508,7 @@ export function LabelsTab({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedIds, detailDetection, allDetections, resultSort, openTrack, handleActionComplete, shortcutLabels, applyUndoableAction, handleMarkFalse, handleMarkUnknown, handleMatchMajority, handleBulkVerify, advanceSelectionAfter, undo, openTrackFrames, closeTrackFrames, reviewingSuggestions, exitSuggestionsMode]);
+  }, [selectedIds, detailDetection, allDetections, resultSort, openTrack, handleActionComplete, shortcutLabels, applyUndoableAction, handleMarkFalse, handleMarkUnknown, handleMatchMajority, handleBulkVerify, advanceSelectionAfter, undo, openTrackFrames, closeTrackFrames, reviewingSuggestions, exitSuggestionsMode, clearSelection]);
 
   // Click outside grid to deselect
   useEffect(() => {

@@ -1,7 +1,11 @@
 name: Tests
 
-# Runs on every PR and on pushes to main. Four gates:
+# Runs on every PR and on pushes to main. Five gates:
 #
+#  - Frontend lint: `npm run lint` (eslint, warnings fail too). It was
+#    never run in CI, and 113 problems built up unseen in a year. The rule
+#    set is in frontend/eslint.config.js, with the reason for each rule
+#    that is switched off.
 #  - Frontend typecheck: `vite build` (and `vite dev`) transpile with
 #    esbuild and never run the TypeScript compiler, so type errors
 #    otherwise accumulate invisibly and only surface on a manual `tsc -b`.
@@ -30,7 +34,7 @@ on:
 
 jobs:
   frontend-typecheck:
-    name: Frontend typecheck
+    name: Frontend lint, typecheck and unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,6 +48,10 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
+
+      - name: Lint (eslint)
+        working-directory: frontend
+        run: npm run lint
 
       - name: Typecheck (tsc -b)
         working-directory: frontend

@@ -125,10 +125,16 @@ export function DeploymentsPage() {
     [searchParams]
   );
   const search = (filters.search as string | undefined) ?? "";
-  const siteIds = (filters.site_ids as string[] | undefined) ?? [];
+  const siteIds = useMemo(
+    () => (filters.site_ids as string[] | undefined) ?? [],
+    [filters]
+  );
   const dateFrom = (filters.date_from as string | undefined) ?? "";
   const dateTo = (filters.date_to as string | undefined) ?? "";
-  const tagKeysFilter = (filters.tag_keys as string[] | undefined) ?? [];
+  const tagKeysFilter = useMemo(
+    () => (filters.tag_keys as string[] | undefined) ?? [],
+    [filters]
+  );
 
   const [sortField, setSortField] = useState<SortField>("period");
   const [sortDir, setSortDir] = useState<SortDir>("desc");

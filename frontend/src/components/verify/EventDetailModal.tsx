@@ -298,6 +298,10 @@ export function EventDetailModal({
     setStill(null);
     setPendingVideoExport(false);
     setRelabelDetectionId(null);
+    // Lands once per event. `event.files` is a new array after every
+    // refetch, and re-running then would throw the reviewer back to the
+    // landing file after each edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId, event?.id]);
 
   const files = useMemo(() => event?.files ?? [], [event?.files]);

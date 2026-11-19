@@ -238,7 +238,6 @@ export function useSaveOutputsForm({
     hasSeededOutputRef.current = true;
     // One-time seed of a default from an async-loaded prop, guarded by
     // the ref so it can't loop.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setOutputDir((cur) => (cur ? cur : sourceFolder));
   }, [sourceFolder]);
 

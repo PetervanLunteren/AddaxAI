@@ -11,6 +11,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Map, Marker, NavigationControl } from "react-map-gl/maplibre";
+import type { MapLayerMouseEvent } from "react-map-gl/maplibre";
 
 import { useTheme } from "../../lib/theme";
 import { openFreeMapStyleUrl } from "../map/basemap-styles";
@@ -175,7 +176,7 @@ export function SiteMap({ projectId, selectedLocation, onLocationSelect, onMapEr
 
   // Handle map click
   const handleMapClick = useCallback(
-    (event: any) => {
+    (event: MapLayerMouseEvent) => {
       const { lngLat } = event;
       onLocationSelect(lngLat.lat, lngLat.lng);
     },

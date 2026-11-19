@@ -142,6 +142,7 @@ export function DatetimeOffsetModal({
   // ref points to a fresh DOM element that needs a new listener.
   useEffect(() => {
     if (!open) return;
+    let detach = (): void => {};
     // Small delay to let Radix Dialog finish mounting the portal content
     const timer = setTimeout(() => {
       const el = zoomContainerRef.current;
@@ -169,19 +170,14 @@ export function DatetimeOffsetModal({
       };
 
       el.addEventListener("wheel", handleWheel, { passive: false });
-      // Store cleanup on the element so the outer cleanup can find it
-      (el as any)._wheelCleanup = () => el.removeEventListener("wheel", handleWheel);
+      detach = () => el.removeEventListener("wheel", handleWheel);
     }, 50);
 
     return () => {
       clearTimeout(timer);
-      const el = zoomContainerRef.current;
-      if (el && (el as any)._wheelCleanup) {
-        (el as any)._wheelCleanup();
-        delete (el as any)._wheelCleanup;
-      }
+      detach();
     };
-  }, [open, referenceIndex]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, referenceIndex]);
 
   // Lazily fetched datetimes (index → ISO string or null).
   // Datetimes are NOT included in the scan response (too slow for 10k+

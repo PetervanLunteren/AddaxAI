@@ -18,6 +18,7 @@
 import { toast } from "sonner";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Stage, Layer, Rect, Text, Image as KonvaImage, Transformer, Shape, Group } from "react-konva";
+import type Konva from "konva";
 import { useMutation } from "@tanstack/react-query";
 import { ImageOff } from "lucide-react";
 import { Button } from "../ui/button";
@@ -133,8 +134,8 @@ export function AnnotationCanvas({
 }: AnnotationCanvasProps) {
   // Repaint when the project's colour map lands or changes.
   useSpeciesColorsVersion();
-  const stageRef = useRef<any>(null);
-  const transformerRef = useRef<any>(null);
+  const stageRef = useRef<Konva.Stage>(null);
+  const transformerRef = useRef<Konva.Transformer>(null);
   // The last Shift+wheel step: a trackpad fires a burst of wheel events
   // per swipe, so without a gap one flick would jump dozens of frames,
   // each a decode from the clip. Held here, where the input arrives,
@@ -314,7 +315,7 @@ export function AnnotationCanvas({
       // just for the export and restore it after.
       const pills = stage.find(".label-pill");
       const spots = stage.find(".spotlight");
-      [...pills, ...spots].forEach((n: any) => n.visible(true));
+      [...pills, ...spots].forEach((n) => n.visible(true));
       stage.batchDraw();
 
       const pixelRatio = Math.max(1, imgWidth / stage.width());
@@ -323,8 +324,8 @@ export function AnnotationCanvas({
       // Restore transform, transformer, and on-screen annotation visibility:
       // pills stay shown, the spotlight reverts to its read-only state.
       transformer?.visible(wasVisible ?? true);
-      pills.forEach((n: any) => n.visible(true));
-      spots.forEach((n: any) => n.visible(!readOnly));
+      pills.forEach((n) => n.visible(true));
+      spots.forEach((n) => n.visible(!readOnly));
       stage.scale(savedScale);
       stage.position(savedPos);
       stage.batchDraw();
@@ -339,7 +340,7 @@ export function AnnotationCanvas({
       link.click();
       document.body.removeChild(link);
     };
-  }, [exportFnRef, image, file.file_path, imgWidth]);
+  }, [exportFnRef, image, file.file_path, imgWidth, readOnly]);
 
   // Register zoom functions for external buttons
   useEffect(() => {
@@ -461,7 +462,7 @@ export function AnnotationCanvas({
   });
 
   // Plain wheel = zoom; Shift+wheel = step to the prev/next frame.
-  const handleWheel = (e: any) => {
+  const handleWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault();
     if (e.evt.shiftKey && onScrubFrame) {
       const now = performance.now();
@@ -478,7 +479,7 @@ export function AnnotationCanvas({
       return;
     }
     const stage = stageRef.current;
-    const pointer = stage.getPointerPosition();
+    const pointer = stage?.getPointerPosition();
     if (!pointer) return;
 
     const oldScale = zoom;
@@ -512,7 +513,7 @@ export function AnnotationCanvas({
   };
 
   // Mouse handlers for drawing and panning
-  const handleMouseDown = (e: any) => {
+  const handleMouseDown = (e: Konva.KonvaEventObject<PointerEvent>) => {
     const target = e.target;
     const isEmptyArea =
       target === stageRef.current || target.className === "Image";
@@ -539,7 +540,7 @@ export function AnnotationCanvas({
       onSelectDetection(null);
       if (zoom > 1) {
         setIsPanning(true);
-        const pointer = stageRef.current.getPointerPosition();
+        const pointer = stageRef.current?.getPointerPosition();
         if (pointer) lastPanPosRef.current = { x: pointer.x, y: pointer.y };
       }
     }
@@ -603,7 +604,10 @@ export function AnnotationCanvas({
   };
 
   // Handle drag end for moving boxes
-  const handleDragEnd = (detection: DetectionResponse, e: any) => {
+  const handleDragEnd = (
+    detection: DetectionResponse,
+    e: Konva.KonvaEventObject<DragEvent>,
+  ) => {
     const node = e.target;
     updateMutation.mutate({
       id: detection.id,
@@ -615,7 +619,10 @@ export function AnnotationCanvas({
   };
 
   // Handle transform end for resizing
-  const handleTransformEnd = (detection: DetectionResponse, e: any) => {
+  const handleTransformEnd = (
+    detection: DetectionResponse,
+    e: Konva.KonvaEventObject<Event>,
+  ) => {
     const node = e.target;
     const newWidth = node.width() * node.scaleX();
     const newHeight = node.height() * node.scaleY();
@@ -719,7 +726,7 @@ export function AnnotationCanvas({
               name="spotlight"
               visible={!readOnly}
               sceneFunc={(context) => {
-                const ctx = (context as any)._context as CanvasRenderingContext2D;
+                const ctx = context._context;
                 ctx.save();
                 // Dark overlay over entire stage
                 ctx.fillStyle = DIM_FILL;

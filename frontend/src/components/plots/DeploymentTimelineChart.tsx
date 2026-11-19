@@ -543,7 +543,7 @@ export function DeploymentTimelineChart({
       monthTicks,
       labelledIdx,
     };
-  }, [data, width, density, densityConfig, viewMode]);
+  }, [data, width, densityConfig, viewMode]);
 
   // Heatmap lookup + colour domain. Hooks have to run before the early
   // returns below, so this tolerates a null geometry.
