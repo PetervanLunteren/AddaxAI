@@ -13,6 +13,12 @@ signed. Linux is unsigned and non-blocking.
 | `release.published` | A release was created in the GitHub UI (with notes) and clicked "Publish". The workflow builds binaries and attaches them to that release. |
 | `workflow_dispatch` | Manual run from the Actions tab. Produces debug builds (workflow artifacts only, kept 14 days). Windows builds are signed; macOS is signed only if its secrets are set. |
 
+On a release the workflow first runs `tests.yml` on the released commit
+(lint, typecheck, frontend and backend tests). The build jobs wait for it
+and are skipped when it fails, so the release stays without installers
+until a fixed commit is released. Manual runs skip this gate, because they
+exist to try out work in progress.
+
 There is no `push: tags: v*` trigger. Releases are deliberately a two-step
 process: write release notes in the UI first, then publish. Failed builds
 do not leave orphaned releases behind, and the tag can be retyped without

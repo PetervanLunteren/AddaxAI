@@ -14,8 +14,23 @@ permissions:
   contents: write  # Required to attach assets to a release
 
 jobs:
+  # A release builds only from a commit that passes the tests. Pushes go
+  # straight to main and are tested after they land, so nothing else
+  # stops a release from a red commit. Run here, on the released commit,
+  # rather than looking up the earlier run: that one can be missing or
+  # still going. Manual debug builds skip the gate, because they exist
+  # to try out work in progress.
+  tests:
+    name: Tests
+    if: github.event_name == 'release'
+    uses: ./.github/workflows/tests.yml
+
   build:
     name: Build (${{ matrix.label }})
+    needs: tests
+    # Build when the tests passed (release) or were skipped (manual run).
+    # Without `!cancelled()` a skipped dependency skips this job too.
+    if: ${{ !cancelled() && (needs.tests.result == 'success' || needs.tests.result == 'skipped') }}
     runs-on: ${{ matrix.runs-on }}
     continue-on-error: ${{ matrix.continue-on-error }}
 

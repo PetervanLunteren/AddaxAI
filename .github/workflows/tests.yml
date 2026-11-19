@@ -27,10 +27,15 @@ name: Tests
 #    the chain on startup). Slow tests are excluded via the `-m 'not slow'`
 #    default in pyproject.toml.
 
+#
+# The release build calls this workflow too (`workflow_call`), as its
+# first job, so a release never builds from a commit that fails here.
+
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_call:
 
 jobs:
   frontend-typecheck:
