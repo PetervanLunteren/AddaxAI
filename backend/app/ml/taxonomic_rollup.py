@@ -112,19 +112,20 @@ def format_leaf_annotation(label: str, scientific_name: str, level: str) -> str:
 
 
 def resolve_label_names(
-    label: str | None,
+    label: str,
     taxonomy: object | None,
-    category: str,
 ) -> tuple[str | None, str | None]:
     """
-    Single source of truth for a detection's two display names.
+    Single source of truth for a labelled detection's two display names.
 
     Returns ``(common_name, scientific_name)``:
     - With a LabelTaxonomy row, copy its precomputed names (the row is
       where the formatting actually happens, in ``taxonomy_db``).
-    - With a label but no taxonomy row (e.g. human relabel to a custom
-      label), clean the label for common and capitalise it for scientific.
-    - Unclassified (no label): both fall back to the capitalised category.
+    - With no row (e.g. human relabel to a custom label), clean the label
+      for common and capitalise it for scientific.
+
+    A box without a label gets its names from its class's builtin row,
+    in ``taxonomy_db.clear_classification``.
 
     Never reads model output; safe to run over verified detections because
     it only derives display strings from the existing label / taxonomy.
@@ -134,10 +135,7 @@ def resolve_label_names(
         or getattr(taxonomy, "common_name", None)
     ):
         return taxonomy.common_name, taxonomy.scientific_name
-    if label:
-        return format_common_name(label), label[0].upper() + label[1:]
-    cap = category.capitalize() if category else category
-    return cap, cap
+    return format_common_name(label), label[0].upper() + label[1:]
 
 
 @dataclass

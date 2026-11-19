@@ -689,7 +689,7 @@ export function RunQueueModal({
               <NextStepRow
                 icon={Tag}
                 title="Check the labels"
-                description="Check and correct the species on each animal."
+                description="Check and correct the label on each detection."
                 disabled={isClosing}
                 onClick={async () => {
                   await handleClose();

@@ -6,6 +6,7 @@ the label_taxonomy table in sync with what's in Detection.label.
 """
 
 import csv
+from collections.abc import Iterable
 from pathlib import Path
 
 from sqlalchemy import and_, func
@@ -224,53 +225,66 @@ def custom_scope():
     )
 
 
-BUILTIN_LABELS = [
-    {"name": "animal", "category": "animal"},
-    {"name": "person", "category": "person"},
-    {"name": "vehicle", "category": "vehicle"},
-]
+# The classes every install has a row for from the first launch, so the
+# label picker can offer them before anything was analysed. Any other
+# detector class gets its row when a box of it first arrives.
+CLASSIC_DETECTOR_CLASSES = ("animal", "person", "vehicle")
 
 
-def ensure_builtin_labels(db: Session) -> dict[str, str]:
+def builtin_display_name(category: str) -> str:
+    """How a detector class reads as a label: "fish" -> "Fish". The one
+    place this rule lives; the migration that backfilled old boxes
+    inlines the same expression."""
+    return category.capitalize()
+
+
+def builtin_label_ids(db: Session) -> dict[str, str]:
+    """Every builtin row, as {class: taxonomy id}.
+
+    Nothing in the schema stops two builtin rows with one name (the
+    unique constraint includes ``project_id``, which is NULL), so a race
+    between the worker and a request could make a second. The lowest id
+    wins, the same rule project import uses, so the answer never flips.
     """
-    Ensure LabelTaxonomy has rows for non-classification labels
-    ("animal", "person", "vehicle").
-
-    These use classification_model_id="__builtin__" and level="none".
-    Idempotent: skips rows that already exist.
-
-    Returns:
-        Mapping of builtin name to taxonomy UUID,
-        e.g. {"animal": "uuid-1", "person": "uuid-2", "vehicle": "uuid-3"}.
-    """
-    existing = {
-        r.name: r.id
-        for r in db.query(LabelTaxonomy.name, LabelTaxonomy.id)
+    ids: dict[str, str] = {}
+    for name, tid in (
+        db.query(LabelTaxonomy.name, LabelTaxonomy.id)
         .filter(LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID)
+        .order_by(LabelTaxonomy.id)
         .all()
-    }
+    ):
+        ids.setdefault(name, tid)
+    return ids
 
-    inserted = 0
-    for label_def in BUILTIN_LABELS:
-        if label_def["name"] in existing:
-            continue
-        taxonomy_entry = LabelTaxonomy(
+
+def ensure_builtin_labels(db: Session, categories: Iterable[str]) -> dict[str, str]:
+    """
+    Make sure every detector class in ``categories`` has its builtin row,
+    and return all builtin rows as {class: taxonomy id}.
+
+    A builtin row is what a box without a species points at: the label
+    filter tree, "Select all" and the colours match on
+    ``label_taxonomy_id``, so a box with no row is invisible to all of
+    them. Rows use classification_model_id="__builtin__", level="none",
+    and the class's display name for both names. Idempotent.
+    """
+    existing = builtin_label_ids(db)
+    missing = sorted({c for c in categories if c} - existing.keys())
+    for name in missing:
+        row = LabelTaxonomy(
             classification_model_id=BUILTIN_MODEL_ID,
-            name=label_def["name"],
+            name=name,
             level="none",
-            common_name=label_def["name"].capitalize(),
-            scientific_name=label_def["name"].capitalize(),
+            common_name=builtin_display_name(name),
+            scientific_name=builtin_display_name(name),
             is_custom=False,
         )
-        db.add(taxonomy_entry)
+        db.add(row)
         db.flush()
-        existing[label_def["name"]] = taxonomy_entry.id
-        inserted += 1
-
-    if inserted:
+        existing[name] = row.id
+    if missing:
         db.commit()
-        logger.info(f"Seeded {inserted} builtin label(s) in label_taxonomy")
-
+        logger.info(f"Seeded builtin label(s) {missing} in label_taxonomy")
     return existing
 
 
@@ -282,20 +296,28 @@ def clear_classification(
 
     One rule for every writer that clears a label: the ingest, the
     postprocessing update and its exclusion sweep, revert to AI, a drawn
-    box without a label, and a PATCH that empties one. The label filter
-    tree and "Select all" match on ``label_taxonomy_id``, so a box left
-    with no row is counted in the Detections tab and shown in the grid
-    but absent from the filter that would find it: no "Animal" leaf and
-    no hint that anything is hidden. That is how a user with 733 such
-    boxes read "no Animal option" (2026-09-06). ``builtin_ids`` is
-    ``ensure_builtin_labels(db)``. A category the builtins do not know
-    (a detector emitting ``shark``) gets no row, as before.
+    box without a label, a PATCH or bulk relabel that empties one, and
+    undo. The label filter tree and "Select all" match on
+    ``label_taxonomy_id``, so a box left with no row is counted in the
+    Detections tab and shown in the grid but absent from the filter that
+    would find it: no "Animal" leaf and no hint that anything is hidden.
+    That is how a user with 733 such boxes read "no Animal option"
+    (2026-09-06), and how every fish box went missing (2026-11-19).
+
+    ``builtin_ids`` is ``ensure_builtin_labels(db, <the categories at
+    hand>)``. A class without a row is a caller that forgot to ensure it,
+    and raises rather than leaving an invisible box.
     """
+    tid = builtin_ids.get(detection.category)
+    if tid is None:
+        raise ValueError(
+            f"no builtin label row for detector class {detection.category!r}; "
+            "call ensure_builtin_labels with it first"
+        )
     detection.label = None
     detection.label_confidence = None
-    tid = builtin_ids.get(detection.category) if detection.category else None
     detection.label_taxonomy_id = tid
-    name = detection.category.capitalize() if tid else None
+    name = builtin_display_name(detection.category)
     detection.scientific_name = name
     detection.common_name = name
 
@@ -423,7 +445,8 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
 
     total_linked = 0
 
-    # --- Pass 1: link by Detection.label (classified detections) ---
+    # Only boxes with a label: a box without one already points at its
+    # class's builtin row (`clear_classification`).
     unlinked_labels = (
         db.query(func.distinct(Detection.label))
         .filter(
@@ -524,56 +547,6 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
                 .update(
                     {
                         Detection.label_taxonomy_id: taxonomy_id,
-                        Detection.scientific_name: sci,
-                        Detection.common_name: common,
-                    },
-                    synchronize_session=False,
-                )
-            )
-            total_linked += count
-
-    # --- Pass 2: link by Detection.category (detection-only) ---
-    # For detections with label=NULL, match category against builtins.
-    unlinked_categories = (
-        db.query(func.distinct(Detection.category))
-        .filter(
-            Detection.file_id.in_(db.query(project_file_ids.c.id)),
-            Detection.label.is_(None),
-            Detection.label_taxonomy_id.is_(None),
-        )
-        .all()
-    )
-    category_names = [row[0] for row in unlinked_categories if row[0]]
-
-    if category_names:
-        builtin_cat_rows = (
-            db.query(
-                LabelTaxonomy.id,
-                LabelTaxonomy.name,
-                LabelTaxonomy.scientific_name,
-                LabelTaxonomy.common_name,
-            )
-            .filter(
-                LabelTaxonomy.classification_model_id
-                == BUILTIN_MODEL_ID,
-                LabelTaxonomy.name.in_(category_names),
-            )
-            .all()
-        )
-        for tid, cat_name, sci, common in builtin_cat_rows:
-            count = (
-                db.query(Detection)
-                .filter(
-                    Detection.file_id.in_(
-                        db.query(project_file_ids.c.id)
-                    ),
-                    Detection.label.is_(None),
-                    Detection.category == cat_name,
-                    Detection.label_taxonomy_id.is_(None),
-                )
-                .update(
-                    {
-                        Detection.label_taxonomy_id: tid,
                         Detection.scientific_name: sci,
                         Detection.common_name: common,
                     },

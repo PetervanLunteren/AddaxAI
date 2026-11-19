@@ -11,10 +11,9 @@ The rule:
 
 1. Collect the classes present in the project, the same population the
    label filter offers (threshold-or-verified, visible frame). A class
-   is whatever names the box: its species when a classifier named one,
-   otherwise the detector's category. Where that category comes from
-   makes no difference, so "animal", "person", "vehicle" and
-   "elasmobranch" are classes like any other.
+   is the taxonomy row the box points at: its species when one was
+   named, otherwise its detector class's builtin row. So "animal",
+   "person", "vehicle" and "elasmobranch" are classes like any other.
 2. Sort them by taxonomy: class, order, family, genus, species, variant,
    then name. Siblings end up next to each other. A detector category
    carries no taxonomy, so those sort first as a group, by name.
@@ -42,7 +41,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.api.crud.event import present_category_rows, present_label_rows
+from app.api.crud.event import present_label_rows
 from app.ml.label_exclusion import is_non_label
 from app.models import Project
 from app.models.label_taxonomy import LabelTaxonomy
@@ -125,17 +124,6 @@ def _taxonomic_sort_key(row: LabelTaxonomy) -> tuple[str, ...]:
     )
 
 
-def _category_sort_key(name: str) -> tuple[str, ...]:
-    """The sort key of a class that has no taxonomy row.
-
-    Same shape as ``_taxonomic_sort_key``, with every rank empty, which
-    is what a ``__builtin__`` row already produces. So a detector's
-    categories sort together in front of the classified species, by
-    name, and the two kinds need no separate handling.
-    """
-    return ("",) * 6 + (name,)
-
-
 def _fnv1a(text: str) -> int:
     hash_value = 2166136261
     for ch in text:
@@ -158,9 +146,10 @@ def fallback_color(key: str) -> str:
 def assign_label_colors(db: Session, project_id: str) -> dict[str, str]:
     """Colour per class present in the project.
 
-    Keyed by the ``label_taxonomy`` id, the lowercased label name and the
-    lowercased category name, because the frontend colours by whichever
-    it has at hand. Empty when the project has nothing to draw yet.
+    Keyed by the ``label_taxonomy`` id and the lowercased row name, which
+    for a builtin row is the detector class, because the frontend colours
+    by whichever it has at hand. Empty when the project has nothing to
+    draw yet.
     """
     project = db.get(Project, project_id)
     if project is None:
@@ -169,10 +158,10 @@ def assign_label_colors(db: Session, project_id: str) -> dict[str, str]:
     threshold = project.counting_threshold
     colors: dict[str, str] = {}
     # (sort key, every key the frontend or the export might look this
-    # class up by). One list, so classified species and bare detector
-    # categories are ranked together by the same rule.
+    # class up by). One list, so species and detector classes are ranked
+    # together by the same rule: a builtin row has no ranks, so the
+    # classes sort first, by name.
     ranked: list[tuple[tuple[str, ...], list[str]]] = []
-    seen: set[str] = set()
 
     present_ids = [row[0] for row in present_label_rows(db, project_id, threshold)]
     rows = (
@@ -182,23 +171,11 @@ def assign_label_colors(db: Session, project_id: str) -> dict[str, str]:
     )
     for row in rows:
         name = row.name.lower()
-        seen.add(name)
         if is_non_label(row.name):
             colors[row.id] = REJECTED_LABEL_COLOR
             colors[name] = REJECTED_LABEL_COLOR
             continue
         ranked.append((_taxonomic_sort_key(row), [row.id, name]))
-
-    for category in present_category_rows(db, project_id, threshold):
-        name = category.lower()
-        # A category that also has a taxonomy row (MegaDetector's three)
-        # is already ranked under that row's name key, and the lookup by
-        # category name lands on it. A second slot would only spend a
-        # colour on the same class twice.
-        if name in seen:
-            continue
-        seen.add(name)
-        ranked.append((_category_sort_key(name), [name]))
 
     ranked.sort(key=lambda item: item[0])
     for rank, (_sort_key, keys) in enumerate(ranked):

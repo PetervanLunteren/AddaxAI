@@ -16,10 +16,10 @@ from app.api.schemas.statistics import (
     ActivityPatternResponse,
     AnimalPhoto,
     CaptureDateCoverage,
+    ClassCounts,
     DashboardOverview,
     DashboardSummary,
     Demographics,
-    DetectionCategories,
     DetectionTrendResponse,
     ObservationRateMapResponse,
     RateTrendResponse,
@@ -286,14 +286,14 @@ def animal_photos(
     )
 
 
-@router.get("/categories", response_model=DetectionCategories)
+@router.get("/categories", response_model=ClassCounts)
 def categories(
     project_id: str = Query(...),
     site_ids: str | None = Query(None),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
     db: Session = Depends(get_db),
-) -> DetectionCategories:
+) -> ClassCounts:
     return stats_crud.get_detection_categories(
         db, project_id, _parse_site_ids(site_ids),
         _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),

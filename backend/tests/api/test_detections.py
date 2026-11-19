@@ -435,7 +435,7 @@ def test_clearing_a_label_leaves_the_builtin_animal_row(client, db):
     shown but unreachable through "Select all" or the Animal leaf."""
     from app.ml.taxonomy_db import ensure_builtin_labels
 
-    animal_row = ensure_builtin_labels(db)["animal"]
+    animal_row = ensure_builtin_labels(db, ["animal", "person", "vehicle"])["animal"]
     f = _setup_file(db)
     det = make_detection(db, file_id=f.id, label="deer", label_confidence=0.6)
 

@@ -20,14 +20,16 @@ import { useQuery } from "@tanstack/react-query";
 import { modelsApi } from "../api/models";
 import { projectsApi } from "../api/projects";
 import { resolveSpeciesName } from "../lib/species-name-mode";
+import { capitalize } from "../lib/utils";
 
 export interface LabelOption {
   value: string;
   /** Latin display name (e.g., "G. camelopardalis"). Falls back to capitalized value. */
   displayName: string;
-  /** The detector's own category. Not a fixed three: a detector emits
-   *  what it emits ("elasmobranch", "fish"). */
-  category: string;
+  /** Set only on a detector class option ("person", "fish"), where it is
+   *  the whole choice. A species carries none: the server decides which
+   *  detector class a species belongs to (the detector's primary class). */
+  category?: string;
   label: string | null;
   isCustom?: boolean;
   customId?: string;
@@ -40,7 +42,7 @@ export interface LabelOption {
 function categoryOption(category: string): LabelOption {
   return {
     value: category,
-    displayName: category.charAt(0).toUpperCase() + category.slice(1),
+    displayName: capitalize(category),
     category,
     label: null,
   };
@@ -151,7 +153,6 @@ export function useLabelOptions(
         result.push({
           value: cls,
           displayName: getDisplayName(cls, entry),
-          category: "animal",
           label: cls,
           taxonomyCaption: buildTaxonomyCaption(entry),
         });
@@ -180,7 +181,6 @@ export function useLabelOptions(
           result.push({
             value: cl.name,
             displayName: getDisplayName(cl.name, entry),
-            category: "animal",
             label: cl.name,
             isCustom: true,
             customId: cl.id,

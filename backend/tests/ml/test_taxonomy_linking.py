@@ -2,11 +2,16 @@
 
 from datetime import datetime
 
+import pytest
+
 from app.ml.taxonomy_db import (
     BUILTIN_MODEL_ID,
+    CLASSIC_DETECTOR_CLASSES,
+    clear_classification,
     ensure_builtin_labels,
     link_detections_to_taxonomy,
 )
+from app.models.detection import Detection
 from app.models.label_taxonomy import LabelTaxonomy
 from tests.conftest import (
     make_deployment,
@@ -51,32 +56,29 @@ def _make_project_with_detections(db, label_list, model_id=MODEL_ID):
 
 
 def test_ensure_builtin_labels_creates_rows(db):
-    """Seeds animal, person, and vehicle rows and returns UUID mapping."""
-    result = ensure_builtin_labels(db)
-    assert len(result) == 3
-    assert set(result.keys()) == {"animal", "person", "vehicle"}
+    """Seeds a row per class asked for and returns {class: id} of all of
+    them; any detector class, not only MegaDetector's three."""
+    result = ensure_builtin_labels(db, CLASSIC_DETECTOR_CLASSES)
+    assert set(result) == {"animal", "person", "vehicle"}
+    result = ensure_builtin_labels(db, ["fish", "elasmobranch"])
+    assert set(result) == {"animal", "person", "vehicle", "fish", "elasmobranch"}
 
     rows = (
         db.query(LabelTaxonomy)
         .filter(LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID)
         .all()
     )
-    names = {r.name for r in rows}
-    assert names == {"animal", "person", "vehicle"}
-
     for r in rows:
         assert r.level == "none"
         assert r.is_custom is False
         assert r.taxon_class is None
+        assert r.scientific_name == r.common_name == r.name.capitalize()
 
 
 def test_ensure_builtin_labels_idempotent(db):
     """Calling twice doesn't duplicate rows."""
-    result1 = ensure_builtin_labels(db)
-    result2 = ensure_builtin_labels(db)
-    assert len(result1) == 3
-    assert len(result2) == 3
-    # Same UUIDs both times
+    result1 = ensure_builtin_labels(db, ["fish"])
+    result2 = ensure_builtin_labels(db, ["fish"])
     assert result1 == result2
 
     total = (
@@ -84,7 +86,17 @@ def test_ensure_builtin_labels_idempotent(db):
         .filter(LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID)
         .count()
     )
-    assert total == 3
+    assert total == len(result1)
+
+
+def test_clear_classification_refuses_a_class_without_a_row(db):
+    """A writer that forgot to ensure its class raises, instead of leaving
+    a box that no label filter can find."""
+    det = Detection(category="fish")
+    with pytest.raises(ValueError, match="fish"):
+        clear_classification(det, ensure_builtin_labels(db, ["animal"]))
+    clear_classification(det, ensure_builtin_labels(db, ["fish"]))
+    assert det.scientific_name == det.common_name == "Fish"
 
 
 # ---------- link_detections_to_taxonomy ----------
@@ -131,7 +143,7 @@ def test_link_detections_no_taxonomy(db):
 
 def test_link_detections_builtin_labels(db):
     """Links person/vehicle detections to builtin taxonomy rows."""
-    ensure_builtin_labels(db)
+    ensure_builtin_labels(db, CLASSIC_DETECTOR_CLASSES)
     p, dets = _make_project_with_detections(db, ["person", "vehicle"])
 
     count = link_detections_to_taxonomy(p.id, db)
@@ -199,59 +211,6 @@ def test_link_detections_cross_project_isolation(db):
     assert dets2[0].label_taxonomy_id is None
 
 
-def test_link_detections_null_label_linked_by_category(db):
-    """Detections with label=NULL are linked by category to builtins."""
-    ensure_builtin_labels(db)
-    p = make_project(db, classification_model_id=MODEL_ID)
-    s = make_site(db, project_id=p.id)
-    d = make_deployment(db, site_id=s.id)
-    f = make_file(
-        db, deployment_id=d.id, captured_at_local=datetime(2024, 6, 1, 12, 0)
-    )
-
-    det_with = make_detection(
-        db, file_id=f.id, label="leopard", label_confidence=0.8
-    )
-    det_without = make_detection(
-        db, file_id=f.id, label=None, category="animal"
-    )
-
-    _add_taxonomy(db, "leopard", "species")
-
-    count = link_detections_to_taxonomy(p.id, db)
-    assert count == 2
-
-    db.expire_all()
-    assert det_with.label_taxonomy_id is not None
-    assert det_without.label_taxonomy_id is not None
-
-
-def test_link_detections_by_category(db):
-    """Detection-only project: label=NULL detections linked by category."""
-    ensure_builtin_labels(db)
-    p = make_project(db, classification_model_id=None)
-    s = make_site(db, project_id=p.id)
-    d = make_deployment(db, site_id=s.id)
-    f = make_file(
-        db, deployment_id=d.id, captured_at_local=datetime(2024, 6, 1, 12, 0)
-    )
-
-    det_animal = make_detection(
-        db, file_id=f.id, label=None, category="animal"
-    )
-    det_person = make_detection(
-        db, file_id=f.id, label=None, category="person"
-    )
-    db.flush()
-
-    count = link_detections_to_taxonomy(p.id, db)
-    assert count == 2
-
-    db.expire_all()
-    assert det_animal.label_taxonomy_id is not None
-    assert det_person.label_taxonomy_id is not None
-
-
 def test_link_detections_no_model(db):
     """Works for projects without a classification model (custom labels only)."""
     p = make_project(db, classification_model_id=None)
@@ -264,7 +223,7 @@ def test_link_detections_no_model(db):
     det = make_detection(db, file_id=f.id, label="person")
     db.flush()
 
-    ensure_builtin_labels(db)
+    ensure_builtin_labels(db, CLASSIC_DETECTOR_CLASSES)
     count = link_detections_to_taxonomy(p.id, db)
     assert count == 1
 

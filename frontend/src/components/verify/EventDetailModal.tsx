@@ -394,7 +394,7 @@ export function EventDetailModal({
     }: {
       id: string;
       label: string | null;
-      category: string;
+      category?: string;
     }) => detectionsApi.bulkRelabel([id], label, category),
     onSuccess: () => {
       setRelabelDetectionId(null);

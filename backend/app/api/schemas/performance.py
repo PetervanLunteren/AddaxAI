@@ -22,6 +22,14 @@ class PerformanceResponse(BaseModel):
         description="Aggregation rank used (all / class / order / family / genus / species)",
     )
     classes: list[str] = Field(..., description="Class identifiers in matrix order")
+    detector_classes: list[str] = Field(
+        ...,
+        description=(
+            "The entries of `classes` that are detector classes (animal, "
+            "person, fish), not species: a box without a species reads as "
+            "its class. Pinned first and left out of the averages."
+        ),
+    )
     class_scientific_names: list[str] = Field(
         ...,
         description="Scientific labels, aligned with `classes` by index",

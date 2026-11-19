@@ -93,8 +93,10 @@ def test_a_remote_entry_missing_a_field_keeps_the_shipped_value(updater: ModelCa
     remote = _remote_with()
     for entry in remote["models"]["det"]:
         entry.pop("domain", None)
+        entry.pop("primary_class", None)
     catalog = _fetch(updater, remote)
     assert all(e.get("domain") for e in catalog["models"]["det"])
+    assert all(e.get("primary_class") for e in catalog["models"]["det"])
     assert {e["model_id"] for e in catalog["models"]["det"]} == {
         e["model_id"] for e in json.loads(_REPO_CATALOG.read_text())["models"]["det"]
     }

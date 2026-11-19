@@ -1066,14 +1066,15 @@ export function LabelsTab({
     (
       ids: string[],
       label: string | null,
-      category: string,
+      category: string | undefined,
       displayName: string,
       before: UndoSnapshot,
     ) => {
       applyUndoableAction(ids, (d) => ({
         ...d,
         label,
-        category,
+        // The server decides a species' class; only a picked class moves it.
+        ...(category ? { category } : {}),
         // Set BOTH names: the display prefers common_name, so leaving the
         // old one in place would keep showing the previous label until a
         // refetch.
@@ -1490,8 +1491,8 @@ export function LabelsTab({
           .then((r) => {
             applyUndoableAction(ids, (d) => ({
               ...d,
-              label: label.label ?? label.category,
-              category: label.category,
+              label: label.label ?? label.category ?? null,
+              ...(label.category ? { category: label.category } : {}),
               common_name: label.displayName,
               scientific_name: label.displayName,
               label_taxonomy_id: null,
@@ -2042,8 +2043,8 @@ export function LabelsTab({
         onRelabel={(detectionId, label, category) => {
           applyDetectionAction([detectionId], (d) => ({
             ...d,
-            label,
-            category,
+            label: label ?? category ?? null,
+            ...(category ? { category } : {}),
             // Clear BOTH names so the display falls back to the new
             // label; leaving the old common_name would keep showing the
             // previous label until a refetch fills the canonical names.

@@ -490,7 +490,7 @@ export function ActivityOverlapPage() {
     <div className="min-h-screen">
       <PageHeader
         title="Activity overlap"
-        subtitle="Compare daily activity patterns between species"
+        subtitle="Compare daily activity patterns between two labels"
         actions={
           // A picture only: the curves are smoothed estimates, and the
           // event times behind them are on the Export page.

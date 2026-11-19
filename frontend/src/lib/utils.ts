@@ -19,6 +19,12 @@ export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
 }
 
+/** How a detector class reads on screen: "fish" becomes "Fish". The
+ *  backend's `builtin_display_name` is the same rule. */
+export function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 /**
  * Format a number in compact form: 0, 1, 999, 1.2k, 148k, 2.3M.
  */

@@ -36,6 +36,15 @@ sys.path.insert(0, str(REPO_BACKEND))
 BACKUPS = Path(os.environ.get("ADDAXAI_USER_DATA_DIR", Path.home() / "AddaxAI")) / "backups"
 
 
+def _ran(start_rev: str | None, head: str) -> list[str]:
+    """The revisions an upgrade from ``start_rev`` to ``head`` runs."""
+    from alembic.script import ScriptDirectory
+    from app.db.migrations import _alembic_config
+
+    script = ScriptDirectory.from_config(_alembic_config())
+    return [rev.revision for rev in script.iterate_revisions(head, start_rev)]
+
+
 def main() -> int:
     from sqlalchemy import create_engine
 
@@ -43,7 +52,12 @@ def main() -> int:
     import app.db.base
     import app.db.migrations
     from app.core.config import Settings
-    from app.db.migration_check import lost_rows, snapshot, sqlite_health
+    from app.db.migration_check import (
+        lost_rows,
+        rows_changed_on_purpose,
+        snapshot,
+        sqlite_health,
+    )
     from app.db.migrations import (
         get_current_revision,
         get_head_revision,
@@ -88,7 +102,9 @@ def main() -> int:
             end_rev = get_current_revision(engine)
             engine.dispose()
             problems += sqlite_health(str(dst))
-            problems += lost_rows(before, snapshot(str(dst)))
+            problems += lost_rows(
+                before, snapshot(str(dst)), rows_changed_on_purpose(_ran(start_rev, head))
+            )
 
             rows = sum(t.count for t in before.values())
             if problems:

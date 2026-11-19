@@ -1562,7 +1562,13 @@ def test_summary_folds_a_literal_animal_label_onto_the_unclassified_row(client, 
         files_verified=[False, False],
     )
     f_literal, f_null = ev.files
+    # The literal label links to the builtin row, as
+    # `link_detections_to_taxonomy` does in the app.
+    from app.ml.taxonomy_db import ensure_builtin_labels
+
+    animal_row = ensure_builtin_labels(db, ["animal"])["animal"]
     make_detection(db, file_id=f_literal.id, confidence=0.9, label="animal",
+                   label_taxonomy_id=animal_row,
                    common_name="Animal", scientific_name="Animal")
     make_detection(db, file_id=f_null.id, confidence=0.9, label=None,
                    common_name="Animal", scientific_name="Animal")
@@ -4026,3 +4032,19 @@ def test_frames_export_survives_a_clip_with_more_tracks_than_sql_parameters(db):
     finally:
         raw.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, before)
     assert len(rows) == 2000
+
+
+def test_a_fish_without_a_species_is_named_in_the_tables(client, db):
+    """A box from an underwater detector carries its class's names, as a
+    MegaDetector "Animal" does, instead of blank name columns."""
+    project, _site, deployment = _build_simple_project(db)
+    f = make_file(db, deployment_id=deployment.id)
+    make_detection(db, file_id=f.id, confidence=0.9, category="fish")
+    db.commit()
+
+    (row,) = _detection_rows(client, project.id)
+    assert (row["detection_category"], row["scientific_name"], row["common_name"]) == (
+        "fish", "Fish", "Fish",
+    )
+    summary = _summary_rows(client, project.id)
+    assert summary[("fish", "")]["scientific_name"] == "Fish"

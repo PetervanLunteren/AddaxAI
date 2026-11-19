@@ -7,6 +7,7 @@
  */
 
 import { api } from "../lib/api-client";
+import type { ClassCounts } from "./types";
 
 // --- Response types (matching backend schemas) ---
 
@@ -177,13 +178,6 @@ export interface SpeciesRatesResponse {
   first_date: string | null;
   last_date: string | null;
   species: SpeciesRate[];
-}
-
-export interface DetectionCategories {
-  animal_count: number;
-  person_count: number;
-  vehicle_count: number;
-  empty_count: number;
 }
 
 export interface LabelProgressRow {
@@ -448,7 +442,7 @@ export const statisticsApi = {
    */
   getDetectionCategories: (projectId: string, siteIds?: string, dateFrom?: string, dateTo?: string) => {
     const query = buildParams(projectId, { siteIds, dateFrom, dateTo });
-    return api.get<DetectionCategories>(`/api/statistics/categories?${query}`);
+    return api.get<ClassCounts>(`/api/statistics/categories?${query}`);
   },
 
   /**

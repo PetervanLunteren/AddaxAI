@@ -33,7 +33,7 @@ import { useSpeciesColorsVersion } from "../../utils/species-colors";
 /** The dot colour for a label option: the class that names it, which is
  *  its species when it has one and the detector's category otherwise. */
 function getLabelDotColor(opt: LabelOption): string {
-  return getSpeciesColor(opt.label ? opt.value : opt.category);
+  return getSpeciesColor(opt.label ? opt.value : (opt.category ?? opt.value));
 }
 
 /** Clean up a label for display: replace underscores, capitalize first letter. */
@@ -258,7 +258,6 @@ export function LabelPicker({
       const option: LabelOption = {
         value: created.name,
         displayName: created.name,
-        category: "animal",
         label: created.name,
       };
       // Store in both state and ref. The ref is read by

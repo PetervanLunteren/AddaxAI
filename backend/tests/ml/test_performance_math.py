@@ -11,7 +11,6 @@ from collections import Counter
 import pytest
 
 from app.api.crud.performance import (
-    DETECTOR_CATEGORIES,
     OTHER_BUCKET,
     SEMANTIC_BUCKETS,
     _apply_top_n,
@@ -22,6 +21,9 @@ from app.api.crud.performance import (
 )
 from app.ml.taxonomic_rank import HIGHER_LEVEL_TAXA, NO_TAXONOMY
 
+# The detector classes of the request: the builtin label rows.
+DETECTOR = frozenset({"animal", "person", "vehicle", "fish"})
+
 # ---------------------------------------------------------------------------
 # _ordered_classes
 # ---------------------------------------------------------------------------
@@ -30,7 +32,7 @@ from app.ml.taxonomic_rank import HIGHER_LEVEL_TAXA, NO_TAXONOMY
 def test_ordered_classes_puts_detector_head_first() -> None:
     all_classes = {"wolf", "deer", "person", "animal", "vehicle"}
     totals = {"wolf": 10, "deer": 30, "person": 5, "animal": 2, "vehicle": 1}
-    ordered = _ordered_classes(all_classes, totals)
+    ordered = _ordered_classes(all_classes, totals, DETECTOR)
     assert ordered[:3] == ["animal", "person", "vehicle"]
     assert ordered[3:] == ["deer", "wolf"]
 
@@ -38,16 +40,16 @@ def test_ordered_classes_puts_detector_head_first() -> None:
 def test_ordered_classes_omits_missing_detector_categories() -> None:
     all_classes = {"wolf", "deer"}
     totals = {"wolf": 3, "deer": 2}
-    ordered = _ordered_classes(all_classes, totals)
+    ordered = _ordered_classes(all_classes, totals, DETECTOR)
     assert ordered == ["wolf", "deer"]
-    for c in DETECTOR_CATEGORIES:
+    for c in DETECTOR:
         assert c not in ordered
 
 
 def test_ordered_classes_alphabetical_tiebreaker() -> None:
     all_classes = {"alpha", "beta", "gamma"}
     totals = {"alpha": 5, "beta": 5, "gamma": 5}
-    ordered = _ordered_classes(all_classes, totals)
+    ordered = _ordered_classes(all_classes, totals, DETECTOR)
     assert ordered == ["alpha", "beta", "gamma"]
 
 
@@ -60,7 +62,7 @@ def test_ordered_classes_pins_semantic_buckets_to_bottom() -> None:
         NO_TAXONOMY: 10,
         "animal": 1,
     }
-    ordered = _ordered_classes(all_classes, totals)
+    ordered = _ordered_classes(all_classes, totals, DETECTOR)
     assert ordered[0] == "animal"  # detector head first
     # Real species in the middle, sorted by support
     assert ordered[1:3] == ["wolf", "deer"]
@@ -77,7 +79,7 @@ def test_apply_top_n_noop_when_under_limit() -> None:
     ordered = ["a", "b", "c"]
     counts: Counter = Counter({("a", "a"): 3, ("b", "a"): 1})
     totals = {"a": 4, "b": 1, "c": 0}
-    new_ordered, new_counts, other = _apply_top_n(ordered, counts, totals, 10)
+    new_ordered, new_counts, other = _apply_top_n(ordered, counts, totals, 10, DETECTOR)
     assert new_ordered == ordered
     assert new_counts == counts
     assert other is False
@@ -95,7 +97,7 @@ def test_apply_top_n_folds_tail_into_other() -> None:
         }
     )
     totals = {"a": 10, "b": 8, "c": 2, "d": 3, "e": 1}
-    new_ordered, new_counts, other = _apply_top_n(ordered, counts, totals, 2)
+    new_ordered, new_counts, other = _apply_top_n(ordered, counts, totals, 2, DETECTOR)
     assert new_ordered == ["a", "b", OTHER_BUCKET]
     assert other is True
     assert sum(new_counts.values()) == sum(counts.values())
@@ -119,7 +121,7 @@ def test_apply_top_n_exempts_detector_head_from_budget() -> None:
     )
     totals = {"wolf": 20, "deer": 15, "bear": 10, "animal": 2, "person": 1}
     # top_n=2 means keep 2 real classes; detector head is always present.
-    new_ordered, _new_counts, other = _apply_top_n(ordered, counts, totals, 2)
+    new_ordered, _new_counts, other = _apply_top_n(ordered, counts, totals, 2, DETECTOR)
     assert new_ordered[:2] == ["animal", "person"]
     assert "wolf" in new_ordered
     assert "deer" in new_ordered
@@ -140,7 +142,7 @@ def test_apply_top_n_exempts_semantic_buckets() -> None:
         }
     )
     totals = {"wolf": 20, "deer": 15, "bear": 10, HIGHER_LEVEL_TAXA: 5, NO_TAXONOMY: 1}
-    new_ordered, _new_counts, other = _apply_top_n(ordered, counts, totals, 2)
+    new_ordered, _new_counts, other = _apply_top_n(ordered, counts, totals, 2, DETECTOR)
     # Semantic buckets stay regardless of top-N
     assert HIGHER_LEVEL_TAXA in new_ordered
     assert NO_TAXONOMY in new_ordered
@@ -154,7 +156,7 @@ def test_apply_top_n_none_disables_collapse() -> None:
     ordered = ["a", "b", "c", "d"]
     counts: Counter = Counter({("a", "a"): 1, ("b", "b"): 1, ("c", "c"): 1, ("d", "d"): 1})
     totals = {"a": 1, "b": 1, "c": 1, "d": 1}
-    new_ordered, new_counts, other = _apply_top_n(ordered, counts, totals, None)
+    new_ordered, new_counts, other = _apply_top_n(ordered, counts, totals, None, DETECTOR)
     assert new_ordered == ordered
     assert new_counts == counts
     assert other is False
@@ -200,3 +202,17 @@ def test_weighted_all_none_returns_none() -> None:
 
 def test_weighted_zero_support_returns_none() -> None:
     assert _weighted([0.5, 0.5], [0, 0]) is None
+
+
+def test_a_fish_is_a_detector_class_like_an_animal() -> None:
+    """Any detector's classes head the matrix and are exempt from the
+    top-N fold, not only MegaDetector's three."""
+    all_classes = {"fish", "cod", "tuna", "bass"}
+    totals = {"fish": 1, "cod": 30, "tuna": 20, "bass": 10}
+    ordered = _ordered_classes(all_classes, totals, DETECTOR)
+    assert ordered == ["fish", "cod", "tuna", "bass"]
+    kept, _counts, other = _apply_top_n(
+        ordered, Counter({(c, c): n for c, n in totals.items()}), totals, 1, DETECTOR,
+    )
+    assert kept == ["fish", "cod", OTHER_BUCKET]
+    assert other is True

@@ -19,13 +19,21 @@ from app.ml.taxonomic_rank import HIGHER_LEVEL_TAXA, NO_TAXONOMY
 from app.models.label_taxonomy import LabelTaxonomy
 from tests.conftest import (
     make_deployment,
-    make_detection,
     make_file,
+    make_job,
     make_project,
     make_site,
     make_track,
     make_video_box,
 )
+from tests.conftest import make_detection as _make_detection
+
+
+def make_detection(db: Session, **kw):
+    """A box an analysis produced. It has a job: a box without one was
+    drawn by hand, and the matrix leaves it out (no AI prediction)."""
+    kw.setdefault("job_id", make_job(db).id)
+    return _make_detection(db, **kw)
 
 
 def _mk_taxonomy_row(
@@ -529,6 +537,7 @@ def test_a_video_is_scoped_to_its_cards(db: Session) -> None:
     make_video_box(
         db, file_id=video.id, confidence=0.9, label="leopard",
         original_label="leopard", frame_number=3, verified=True,
+        job_id=make_job(db).id,
     )
     lynx = make_track(
         db, file_id=video.id, track_key=2, start_frame=7, end_frame=11,
@@ -551,3 +560,35 @@ def test_a_video_is_scoped_to_its_cards(db: Session) -> None:
     assert result.skipped_unverified == 1
     # The verified leopard card is the one scored box.
     assert result.grand_total == 1
+
+
+def test_a_verified_detector_only_box_agrees_with_itself(db: Session) -> None:
+    """A box without a species carries its class's display name ("Fish")
+    as scientific_name. The truth side used to read it while the AI side
+    read the bare class, so every verified box of a detector-only project
+    scored as a miss ("Fish" against "fish")."""
+    project = make_project(db, classification_model_id=None)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+    f = make_file(db, deployment_id=dep.id, file_type="image")
+    make_detection(db, file_id=f.id, category="fish", verified=True)
+
+    resp = performance_crud.get_classification_performance(db, project.id)
+    assert resp.classes == ["fish"]
+    assert resp.matrix == [[1]]
+    # And it is told apart from a species, for any detector.
+    assert resp.detector_classes == ["fish"]
+
+
+def test_a_box_drawn_by_hand_is_no_ai_prediction(db: Session) -> None:
+    """A drawn box (no job made it) was never something the AI said, so
+    it is left out of the matrix and counted as having no prediction."""
+    project = make_project(db, classification_model_id=None)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+    f = make_file(db, deployment_id=dep.id, file_type="image")
+    _make_detection(db, file_id=f.id, category="fish", verified=True)
+
+    resp = performance_crud.get_classification_performance(db, project.id)
+    assert resp.grand_total == 0
+    assert resp.skipped_no_prediction == 1

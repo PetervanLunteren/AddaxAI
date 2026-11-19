@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import Settings
 from app.db.migrations import upgrade_to_head
-from app.ml.taxonomy_db import ensure_builtin_labels
+from app.ml.taxonomy_db import CLASSIC_DETECTOR_CLASSES, ensure_builtin_labels
 
 
 @pytest.fixture()
@@ -158,5 +158,5 @@ def make_machine(root: Path) -> Machine:
     engine = create_engine(settings.database_url, future=True)
     sessions = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     with sessions() as db:
-        ensure_builtin_labels(db)
+        ensure_builtin_labels(db, CLASSIC_DETECTOR_CLASSES)
     return Machine(settings=settings, engine=engine, sessions=sessions)

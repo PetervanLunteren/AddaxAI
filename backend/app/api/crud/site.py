@@ -178,13 +178,14 @@ def get_site_info(db: Session, site_id: str):
     """
     from sqlalchemy import case
 
+    from app.api.crud.event_observation import count_individuals_by_class
     from app.api.schemas.site import (
-        SiteDetectionCategories,
         SiteFileCounts,
         SiteInfoResponse,
         SiteTopSpecies,
         SiteVerification,
     )
+    from app.api.schemas.statistics import ClassCounts
     from app.models import Event, EventObservation, File, LabelTaxonomy
 
     site = get_site(db, site_id)
@@ -228,7 +229,7 @@ def get_site_info(db: Session, site_id: str):
 
     event_count = 0
     observation_count = 0
-    animal_count = person_count = vehicle_count = 0
+    class_counts: dict[str, int] = {}
     empty_count = 0
     top_species: list[SiteTopSpecies] = []
     first_captured_at_local = None
@@ -254,52 +255,7 @@ def get_site_info(db: Session, site_id: str):
             or 0
         )
 
-        cat_row = db.execute(
-            select(
-                func.coalesce(
-                    func.sum(
-                        case(
-                            (
-                                is_wildlife_category(EventObservation.category),
-                                EventObservation.effective_count,
-                            ),
-                            else_=0,
-                        )
-                    ),
-                    0,
-                ),
-                func.coalesce(
-                    func.sum(
-                        case(
-                            (
-                                EventObservation.category == "person",
-                                EventObservation.effective_count,
-                            ),
-                            else_=0,
-                        )
-                    ),
-                    0,
-                ),
-                func.coalesce(
-                    func.sum(
-                        case(
-                            (
-                                EventObservation.category == "vehicle",
-                                EventObservation.effective_count,
-                            ),
-                            else_=0,
-                        )
-                    ),
-                    0,
-                ),
-            )
-            .select_from(EventObservation)
-            .join(Event, Event.id == EventObservation.event_id)
-            .where(Event.deployment_id.in_(deployment_ids))
-        ).one()
-        animal_count = int(cat_row[0])
-        person_count = int(cat_row[1])
-        vehicle_count = int(cat_row[2])
+        class_counts = count_individuals_by_class(db, deployment_ids)
 
         empty_count = (
             db.scalar(
@@ -320,7 +276,7 @@ def get_site_info(db: Session, site_id: str):
             .select_from(EventObservation)
             .join(Event, Event.id == EventObservation.event_id)
             .outerjoin(
-                LabelTaxonomy, LabelTaxonomy.name == EventObservation.label
+                LabelTaxonomy, LabelTaxonomy.id == EventObservation.label_taxonomy_id
             )
             .where(Event.deployment_id.in_(deployment_ids))
             .where(is_wildlife_category(EventObservation.category))
@@ -387,12 +343,7 @@ def get_site_info(db: Session, site_id: str):
         ),
         event_count=int(event_count),
         observation_count=int(observation_count),
-        detection_categories=SiteDetectionCategories(
-            animal=animal_count,
-            person=person_count,
-            vehicle=vehicle_count,
-            empty=int(empty_count),
-        ),
+        detection_categories=ClassCounts(classes=class_counts, empty=int(empty_count)),
         top_species=top_species,
         trap_nights=trap_nights,
         observation_rate_per_100_trap_nights=rate,

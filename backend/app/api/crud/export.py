@@ -1353,7 +1353,7 @@ def _strongest_species_cells(
     this module, ``_scientific_name``, blanks non-animals and reads the taxonomy
     row; it serves the Camtrap and spatial builders.) The practical effect is
     that a box with no species still names itself: ``Person``, ``Vehicle``,
-    ``Animal``, per ``resolve_label_names``.
+    ``Animal``, ``Fish``, from its class's builtin row.
     """
     best = strongest_passing_detection(
         [det for det, _tax in detections], project.counting_threshold

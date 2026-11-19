@@ -23,10 +23,10 @@ from app.api.schemas.statistics import (
     ActivityPatternResponse,
     AnimalPhoto,
     AttributeCount,
+    ClassCounts,
     DashboardOverview,
     DashboardSummary,
     Demographics,
-    DetectionCategories,
     HourlyCount,
     LabelProgressRow,
     ObservationRateMapFeature,
@@ -190,69 +190,6 @@ def _scoped_observations_query(
     if date_clauses:
         query = query.where(*date_clauses)
     return query
-
-
-# ---------------------------------------------------------------------------
-# Taxonomic rank resolution
-# ---------------------------------------------------------------------------
-
-def _rank_display_label(taxonomic_rank: str | None):
-    """Return (label_expr, needs_join) for the given taxonomic rank.
-
-    Raw / all / None:
-        label_expr = coalesce(Detection.label, Detection.category)
-        needs_join  = False
-
-    Any taxonomic rank (species/genus/family/order/class):
-        label_expr = CASE expression that maps each detection to:
-            - non-animals: Detection.category (person, vehicle)
-            - animals with a value at the rank: that taxonomy value
-            - animals with taxonomy but not at this rank: "Higher-level taxa"
-            - animals with no taxonomy (bait, custom labels, etc.): "No taxonomy"
-        needs_join  = True
-    """
-    if not taxonomic_rank or taxonomic_rank in ("raw", "all"):
-        # "Most specific": show scientific_name (Latin) with fallback to raw label
-        return (
-            func.coalesce(Detection.scientific_name, Detection.label, Detection.category),
-            False,
-        )
-
-    col_name = _RANK_COLUMNS.get(taxonomic_rank)
-    if not col_name:
-        return (
-            func.coalesce(Detection.label, Detection.category),
-            False,
-        )
-
-    rank_col = getattr(LabelTaxonomy, col_name)
-    # taxon_class is the broadest rank; if it's populated, the row has
-    # real taxonomy. Rows with all-null fields (level "unknown"/"none")
-    # are treated as having no taxonomy.
-    has_any_taxonomy = LabelTaxonomy.taxon_class.isnot(None)
-
-    # For species rank, build the binomial from the rank columns; the
-    # row's own scientific_name names the leaf and can sit below
-    # species ("V. vulpes (adult)" on a variant row), which would keep
-    # variants of one species from merging at this rank.
-    if taxonomic_rank == "species":
-        rank_display = species_rank_scientific_sql()
-    else:
-        # The taxon_* columns are stored lowercase (CSV convention).
-        # Family / genus / order / class names are conventionally
-        # capitalised, so upper-case the first letter for display.
-        # Mirrors app.ml.taxonomic_rank.to_display_case.
-        rank_display = func.upper(func.substr(rank_col, 1, 1)).concat(
-            func.substr(rank_col, 2)
-        )
-
-    label_expr = case(
-        (~is_wildlife_category(Detection.category), Detection.category),
-        (rank_display.isnot(None), rank_display),
-        (has_any_taxonomy, literal(HIGHER_LEVEL_TAXA)),
-        else_=literal(NO_TAXONOMY),
-    )
-    return label_expr, True
 
 
 # ---------------------------------------------------------------------------
@@ -813,7 +750,7 @@ def _event_decimal_hours_for_species(
             ),
         )
         query = query.outerjoin(
-            LabelTaxonomy, LabelTaxonomy.name == EventObservation.label
+            LabelTaxonomy, LabelTaxonomy.id == EventObservation.label_taxonomy_id
         )
         query = query.where(display_label == species)
     else:
@@ -832,7 +769,7 @@ def _event_decimal_hours_for_species(
                 else_=literal(NO_TAXONOMY),
             )
             query = query.outerjoin(
-                LabelTaxonomy, LabelTaxonomy.name == EventObservation.label
+                LabelTaxonomy, LabelTaxonomy.id == EventObservation.label_taxonomy_id
             )
             query = query.where(label_expr == species)
         else:
@@ -1100,46 +1037,32 @@ def get_detection_categories(
     site_ids: list[str] | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
-) -> DetectionCategories:
-    """Count files (images and videos) per category.
+) -> ClassCounts:
+    """Count files (images and videos) per detector class, plus empty.
 
-    Each file is attributed to a single category by its
-    `observation_type` column, which encodes the priority rule
-    animal > human > vehicle > blank (see
-    `recalculate_observation_type` in `crud/file.py`). The four counts
-    therefore partition the files: a photo with both an animal and
-    a person lands in Animals only, never both. The sum can be at most
-    the total file count, never above it.
+    Each file is attributed to a single class by its `observation_type`
+    column: the class of its strongest passing box, or "blank" (see
+    `recalculate_observation_type` in `crud/file.py`). The counts
+    therefore partition the files: a photo with both an animal and a
+    person lands in one of them, never both, and the sum is at most the
+    total file count. Classes are named as the detector names them, so a
+    fish is a fish and a detector that knows no person shows none.
     """
     file_types = ("image", "video")
-
+    n = func.count(File.id)
     query = (
-        select(
-            File.observation_type.label("obs_type"),
-            func.count(File.id).label("n"),
-        )
+        select(File.observation_type, n)
         .select_from(File)
         .join(Deployment, File.deployment_id == Deployment.id)
         .where(File.file_type.in_(file_types))
+        .where(File.observation_type.isnot(None))
         .group_by(File.observation_type)
+        .order_by(n.desc(), File.observation_type)
     )
     query = _apply_filters(query, project_id, site_ids, date_from, date_to)
-    counts: dict[str, int] = {
-        row.obs_type: int(row.n or 0) for row in db.execute(query).all()
-    }
-
-    # `observation_type` is the detector's own category, so `person` is
-    # literally "person" now (it used to be stored as "human"). Anything
-    # that is not a person, a vehicle or a blank is wildlife and counts
-    # towards `animal`, which keeps a future `shark` or `fish` visible in
-    # this chart rather than silently dropping out of all four buckets.
-    known = ("person", "vehicle", "blank")
-    return DetectionCategories(
-        animal_count=sum(n for k, n in counts.items() if k not in known),
-        person_count=counts.get("person", 0),
-        vehicle_count=counts.get("vehicle", 0),
-        empty_count=counts.get("blank", 0),
-    )
+    counts = {obs_type: int(count) for obs_type, count in db.execute(query).all()}
+    empty = counts.pop("blank", 0)
+    return ClassCounts(classes=counts, empty=empty)
 
 
 # ---------------------------------------------------------------------------

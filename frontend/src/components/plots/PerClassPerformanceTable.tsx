@@ -34,13 +34,14 @@ function fmt(value: number | null): string {
 // Rows that are not classifier predictions in the normal sense.
 // Styled muted + italic so they read as context, not as species rows,
 // and flagged so their tooltips can explain the distinction.
-const DETECTOR_CATS = new Set(["animal", "person", "vehicle"]);
+// Which classes are the detector's comes with the response: it depends on
+// the detector ("fish" for one, "animal" for another).
 const SEMANTIC_BUCKETS = new Set(["Higher-level taxa", "No taxonomy"]);
 
-function nonClassifierRow(className: string): boolean {
+function nonClassifierRow(className: string, detectorClasses: string[]): boolean {
   return (
     className === "other"
-    || DETECTOR_CATS.has(className)
+    || detectorClasses.includes(className)
     || SEMANTIC_BUCKETS.has(className)
   );
 }
@@ -94,7 +95,7 @@ export function PerClassPerformanceTable({
             {data.per_class.filter((m) => m.support > 0).map((m) => {
               const f1Style = f1DivergingColor(m.f1);
               const isOther = m.class_name === "other";
-              const isNonAI = nonClassifierRow(m.class_name);
+              const isNonAI = nonClassifierRow(m.class_name, data.detector_classes);
               const rowTitle = isNonAI
                 ? "Not averaged into the macro / weighted rows below"
                 : undefined;

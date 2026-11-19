@@ -305,10 +305,7 @@ def test_deployment_info_happy_path(client, db):
     assert data["event_count"] == 1
     assert data["observation_count"] == 3
     # One animal observation with MaxN=3 from _build_info_fixture.
-    assert data["detection_categories"]["animal"] == 3
-    assert data["detection_categories"]["person"] == 0
-    assert data["detection_categories"]["vehicle"] == 0
-    assert data["detection_categories"]["empty"] == 0
+    assert data["detection_categories"] == {"classes": {"animal": 3}, "empty": 0}
     # Top species block: single lion entry with count=3.
     assert data["top_species"] == [
         {"label": "lion", "common_name": None, "scientific_name": None, "count": 3}

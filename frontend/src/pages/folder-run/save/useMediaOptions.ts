@@ -10,12 +10,13 @@
  * submit; neither holds media state of its own, so they cannot drift.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { deploymentsApi } from "../../../api/deployments";
 import { eventsApi } from "../../../api/events";
 import { exportApi } from "../../../api/export";
+import { projectsApi } from "../../../api/projects";
 import type { OutputPreview } from "../../../api/folder-runs";
 import type { LabelTreeResponse } from "../../../api/types";
 import {
@@ -60,8 +61,12 @@ export interface MediaFormHandles {
   projectThreshold: number;
   visualise: VisualiseState;
   setVisualise: (s: VisualiseState) => void;
+  /** Off whenever `canBlur` is false, whatever was last saved. */
   anonymise: AnonymiseState;
   setAnonymise: (s: AnonymiseState) => void;
+  /** The project can hold a person or a vehicle, the only things blur
+   * touches. False on an underwater project: the row is hidden there. */
+  canBlur: boolean;
   /** The project's label tree for the label picker, or null when it
    * has no taxonomy (the row is hidden). */
   labelTree: LabelTreeResponse | null;
@@ -117,9 +122,25 @@ export function useMediaOptions({
   const [visualise, setVisualise] = useState<VisualiseState>(() => ({
     enabled: persisted?.drawBoxes ?? false,
   }));
-  const [anonymise, setAnonymise] = useState<AnonymiseState>(() => ({
+  const [storedAnonymise, setAnonymise] = useState<AnonymiseState>(() => ({
     enabled: persisted?.blur ?? false,
   }));
+  // Blur only touches people and vehicles. A detector that never finds
+  // either (the underwater ones) leaves nothing to blur, but a blur left
+  // ticked from a camera trap run would still save every video as a
+  // still image. Same key as the label picker, so no extra request.
+  const { data: categories } = useQuery({
+    queryKey: ["project-categories", projectId],
+    queryFn: () => projectsApi.getCategories(projectId),
+    enabled: !!projectId,
+    staleTime: Infinity,
+  });
+  const canBlur =
+    !categories || categories.includes("person") || categories.includes("vehicle");
+  const anonymise = useMemo<AnonymiseState>(
+    () => ({ enabled: storedAnonymise.enabled && canBlur }),
+    [storedAnonymise.enabled, canBlur],
+  );
 
   // Label tree counted by file so the picker reads "N files" per
   // species. Project-wide: a species absent from the picked deployments
@@ -194,7 +215,9 @@ export function useMediaOptions({
       speciesLast: separate.speciesLast,
       copyEmpties: separate.copyEmpties,
       drawBoxes: visualise.enabled,
-      blur: anonymise.enabled,
+      // The stored choice, so an underwater save does not switch blur
+      // off for the next camera trap run.
+      blur: storedAnonymise.enabled,
     });
   };
 
@@ -207,6 +230,7 @@ export function useMediaOptions({
     setVisualise,
     anonymise,
     setAnonymise,
+    canBlur,
     labelTree: labelTree ?? null,
     showDeploymentPicker: (deployments?.length ?? 0) > 1,
     dateBounds: filterOptions?.date_range ?? null,

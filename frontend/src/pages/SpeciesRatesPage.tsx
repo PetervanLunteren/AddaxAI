@@ -83,7 +83,7 @@ export function SpeciesRatesPage() {
               Hickling 2024). The lower bound stops at zero. With one site there is no spread to
               measure, so SD and the interval stay empty. Deployments without a
               site are left out. An observation without a species label is
-              listed under its detector category: animal, person or vehicle.
+              listed under its detector class.
             </p>
           }
           references={[SOLLMANN_2013, SWEETAPPLE_HICKLING_2024]}

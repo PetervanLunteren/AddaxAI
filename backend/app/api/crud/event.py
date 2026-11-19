@@ -907,8 +907,10 @@ def get_events_by_project(
                     max_confidence is None or d.confidence <= max_confidence
                 )
                 if meets_floor and meets_min and meets_max:
+                    # A box without a species points at its class's
+                    # builtin row, so a box with no row has a label.
                     tid = d.label_taxonomy_id
-                    raw = d.label if d.label is not None else d.category
+                    raw = d.label
                     # Same gate as the count suggestion: only species the
                     # event's EventObservation rows kept (best-frame gated
                     # for videos) become chips.
@@ -917,11 +919,11 @@ def get_events_by_project(
                     if tid:
                         label_set.add(tid)
                         if tid not in label_to_scientific:
-                            sci = d.scientific_name or d.label or d.category
+                            sci = d.scientific_name or d.label
                             if sci:
                                 label_to_scientific[tid] = sci
                         if tid not in label_to_common:
-                            common = d.common_name or d.label or d.category
+                            common = d.common_name or d.label
                             if common:
                                 label_to_common[tid] = common
                     else:
@@ -1394,31 +1396,6 @@ def present_label_rows(
     )
 
 
-def present_category_rows(db: Session, project_id: str, threshold: float) -> list[str]:
-    """Distinct detector categories the project shows as a class of their own.
-
-    A box with no taxonomy row has nothing but its detector's category to
-    stand for it, so that category is its class ("elasmobranch" from
-    SharkTrack, "fish" from another detector). MegaDetector's own three
-    get a ``__builtin__`` taxonomy row at ingest and arrive through
-    ``present_label_rows`` instead. Same scope as that function, so a
-    class is coloured exactly when the grid can draw it.
-    """
-    threshold_clause = threshold_or_verified(threshold)
-    rows = (
-        db.query(Detection.category)
-        .join(File, File.id == Detection.file_id)
-        .join(Deployment, Deployment.id == File.deployment_id)
-        .filter(Deployment.project_id == project_id)
-        .filter(Detection.label_taxonomy_id.is_(None))
-        .filter(threshold_clause)
-        .filter(on_visible_frame())
-        .distinct()
-        .all()
-    )
-    return [row[0] for row in rows if row[0]]
-
-
 def get_filter_options(db: Session, project_id: str) -> dict:
     """Get available filter options for a project (distinct labels, date range).
 
@@ -1436,12 +1413,8 @@ def get_filter_options(db: Session, project_id: str) -> dict:
         db,
         project_id,
         threshold,
-        func.coalesce(
-            Detection.scientific_name, Detection.label, Detection.category
-        ),
-        func.coalesce(
-            Detection.common_name, Detection.label, Detection.category
-        ),
+        func.coalesce(Detection.scientific_name, Detection.label),
+        func.coalesce(Detection.common_name, Detection.label),
     )
     label_list = sorted([row[0] for row in label_rows if row[0]])
 

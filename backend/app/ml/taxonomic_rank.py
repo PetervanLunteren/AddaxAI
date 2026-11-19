@@ -1,7 +1,7 @@
 """
 Shared taxonomic rank constants and a Python-side resolver.
 
-Dashboard stats use a SQL CASE expression (statistics._rank_display_label)
+Dashboard stats use a SQL CASE expression (statistics.get_species_distribution)
 and the performance matrix uses a Python resolver. Both live here so the
 bucket names, the rank column mapping, and the ordered option list stay
 in one place; a future plot can pick whichever side fits its query shape.
@@ -119,7 +119,7 @@ def resolve_rank(
     rank: TaxonomicRank | None,
 ) -> str:
     """
-    Python-side mirror of statistics._rank_display_label.
+    Python-side mirror of the CASE in statistics.get_species_distribution.
 
     Non-animal categories return the category. "Most specific" (None or
     "all") falls back `scientific_name -> label -> category`. A specific

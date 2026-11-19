@@ -18,6 +18,9 @@ export interface ClassMetrics {
 export interface PerformanceResponse {
   taxonomic_rank: TaxonomicRank;
   classes: string[];
+  /** The entries of `classes` that are detector classes (animal, person,
+   *  fish), not species. Left out of the averages. */
+  detector_classes: string[];
   class_scientific_names: string[];
   class_common_names: string[];
   class_taxonomy_ids: (string | null)[];

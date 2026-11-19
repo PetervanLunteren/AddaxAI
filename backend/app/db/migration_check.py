@@ -17,10 +17,32 @@ to lose or invent rows.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 # Tables that are bookkeeping, not user data.
 _SKIP = frozenset({"alembic_version"})
+
+# Migrations that change a table's row count on purpose, and which tables.
+# Every other migration must keep every row and add none. Add an entry
+# only together with a test in test_migration_data.py that pins what the
+# change does. Read by the CI test and by the backups script, so the two
+# cannot disagree.
+ROWS_CHANGED_ON_PURPOSE: dict[str, frozenset[str]] = {
+    # Drops detections without a box (the retired box-less observation
+    # flow).
+    "f2a3b4c5d6e7": frozenset({"detections"}),
+    # Adds a builtin label row for each detector class that had boxes but
+    # no row ("fish", "elasmobranch").
+    "a8b2c4d6e8f0": frozenset({"label_taxonomy"}),
+}
+
+
+def rows_changed_on_purpose(revisions: Iterable[str]) -> frozenset[str]:
+    """The tables whose row count the given migrations may change."""
+    return frozenset().union(
+        *(ROWS_CHANGED_ON_PURPOSE.get(rev, frozenset()) for rev in revisions)
+    )
 
 
 @dataclass(frozen=True)
@@ -84,16 +106,22 @@ def sqlite_health(db_path: str) -> list[str]:
 
 
 def lost_rows(
-    before: dict[str, TableSnapshot], after: dict[str, TableSnapshot]
+    before: dict[str, TableSnapshot],
+    after: dict[str, TableSnapshot],
+    changed_on_purpose: frozenset[str] = frozenset(),
 ) -> list[str]:
     """Every way a table came out different in rows: gone, fewer or more
     rows, or a primary key that vanished. A table a migration dropped on
-    purpose is reported too; that is rare enough to want a human to look."""
+    purpose is reported too; that is rare enough to want a human to look.
+    Tables in ``changed_on_purpose`` (see ``rows_changed_on_purpose``) may
+    gain or lose rows."""
     problems: list[str] = []
     for table, b in before.items():
         a = after.get(table)
         if a is None:
             problems.append(f"table {table} is gone")
+            continue
+        if table in changed_on_purpose:
             continue
         if a.count != b.count:
             problems.append(f"{table}: {b.count} rows before, {a.count} after")

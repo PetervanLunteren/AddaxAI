@@ -199,6 +199,7 @@ export function MediaBody({ form }: { form: MediaFormHandles }) {
     setVisualise,
     anonymise,
     setAnonymise,
+    canBlur,
     showDeploymentPicker,
     dateBounds,
   } = form;
@@ -357,19 +358,21 @@ export function MediaBody({ form }: { form: MediaFormHandles }) {
         )}
       </Block>
 
-      <Block title="Boxes and blur">
+      <Block title={canBlur ? "Boxes and blur" : "Boxes"}>
         <CaptionedCheckbox
           checked={visualise.enabled}
           onChange={(v) => setVisualise({ enabled: v })}
           label="Draw detection boxes"
           caption="Boxes and labels drawn on each image. A video gets a still image with the boxes next to it, the video itself is not changed"
         />
-        <CaptionedCheckbox
-          checked={anonymise.enabled}
-          onChange={(v) => setAnonymise({ enabled: v })}
-          label="Blur people and vehicles"
-          caption="People and vehicles blurred on each image. A video cannot be blurred, so it is saved as a blurred still image only"
-        />
+        {canBlur && (
+          <CaptionedCheckbox
+            checked={anonymise.enabled}
+            onChange={(v) => setAnonymise({ enabled: v })}
+            label="Blur people and vehicles"
+            caption="People and vehicles blurred on each image. A video cannot be blurred, so it is saved as a blurred still image only"
+          />
+        )}
       </Block>
     </div>
   );

@@ -71,10 +71,11 @@ export default function DashboardOverview() {
               note={
                 categories
                   ? shareNote([
-                      { label: "animals", count: categories.animal_count },
-                      { label: "people", count: categories.person_count },
-                      { label: "vehicles", count: categories.vehicle_count },
-                      { label: "empty", count: categories.empty_count },
+                      // Per detector class, by its own name.
+                      ...Object.entries(categories.classes).map(
+                        ([label, count]) => ({ label, count }),
+                      ),
+                      { label: "empty", count: categories.empty },
                     ])
                   : undefined
               }

@@ -210,7 +210,7 @@ def test_undo_rederives_counts_and_observation_type_past_the_request(client, db)
 def test_undo_to_no_label_lands_on_the_builtin_animal_row(client, db):
     """A box that had no species goes back to its category's builtin
     row, not to no row at all: the label filter matches on that id."""
-    animal_row = ensure_builtin_labels(db)["animal"]
+    animal_row = ensure_builtin_labels(db, ["animal", "person", "vehicle"])["animal"]
     _, _, f = _project_file(db)
     det = make_detection(db, file_id=f.id, label=None)
     db.commit()

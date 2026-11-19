@@ -58,7 +58,7 @@ export function CalibrationPage() {
           <div className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground">
             {data && data.left_out > 0
               ? `All ${data.left_out} AI labels have fewer than ${data.min_detections} detections, too few to calibrate.`
-              : "No AI labels to calibrate yet. Run a classification model on this project first."}
+              : "Calibration needs species labels from a classification model. This project has none yet."}
           </div>
         ) : (
           <div className="overflow-x-auto rounded-lg border bg-card">

@@ -1658,7 +1658,7 @@ export function FolderRunModelStep() {
                 <NextStepRow
                   icon={Tag}
                   title="Review and edit labels"
-                  description="The human-in-the-loop step: check and edit the species on each animal."
+                  description="The human-in-the-loop step: check and edit the label on each detection."
                   disabled={isClosing}
                   onClick={goTo("labels")}
                 />

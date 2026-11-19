@@ -274,6 +274,16 @@ def make_detection(
     )
     defaults.update(kw)
     obj = Detection(**defaults)
+    # A box without a species points at its class's builtin row, as every
+    # writer in the app leaves it (`clear_classification`), unless the
+    # test sets a row itself. Only the row and its names: what else the
+    # test passed (a score, a name) stays as given.
+    if obj.label is None and "label_taxonomy_id" not in kw:
+        from app.ml.taxonomy_db import builtin_display_name, ensure_builtin_labels
+
+        obj.label_taxonomy_id = ensure_builtin_labels(db, [category])[category]
+        obj.scientific_name = kw.get("scientific_name", builtin_display_name(category))
+        obj.common_name = kw.get("common_name", builtin_display_name(category))
     db.add(obj)
     db.flush()
     return obj

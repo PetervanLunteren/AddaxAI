@@ -220,7 +220,7 @@ def test_group_events_off_splits_burst_per_file(db, tmp_path):
 def test_excluding_person_drops_person_file(db, tmp_path):
     """Excluding the builtin person label drops a person file from the
     copies, while an animal file in the same run survives."""
-    builtin = ensure_builtin_labels(db)
+    builtin = ensure_builtin_labels(db, ["animal", "person", "vehicle"])
     person_tid = builtin["person"]
 
     project = make_project(db, name="excl-person", counting_threshold=0.5)
@@ -559,7 +559,7 @@ def test_preview_root_files_reported_as_filename_list(db, tmp_path):
 def test_preview_drops_excluded_person(db):
     """Preview mirrors the run: excluding person counts the person file
     in dropped_by_filter, not in scope."""
-    builtin = ensure_builtin_labels(db)
+    builtin = ensure_builtin_labels(db, ["animal", "person", "vehicle"])
     person_tid = builtin["person"]
 
     project = make_project(db, name="prev-person", counting_threshold=0.5)
@@ -593,7 +593,7 @@ def test_video_is_filed_by_its_cards_not_another_frame(db, tmp_path):
     preview must say the same thing."""
     project = make_project(db, name="vid-frame", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
-    ensure_builtin_labels(db)
+    ensure_builtin_labels(db, ["animal", "person", "vehicle"])
     frame = tmp_path / "cache" / "bf.jpg"
     frame.parent.mkdir(parents=True)
     frame.write_bytes(b"best-frame-bytes")

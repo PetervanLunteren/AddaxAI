@@ -397,7 +397,7 @@ export function AnnotationCanvas({
       const normH = pixelToNorm(box.height, imgHeight);
       return detectionsApi.create({
         file_id: file.id,
-        category: defaultCategory || "animal",
+        category: defaultCategory,
         bbox_x: Math.max(0, Math.min(1, normX)),
         bbox_y: Math.max(0, Math.min(1, normY)),
         bbox_width: Math.max(0, Math.min(1, normW)),

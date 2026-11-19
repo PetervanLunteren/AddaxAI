@@ -153,6 +153,15 @@ class ModelManifest(BaseModel):
     # skip the whole model silently; `track_filter_for` refuses an unknown
     # value by name instead, and the catalog test pins the values.
     domain: str | None = None
+    # `primary_class`: **the class a species belongs to**, one of `classes`:
+    # "animal" for a MegaDetector, "fish" for the Community Fish Detector,
+    # "elasmobranch" for SharkTrack. A box drawn by hand and a species
+    # added by hand on the Counts page get it as their category, and a
+    # person or vehicle box relabelled to a species moves to it. Explicit
+    # rather than derived, because the app cannot tell from a class name
+    # alone which one a species belongs under. Every detector declares it
+    # (the catalog test enforces that); read through `primary_class_of`.
+    primary_class: str | None = None
 
     # Embedding-specific
     embedding_dim: int | None = None  # 384, 768, or 1024

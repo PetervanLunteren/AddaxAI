@@ -19,6 +19,7 @@ import { Button } from "../ui/button";
 import {
   IdWithCopy,
   NotSet,
+  ObservationCategoriesSection,
   Row,
   Section,
   formatBytes,
@@ -238,24 +239,7 @@ function InfoBody({ info }: { info: SiteInfo }) {
 
       <Separator />
 
-      <Section title="Observation categories">
-        <Row
-          label="Animal"
-          value={info.detection_categories.animal.toLocaleString()}
-        />
-        <Row
-          label="Person"
-          value={info.detection_categories.person.toLocaleString()}
-        />
-        <Row
-          label="Vehicle"
-          value={info.detection_categories.vehicle.toLocaleString()}
-        />
-        <Row
-          label="Empty"
-          value={info.detection_categories.empty.toLocaleString()}
-        />
-      </Section>
+      <ObservationCategoriesSection categories={info.detection_categories} />
 
       <Separator />
 

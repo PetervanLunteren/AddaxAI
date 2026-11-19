@@ -196,11 +196,20 @@ class SpeciesRatesResponse(BaseModel):
     species: list[SpeciesRate]
 
 
-class DetectionCategories(BaseModel):
-    animal_count: int
-    person_count: int
-    vehicle_count: int
-    empty_count: int
+class ClassCounts(BaseModel):
+    """Counts per detector class, by the class's own name, plus the empty
+    files. One shape for the dashboard's Files tile (files per class) and
+    the deployment and site info sheets (individuals per class).
+
+    Keyed by whatever the detector calls its classes ("animal", "person",
+    "fish", "elasmobranch"), largest first, classes with nothing left out.
+    It used to be three fixed fields, animal / person / vehicle, which put
+    every shark under "animal" and showed "Person 0, Vehicle 0" on
+    projects whose detector knows neither.
+    """
+
+    classes: dict[str, int]
+    empty: int
 
 
 class LabelProgressRow(BaseModel):

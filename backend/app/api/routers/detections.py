@@ -28,7 +28,6 @@ from app.api.schemas.detection import (
 )
 from app.api.schemas.undo import UndoSnapshot
 from app.db.base import get_db
-from app.ml.label_exclusion import NON_WILDLIFE_CATEGORIES
 from app.models import Detection, File
 from app.services.crop_service import get_or_create_crop, invalidate_crop_cache
 
@@ -434,69 +433,53 @@ def bulk_relabel_detections(
             if new_taxonomy_id
             else None
         )
-        new_common_name, new_scientific_name = resolve_label_names(
-            body.label, tax, body.category or ""
-        )
+        new_common_name, new_scientific_name = resolve_label_names(body.label, tax)
 
-    # When relabeling to a category-only builtin (person/vehicle/animal),
-    # resolve taxonomy from the category so both names and FK are set.
-    builtin_taxonomy_id = None
-    builtin_scientific_name = None
-    builtin_common_name = None
-    if body.category and not body.label:
-        from app.ml.taxonomy_db import BUILTIN_MODEL_ID
-        from app.models.label_taxonomy import LabelTaxonomy
-
-        builtin = (
-            db.query(LabelTaxonomy)
-            .filter(
-                LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID,
-                LabelTaxonomy.name == body.category,
-            )
-            .first()
-        )
-        if builtin:
-            builtin_taxonomy_id = builtin.id
-            builtin_scientific_name = builtin.scientific_name
-            builtin_common_name = builtin.common_name
+    from app.api.crud.detection import primary_class_for_file
+    from app.ml.primary_class import category_after_human_edit
+    from app.ml.taxonomy_db import clear_classification, ensure_builtin_labels
 
     label_provided = "label" in body.model_fields_set
+    # Every class a box can end on without a species: its own, or the
+    # one the person picked.
+    builtin_ids = ensure_builtin_labels(
+        db, {det.category for det in detections} | {body.category or ""}
+    )
+    # One project per request: the boxes come from one grid.
+    primary = primary_class_for_file(db, detections[0].file_id)
     # The ids are the boxes the person acted on; the rest of `detections`
     # are their tracks' siblings, reached by the cascade. A sibling takes
     # the label tagged "track" and keeps its own verified flag, and one a
     # person labelled by hand is left alone, as `apply_card_labels` does.
     chosen = set(body.detection_ids)
 
-    for det in detections:
-        is_card = det.id in chosen
-        if not is_card and det.classification_method == "human":
-            continue
-        if label_provided:
-            det.label = body.label if body.label else None
-            det.label_confidence = 1.0 if body.label else None
-            det.label_taxonomy_id = new_taxonomy_id
-            det.scientific_name = new_scientific_name if body.label else None
-            det.common_name = new_common_name if body.label else None
-        # A species label says what the animal is, not what the detector
-        # called the box: the category stays the detector's ("animal",
-        # "fish", "elasmobranch"). The picker sends "animal" beside every
-        # species, which would have renamed a shark's box. Only a person
-        # or vehicle box moves to the wildlife category with the label,
-        # and a category-only relabel (to person, to vehicle) still applies.
-        if body.category is not None and (
-            not (label_provided and body.label)
-            or det.category in NON_WILDLIFE_CATEGORIES
-        ):
-            det.category = body.category
-        # Apply builtin taxonomy for category-only relabels
-        if builtin_taxonomy_id and not det.label:
-            det.label_taxonomy_id = builtin_taxonomy_id
-            det.scientific_name = builtin_scientific_name
-            det.common_name = builtin_common_name
-        det.classification_method = "human" if is_card else "track"
-        if is_card:
-            det.verified = True
-            det.verified_at_utc = datetime.now(UTC)
+    try:
+        for det in detections:
+            is_card = det.id in chosen
+            if not is_card and det.classification_method == "human":
+                continue
+            if label_provided or body.category is not None:
+                det.category = category_after_human_edit(
+                    det.category,
+                    body.category,
+                    body.label if label_provided else det.label,
+                    primary,
+                )
+            if label_provided and body.label:
+                det.label = body.label
+                det.label_confidence = 1.0
+                det.label_taxonomy_id = new_taxonomy_id
+                det.scientific_name = new_scientific_name
+                det.common_name = new_common_name
+            elif label_provided or not det.label:
+                clear_classification(det, builtin_ids)
+            det.classification_method = "human" if is_card else "track"
+            if is_card:
+                det.verified = True
+                det.verified_at_utc = datetime.now(UTC)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     file_crud.recompute_file_verified_for_detections(db, body.detection_ids)
     db.commit()

@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import delete, func, text
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
@@ -56,6 +56,23 @@ class PriorObs:
     sex: str | None = None
     life_stage: str | None = None
     behavior: str | None = None
+
+
+def count_individuals_by_class(db: Session, deployment_ids: list[str]) -> dict[str, int]:
+    """Individuals per detector class over these deployments' events
+    (the confirmed count where a person set one, else the AI's MaxN),
+    largest first, classes with nothing left out. For the deployment and
+    site info sheets (`ClassCounts.classes`)."""
+    total = func.sum(EventObservation.effective_count)
+    rows = db.execute(
+        select(EventObservation.category, total)
+        .join(Event, Event.id == EventObservation.event_id)
+        .where(Event.deployment_id.in_(deployment_ids))
+        .group_by(EventObservation.category)
+        .having(total > 0)
+        .order_by(total.desc(), EventObservation.category)
+    ).all()
+    return {category: int(n) for category, n in rows}
 
 
 def _species_key(row: Any) -> str | None:
@@ -632,6 +649,41 @@ def _resolve_taxonomy_id(
     return resolve_taxonomy_id(label, project_id, db)
 
 
+def _human_species(
+    db: Session,
+    event_id: str,
+    category: str | None,
+    label: str | None,
+    label_taxonomy_id: str | None,
+) -> tuple[str, str | None, str | None]:
+    """The (category, label, label_taxonomy_id) a row a person adds is
+    stored with, in the shape `calculate_max_n_for_event` gives AI rows.
+
+    The category follows `category_after_human_edit`: a species takes the
+    detector's primary class, a picked detector class is itself. A class
+    without a species gets ``label = category`` and its builtin row, as an
+    AI row of that class has, so the two merge and the row keeps its key
+    through a MaxN rebuild instead of being dropped by it.
+    """
+    from app.ml.primary_class import category_after_human_edit, project_primary_class
+    from app.ml.taxonomy_db import ensure_builtin_labels
+
+    def primary() -> str:
+        project = (
+            db.query(Project)
+            .join(Deployment, Deployment.project_id == Project.id)
+            .join(Event, Event.deployment_id == Deployment.id)
+            .filter(Event.id == event_id)
+            .one()
+        )
+        return project_primary_class(project)
+
+    category = category_after_human_edit(None, category, label, primary)
+    if not label and label_taxonomy_id is None:
+        return category, category, ensure_builtin_labels(db, [category])[category]
+    return category, label, _resolve_taxonomy_id(db, event_id, label, label_taxonomy_id)
+
+
 def _find_cohort(
     db: Session,
     event_id: str,
@@ -665,7 +717,7 @@ def _find_cohort(
 def add_human_species(
     db: Session,
     event_id: str,
-    category: str,
+    category: str | None,
     count: int,
     label: str | None = None,
     label_taxonomy_id: str | None = None,
@@ -673,35 +725,37 @@ def add_human_species(
     life_stage: str | None = None,
     behavior: str | None = None,
 ) -> EventObservation:
-    """Record a species the AI missed entirely (or bump an existing row).
+    """Record a species the AI missed entirely.
 
-    If a row already matches the species (by taxonomy id, else label) with
-    the same demographics its human_count is set; otherwise a human-only row
-    is created (max_n=0, no frame) carrying the demographics.
-    Clears the event's sign-off. Returns the row.
+    A human-only row is created (max_n=0, no frame) carrying the
+    demographics, and the event's sign-off is cleared. When the event
+    already has a row for this species with the same demographics,
+    nothing changes and that row is returned: adding a species that is
+    already counted must not overwrite its count (an AI MaxN of 3 used to
+    become 1). The count is changed with + and - on the row itself.
     """
-    label_taxonomy_id = _resolve_taxonomy_id(db, event_id, label, label_taxonomy_id)
+    category, label, label_taxonomy_id = _human_species(
+        db, event_id, category, label, label_taxonomy_id
+    )
     demographics = {"sex": sex, "life_stage": life_stage, "behavior": behavior}
     existing = _find_cohort(
         db, event_id, category, label, label_taxonomy_id, demographics
     )
-
     if existing is not None:
-        existing.human_count = count
-        obs = existing
-    else:
-        obs = EventObservation(
-            id=str(uuid.uuid4()),
-            event_id=event_id,
-            label=label,
-            label_taxonomy_id=label_taxonomy_id,
-            category=category,
-            max_n=0,
-            max_n_file_id=None,
-            human_count=count,
-            **demographics,
-        )
-        db.add(obs)
+        return existing
+
+    obs = EventObservation(
+        id=str(uuid.uuid4()),
+        event_id=event_id,
+        label=label,
+        label_taxonomy_id=label_taxonomy_id,
+        category=category,
+        max_n=0,
+        max_n_file_id=None,
+        human_count=count,
+        **demographics,
+    )
+    db.add(obs)
 
     event = db.get(Event, event_id)
     if event is not None:
@@ -784,7 +838,7 @@ def split_observation(
 def relabel_observation(
     db: Session,
     event_observation_id: str,
-    category: str,
+    category: str | None,
     label: str | None = None,
     label_taxonomy_id: str | None = None,
     event_id: str | None = None,
@@ -810,7 +864,9 @@ def relabel_observation(
     source_count = source.effective_count
     demographics = {f: getattr(source, f) for f in DEMOGRAPHIC_FIELDS}
 
-    label_taxonomy_id = _resolve_taxonomy_id(db, event_id, label, label_taxonomy_id)
+    category, label, label_taxonomy_id = _human_species(
+        db, event_id, category, label, label_taxonomy_id
+    )
 
     # No-op when relabelling to the species it already is.
     same_species = (
@@ -843,9 +899,17 @@ def relabel_observation(
     else:
         source.human_count = 0
 
-    # Move the count onto the target. add_human_species merges into the
-    # existing row (setting human_count to the summed total) or creates a
-    # human-only row, resolves taxonomy, clears the sign-off, and commits.
+    # Move the count onto the target: the summed total on its existing
+    # row, or a new human-only row via add_human_species, which also clears
+    # the sign-off and commits.
+    if target is not None:
+        target.human_count = summed
+        event = db.get(Event, event_id)
+        if event is not None:
+            event.confirmed = False
+        db.commit()
+        db.refresh(target)
+        return target
     return add_human_species(
         db,
         event_id,
@@ -970,11 +1034,12 @@ def set_human_observations(
         ai_by_key.setdefault(_species_key(obs), obs)
     seeded: set[str] = set()
     for row in rows:
-        label_taxonomy_id = _resolve_taxonomy_id(
-            db, event_id, row.get("label"), row.get("label_taxonomy_id")
+        category, label, label_taxonomy_id = _human_species(
+            db, event_id, row.get("category"), row.get("label"),
+            row.get("label_taxonomy_id"),
         )
         demographics = {f: row.get(f) for f in DEMOGRAPHIC_FIELDS}
-        key = label_taxonomy_id or row.get("label") or row["category"]
+        key = label_taxonomy_id or label
         seed = ai_by_key.get(key)
         if (
             seed is not None
@@ -988,9 +1053,9 @@ def set_human_observations(
                 EventObservation(
                     id=str(uuid.uuid4()),
                     event_id=event_id,
-                    label=row.get("label"),
+                    label=label,
                     label_taxonomy_id=label_taxonomy_id,
-                    category=row["category"],
+                    category=category,
                     max_n=0,
                     max_n_file_id=None,
                     human_count=row["count"],

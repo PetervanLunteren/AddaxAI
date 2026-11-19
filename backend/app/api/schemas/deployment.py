@@ -12,6 +12,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.api.schemas.statistics import ClassCounts
+
 FolderStatus = Literal["valid", "needs_relink"]
 
 
@@ -158,20 +160,6 @@ class DeploymentTopSpecies(BaseModel):
     count: int
 
 
-class DeploymentDetectionCategories(BaseModel):
-    """Observation counts split by detection category + blank files.
-
-    Animal / person / vehicle are MaxN sums over events (matches the
-    dashboard's `get_detection_categories`). Empty is the count of
-    files whose `observation_type == "blank"` (no usable detections).
-    """
-
-    animal: int
-    person: int
-    vehicle: int
-    empty: int
-
-
 class DeploymentVerification(BaseModel):
     """File verification progress for a deployment."""
 
@@ -207,7 +195,7 @@ class DeploymentInfoResponse(BaseModel):
     # Sum of EventObservation.effective_count (human_count when set, else
     # the AI max_n) across all events in this deployment.
     observation_count: int
-    detection_categories: DeploymentDetectionCategories
+    detection_categories: ClassCounts
     # Top 5 species by observation count within this deployment. Empty
     # list when the deployment has no observations yet.
     top_species: list[DeploymentTopSpecies]

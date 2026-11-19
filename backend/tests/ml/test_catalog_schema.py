@@ -20,6 +20,7 @@ from pathlib import Path
 
 import pytest
 
+from app.ml.primary_class import primary_class_of
 from app.ml.schemas.model_manifest import ModelManifest
 
 _CATALOG_PATH = Path(__file__).resolve().parents[3] / "models.json"
@@ -73,6 +74,28 @@ def test_every_detector_declares_its_classes() -> None:
             f"{model_id}: classes are matched against "
             f"Detection.category, which is stored lowercase"
         )
+
+
+def test_every_detector_declares_its_primary_class() -> None:
+    """Every detector names the class a species belongs to, and it is one
+    of its own classes: a box drawn by hand and a species added by hand
+    get it as their category (`app/ml/primary_class.py`)."""
+    catalog = json.loads(_CATALOG_PATH.read_text())
+    for entry in catalog["models"]["det"]:
+        manifest = ModelManifest(**entry)
+        assert primary_class_of(manifest) not in ("person", "vehicle"), entry["model_id"]
+    for kind in ("cls", "emb"):
+        for entry in catalog["models"][kind]:
+            assert "primary_class" not in entry, f"{entry['model_id']}: detectors only"
+
+
+def test_primary_class_of_refuses_a_class_the_detector_does_not_list() -> None:
+    catalog = json.loads(_CATALOG_PATH.read_text())
+    fish = next(e for e in catalog["models"]["det"] if e["classes"] == ["fish"])
+    model_id = fish["model_id"]
+    for wrong in ("animal", None):
+        with pytest.raises(ValueError, match=model_id):
+            primary_class_of(ModelManifest(**{**fish, "primary_class": wrong}))
 
 
 def test_every_detector_declares_its_domain() -> None:

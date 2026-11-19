@@ -12,7 +12,7 @@ import type {
   CsvImportResult,
   SiteCreate,
   SiteImportRow,
-  SiteDetectionCategories,
+  ClassCounts,
   SiteFileCounts,
   SiteInfo,
   SiteResponse,
@@ -25,7 +25,7 @@ import type {
 // Re-export types
 export type {
   SiteCreate,
-  SiteDetectionCategories,
+  ClassCounts,
   SiteFileCounts,
   SiteInfo,
   SiteResponse,

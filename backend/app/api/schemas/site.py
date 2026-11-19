@@ -11,6 +11,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.api.schemas.statistics import ClassCounts
+
 
 def reject_null_island(latitude: float | None, longitude: float | None) -> None:
     """Reject 0,0: it is the form default and 'null island', so almost always
@@ -113,15 +115,6 @@ class SiteTopSpecies(BaseModel):
     count: int
 
 
-class SiteDetectionCategories(BaseModel):
-    """Observation counts split by detection category + blank files."""
-
-    animal: int
-    person: int
-    vehicle: int
-    empty: int
-
-
 class SiteVerification(BaseModel):
     """File verification progress aggregated across the site's deployments."""
 
@@ -155,7 +148,7 @@ class SiteInfoResponse(BaseModel):
     verification: SiteVerification
     event_count: int
     observation_count: int
-    detection_categories: SiteDetectionCategories
+    detection_categories: ClassCounts
     top_species: list[SiteTopSpecies]
     # Sum of per-deployment (end - start + 1) days. None when the site
     # has no deployments or any deployment is open-ended (no end_date).

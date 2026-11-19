@@ -375,6 +375,29 @@ def test_verifying_a_card_writes_its_label_over_the_track(client, db):
         assert rows[b.id].classification_method == "track"
 
 
+def test_a_card_without_a_species_leaves_each_box_on_its_own_class(client, db):
+    """The tracker does not keep classes apart: a track of a deer can pick
+    up a vehicle box behind it. Confirming the card with no species used
+    to copy the card's label row to every box, so the vehicle box showed
+    under the card's class in the label filter. Each box keeps the row of
+    its own class."""
+    from app.ml.taxonomy_db import builtin_label_ids
+
+    _, _, _, _, boxes = _tracked_video(db)
+    card, stray = boxes["one"][1], boxes["one"][2]
+    stray.category = "vehicle"
+    stray.label_taxonomy_id = None
+    db.commit()
+
+    r = client.patch(f"/api/detections/{card.id}/verify", json={"verified": True})
+    assert r.status_code == 200
+
+    db.expire_all()
+    builtin = builtin_label_ids(db)
+    assert (stray.label_taxonomy_id, stray.scientific_name) == (builtin["vehicle"], "Vehicle")
+    assert boxes["one"][0].label_taxonomy_id == builtin["elasmobranch"]
+
+
 def test_a_card_verdict_leaves_a_frame_a_person_labelled(client, db):
     """Opening a track and relabelling three frames is how a merged track
     is put right, so a later verdict on the card fills in the frames

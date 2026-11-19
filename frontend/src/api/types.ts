@@ -32,7 +32,7 @@ export interface ProjectCreate {
   classification_model_id: string | null;
   embedding_model_id: string | null;
   excluded_classes: string[];
-  shortcut_labels: Record<string, { value: string; category: string; label: string | null }>;
+  shortcut_labels: Record<string, { value: string; category?: string; label: string | null }>;
   country_code?: string | null;
   state_code?: string | null;
   /** IANA timezone name, e.g. "Europe/Amsterdam". Optional: omit/null to
@@ -64,7 +64,7 @@ export interface ProjectUpdate {
   classification_model_id?: string | null;
   embedding_model_id?: string | null;
   excluded_classes?: string[] | null;
-  shortcut_labels?: Record<string, { value: string; category: string; label: string | null }> | null;
+  shortcut_labels?: Record<string, { value: string; category?: string; label: string | null }> | null;
   country_code?: string | null;
   state_code?: string | null;
   /** IANA timezone name, optional on update. */
@@ -97,7 +97,7 @@ export interface ProjectResponse {
   classification_model_id: string | null;
   embedding_model_id: string | null;
   excluded_classes: string[];
-  shortcut_labels: Record<string, { value: string; category: string; label: string | null }>;
+  shortcut_labels: Record<string, { value: string; category?: string; label: string | null }>;
   country_code: string | null;
   state_code: string | null;
   /** IANA timezone name, or null when unset (auto-derives from site coords). */
@@ -218,10 +218,11 @@ export interface SiteTopSpecies {
   count: number;
 }
 
-export interface SiteDetectionCategories {
-  animal: number;
-  person: number;
-  vehicle: number;
+/** Counts per detector class, by the class's own name ("animal", "fish",
+ *  "person"), largest first, classes with nothing left out, plus the
+ *  empty files. Shared by the info sheets and the dashboard's Files tile. */
+export interface ClassCounts {
+  classes: Record<string, number>;
   empty: number;
 }
 
@@ -245,7 +246,7 @@ export interface SiteInfo {
   verification: SiteVerification;
   event_count: number;
   observation_count: number;
-  detection_categories: SiteDetectionCategories;
+  detection_categories: ClassCounts;
   top_species: SiteTopSpecies[];
   /** Sum of per-deployment (end - start + 1) days. Null when any
    * deployment is open-ended or the site has no deployments. */
@@ -390,13 +391,6 @@ export interface DeploymentTopSpecies {
   count: number;
 }
 
-export interface DeploymentDetectionCategories {
-  animal: number;
-  person: number;
-  vehicle: number;
-  empty: number;
-}
-
 export interface DeploymentVerification {
   verified: number;
   total: number;
@@ -419,7 +413,7 @@ export interface DeploymentInfo {
   event_count: number;
   /** Sum of EventObservation.max_n across all events in this deployment. */
   observation_count: number;
-  detection_categories: DeploymentDetectionCategories;
+  detection_categories: ClassCounts;
   top_species: DeploymentTopSpecies[];
   /** Subfolder-aware effort (paired cameras count once). Null when the
    * deployment has no dated files. */
@@ -878,7 +872,9 @@ export interface AdjacentEventsResponse {
 // Detection create/update types
 export interface DetectionCreate {
   file_id: string;
-  category: string;
+  /** Only for a detector class the person picked. Without it the server
+   *  gives the box the project detector's primary class. */
+  category?: string;
   bbox_x: number;
   bbox_y: number;
   bbox_width: number;

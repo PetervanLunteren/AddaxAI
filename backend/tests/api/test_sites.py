@@ -220,8 +220,8 @@ def test_site_info_happy_path(client, db):
     assert data["files"] == {"total": 5, "images": 4, "videos": 1}
     assert data["event_count"] == 1
     assert data["observation_count"] == 2
-    assert data["detection_categories"]["animal"] == 2
-    assert data["detection_categories"]["person"] == 0
+    # Classes by their own name; one the site never saw is not listed.
+    assert data["detection_categories"] == {"classes": {"animal": 2}, "empty": 0}
     assert data["top_species"] == [
         {"label": "lion", "common_name": None, "scientific_name": None, "count": 2}
     ]

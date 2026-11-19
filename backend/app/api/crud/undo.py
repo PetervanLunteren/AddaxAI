@@ -72,7 +72,9 @@ def restore(db: Session, snap: UndoSnapshot) -> Restored:
     det_ids = [s.detection_id for s in snap.detections]
     detections = _rows(db, Detection, det_ids)
     det_state = {s.detection_id: s for s in snap.detections}
-    builtin_ids = ensure_builtin_labels(db) if detections else {}
+    builtin_ids = ensure_builtin_labels(
+        db, {det_state[d.id].category for d in detections}
+    )
     # One lookup per file and label, not per box: a track's boxes share
     # both, and a long clip's sign-off restores tens of thousands of them.
     # Keyed on the file because the label resolves within its project.

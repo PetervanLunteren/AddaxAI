@@ -235,13 +235,15 @@ def init_db() -> None:
 
 
 def _seed_builtin_labels() -> None:
-    """Seed builtin labels (person, vehicle) in label_taxonomy on startup."""
-    from app.ml.taxonomy_db import ensure_builtin_labels
+    """Seed the classic detector classes (animal, person, vehicle) in
+    label_taxonomy on startup, so the label picker offers them before
+    anything was analysed. Other classes get their row on first use."""
+    from app.ml.taxonomy_db import CLASSIC_DETECTOR_CLASSES, ensure_builtin_labels
 
     SessionLocal = get_session_factory()
     db = SessionLocal()
     try:
-        ensure_builtin_labels(db)
+        ensure_builtin_labels(db, CLASSIC_DETECTOR_CLASSES)
     finally:
         db.close()
 

@@ -74,7 +74,7 @@ interface DetectionDetailModalProps {
    *  pushes their `before` here; drawing a box clears it. Cmd+Z is the
    *  grid's handler, which stays live while this view is open. */
   undo: UndoStack;
-  onRelabel?: (detectionId: string, label: string, category: string) => void;
+  onRelabel?: (detectionId: string, label: string | null, category?: string) => void;
   /** False while a track is opened: a verdict from here stays on this
    *  frame instead of reaching the whole animal and its card, the same
    *  rule as the action bar and the keyboard shortcuts. */
@@ -438,11 +438,11 @@ export function DetectionDetailModal({
   });
 
   const relabelMutation = useMutation({
-    mutationFn: ({ label, category }: { label: string | null; category: string }) =>
+    mutationFn: ({ label, category }: { label: string | null; category?: string }) =>
       detectionsApi.bulkRelabel([detection!.detection_id], label, category, expandTracks),
     onSuccess: (r, { label, category }) => {
       undo.push(r.before);
-      onRelabel?.(detection!.detection_id, label ?? category, category);
+      onRelabel?.(detection!.detection_id, label, category);
       onActionComplete();
       onNavigate?.("nextUnverified");
     },
@@ -710,7 +710,6 @@ export function DetectionDetailModal({
             onCreated={setDrawnId}
             boxesHidden={boxesHidden}
             imageFilter={imageFilter}
-            defaultCategory="animal"
           />
         ) : (
             <div
@@ -1138,8 +1137,8 @@ export function DetectionDetailModal({
                 <LabelPicker
                   // One picker, two targets: this crop (R, Relabel), or
                   // the box just drawn, which has no label to show yet.
-                  // Closing it without a choice leaves a drawn box as
-                  // "animal", as the Files viewer does.
+                  // Closing it without a choice leaves a drawn box on
+                  // the detector's primary class, as the Files viewer does.
                   value={drawnId ? null : detection.label}
                   displayName={drawnId ? null : detection.scientific_name}
                   onSelect={(option) => {

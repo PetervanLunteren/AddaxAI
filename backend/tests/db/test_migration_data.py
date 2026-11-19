@@ -1051,3 +1051,129 @@ def test_f769a2f4166a_gives_legacy_video_boxes_a_track(engine) -> None:
     # The unverified off-cover box and the photo box got nothing.
     assert by_id[noise] == (None,) * 7
     assert by_id[photo_box] == (None,) * 7
+
+
+# ---------------------------------------------------------------------------
+# a8b2c4d6e8f0 — a builtin label row for every detector class
+# ---------------------------------------------------------------------------
+
+
+def test_a8b2c4d6e8f0_links_every_unlabelled_box_to_its_class(engine) -> None:
+    """Boxes from an underwater detector had no builtin row to point at and
+    were missing from every label filter. Each class gets its row, reused
+    when it exists, and only boxes without a species and without a row
+    move: a labelled box with no row (a classifier without taxonomy.csv)
+    is left alone."""
+    upgrade_to("f769a2f4166a")
+
+    with engine.begin() as conn:
+        _, deployment_id = seed_deployment(conn)
+        file_id = insert_row(
+            conn, "files", deployment_id=deployment_id, file_path="/a.jpg",
+            file_type="image",
+        )
+        animal_row = insert_row(
+            conn, "label_taxonomy", classification_model_id="__builtin__",
+            name="animal", level="none", common_name="Animal",
+            scientific_name="Animal", is_custom=0,
+        )
+        fish = insert_row(conn, "detections", file_id=file_id, category="fish")
+        shark = insert_row(conn, "detections", file_id=file_id, category="elasmobranch")
+        animal = insert_row(conn, "detections", file_id=file_id, category="animal")
+        labelled = insert_row(
+            conn, "detections", file_id=file_id, category="fish", label="cod",
+        )
+
+    upgrade_to("a8b2c4d6e8f0")
+
+    with engine.connect() as conn:
+        builtin = dict(conn.execute(text(
+            "SELECT name, id FROM label_taxonomy "
+            "WHERE classification_model_id = '__builtin__'"
+        )).all())
+        rows = {
+            r[0]: r[1:] for r in conn.execute(text(
+                "SELECT id, label_taxonomy_id, scientific_name, common_name, label "
+                "FROM detections"
+            ))
+        }
+        levels = set(conn.execute(text(
+            "SELECT level FROM label_taxonomy WHERE classification_model_id = '__builtin__'"
+        )).scalars())
+
+    assert set(builtin) == {"animal", "fish", "elasmobranch"}
+    assert builtin["animal"] == animal_row
+    assert levels == {"none"}
+    assert rows[fish] == (builtin["fish"], "Fish", "Fish", None)
+    assert rows[shark] == (builtin["elasmobranch"], "Elasmobranch", "Elasmobranch", None)
+    assert rows[animal] == (animal_row, "Animal", "Animal", None)
+    assert rows[labelled] == (None, None, None, "cod")
+
+
+def test_a8b2c4d6e8f0_gives_class_count_rows_the_shape_of_an_ai_row(engine) -> None:
+    """A count row of a class without a species keys on its taxonomy id
+    after this, as an AI row of that class does, so a count a person set
+    on it survives the next MaxN rebuild instead of coming back as a
+    second row. A row naming a species without a row is left alone."""
+    upgrade_to("f769a2f4166a")
+
+    with engine.begin() as conn:
+        _, deployment_id = seed_deployment(conn)
+        event_id = insert_row(conn, "events", deployment_id=deployment_id)
+        ai_row = insert_row(
+            conn, "event_observations", event_id=event_id, category="fish",
+            label="fish", max_n=3, human_count=5,
+        )
+        hand_row = insert_row(
+            conn, "event_observations", event_id=event_id, category="person",
+            label=None, max_n=0, human_count=1,
+        )
+        species_row = insert_row(
+            conn, "event_observations", event_id=event_id, category="fish",
+            label="cod", max_n=0, human_count=2,
+        )
+
+    upgrade_to("a8b2c4d6e8f0")
+
+    with engine.connect() as conn:
+        builtin = dict(conn.execute(text(
+            "SELECT name, id FROM label_taxonomy "
+            "WHERE classification_model_id = '__builtin__'"
+        )).all())
+        rows = {
+            r[0]: r[1:] for r in conn.execute(text(
+                "SELECT id, label, label_taxonomy_id, human_count FROM event_observations"
+            ))
+        }
+
+    assert rows[ai_row] == ("fish", builtin["fish"], 5)
+    assert rows[hand_row] == ("person", builtin["person"], 1)
+    assert rows[species_row] == ("cod", None, 2)
+
+
+def test_a8b2c4d6e8f0_changes_nothing_when_every_box_is_linked(engine) -> None:
+    """A camera trap database, where every unlabelled box already has its
+    row, gains no row and loses none."""
+    upgrade_to("f769a2f4166a")
+
+    with engine.begin() as conn:
+        _, deployment_id = seed_deployment(conn)
+        file_id = insert_row(
+            conn, "files", deployment_id=deployment_id, file_path="/a.jpg",
+            file_type="image",
+        )
+        animal_row = insert_row(
+            conn, "label_taxonomy", classification_model_id="__builtin__",
+            name="animal", level="none", common_name="Animal",
+            scientific_name="Animal", is_custom=0,
+        )
+        insert_row(
+            conn, "detections", file_id=file_id, category="animal",
+            label_taxonomy_id=animal_row, scientific_name="Animal", common_name="Animal",
+        )
+
+    before_tax = _rows(engine, "SELECT * FROM label_taxonomy ORDER BY id")
+    before_det = _rows(engine, "SELECT * FROM detections ORDER BY id")
+    upgrade_to("a8b2c4d6e8f0")
+    assert _rows(engine, "SELECT * FROM label_taxonomy ORDER BY id") == before_tax
+    assert _rows(engine, "SELECT * FROM detections ORDER BY id") == before_det

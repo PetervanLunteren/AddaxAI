@@ -1179,7 +1179,7 @@ export function FileDetailModal({
                 onLoadingChange={handleLoading}
                 onScrubFrame={stepFrame}
                 boxesHidden={boxesHidden}
-                defaultCategory={activeLabel?.category ?? "animal"}
+                defaultCategory={activeLabel?.category}
                 defaultLabel={activeLabel?.label ?? undefined}
                 exportFnRef={exportFnRef}
                 imageFilter={imageFilter}
