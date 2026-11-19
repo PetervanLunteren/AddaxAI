@@ -569,3 +569,57 @@ async def test_the_startup_sync_refreshes_the_ml_router_cache(monkeypatch, sync_
     )
     await main.update_model_catalog(SimpleNamespace(state=SimpleNamespace()))
     assert calls == [1]
+
+
+async def test_the_disable_switch_still_writes_the_manifests_but_reports_nothing(monkeypatch):
+    """ADDAXAI_DISABLE_MODEL_UPDATES turns off the network, not the sync:
+    the manifests are what make a model exist. The update notice stays
+    off, so a model new in this version is not announced on a machine
+    that may not reach HuggingFace."""
+    from types import SimpleNamespace
+
+    from app import main
+
+    built_offline = []
+
+    async def sync(self):
+        built_offline.append(self.offline)
+        return {"new_models": [{"model_id": "NEW"}], "refreshed_models": [],
+                "drifted_models": [], "drifted_envs": []}
+
+    calls = []
+    monkeypatch.setattr(main.ModelCatalogUpdater, "sync", sync)
+    monkeypatch.setattr(main, "refresh_manifest_cache", lambda: calls.append(1))
+    monkeypatch.setattr(
+        main, "get_settings",
+        lambda: SimpleNamespace(disable_model_updates=True, model_catalog_url="x"),
+    )
+    app = SimpleNamespace(state=SimpleNamespace())
+    await main.update_model_catalog(app)
+
+    assert built_offline == [True]
+    assert app.state.model_updates["disabled"] is True
+    assert app.state.model_updates["new_models"] == []
+    assert calls == [1]
+
+
+async def test_the_disable_switch_holds_when_the_sync_fails(monkeypatch):
+    """GET /api/ml/updates checks env drift unless `disabled` is set, so a
+    failed sync must not drop the switch."""
+    from types import SimpleNamespace
+
+    from app import main
+
+    async def sync(self):
+        raise RuntimeError("models folder is read only")
+
+    monkeypatch.setattr(main.ModelCatalogUpdater, "sync", sync)
+    monkeypatch.setattr(main, "refresh_manifest_cache", lambda: None)
+    monkeypatch.setattr(
+        main, "get_settings",
+        lambda: SimpleNamespace(disable_model_updates=True, model_catalog_url="x"),
+    )
+    app = SimpleNamespace(state=SimpleNamespace())
+    await main.update_model_catalog(app)
+
+    assert app.state.model_updates["disabled"] is True

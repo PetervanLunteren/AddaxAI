@@ -1299,7 +1299,7 @@ On startup, `ModelCatalogUpdater.sync()` therefore asks HuggingFace for one file
 
 The recomputed list is returned, never written back into `app.state`: the stored snapshot is what the startup log line `N env(s) drifted` described, and it stays that.
 
-`ADDAXAI_DISABLE_MODEL_UPDATES` still covers both. It turns off the whole notice, so env drift must not slip past it on its own.
+`ADDAXAI_DISABLE_MODEL_UPDATES` still covers both. It turns off the whole notice, so env drift must not slip past it on its own. It does not turn off the manifests: see "The catalog we ship as a fallback".
 
 ## Reaching HuggingFace through something that is not HuggingFace
 
@@ -1324,6 +1324,8 @@ The Worker runs on the free plan (no card; 100,000 requests a day, then it error
 `models.json` is bundled by `backend.spec` and read by `_bundled_catalog_path()` when the remote catalog cannot be fetched. **It is a fallback, not a cache: never write the fetched catalog over it.** **The remote does not replace it, it is laid over it**: `merge_catalogs` starts from the shipped entry of every model and puts the remote entry's fields on top, remote-only models as they are. Until 2026-09-14 the remote replaced the file wholesale, so a field the code required had to exist on `main` before the code ran anywhere; a sync from `main` rewrote every installed manifest without `domain` and every video run failed at `track_filter_for`. With the merge a field this build requires is always there for the models it shipped with, the remote still adds models and updates text, and a model added remotely without a required field fails on that model alone, by name. That would turn the one file describing what this build shipped with into a copy of whatever upstream said last, and the guarantee it exists to give (an install can always name its own models) with it.
 
 Without it, a first launch on a network that blocks `raw.githubusercontent.com` downloaded every weight file successfully and then showed no models at all, because `manifest.json` is written from the catalog and from nowhere else, and `ManifestManager` skips any model directory without one. The symptom lands far from the cause, as **"Classification model '<id>' not found"** from `POST /api/projects`.
+
+**`ADDAXAI_DISABLE_MODEL_UPDATES` turns off the network, not the sync.** With it set, `update_model_catalog` builds the updater with `offline=True`: the manifests are written from the shipped file and nothing else, and no URL is opened (no remote catalog, no `taxonomy.csv` fetch, no comparison with HuggingFace, no env drift check). A manifest that differs from the shipped entry is replaced, the same rule as online, so a models folder copied from an older version still gets the fields a newer app needs. Until 2026-11-19 the flag skipped the whole sync, and an admin who set it before the first launch, as the locked-down docs advise, got the weights on disk and no models listed (issue #139). The update notice stays off: the sync's result is not passed on, so a model new in this version is not announced on a machine that may not reach HuggingFace.
 
 ## The wheel we ship instead of downloading
 
