@@ -24,6 +24,7 @@ import {
   type CalibrationLabel,
 } from "../../api/calibration";
 import { API_BASE_URL, ApiError } from "../../lib/api-client";
+import { neededForCurve } from "../../lib/calibration-summary";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
 import {
   getContrastTextColor,
@@ -54,15 +55,6 @@ const cropUrl = (detectionId: string) =>
 function tally(row: CalibrationLabel): string {
   const parts = [`${row.right} right`, `${row.wrong} wrong`, `${row.unsure} can't tell`];
   return parts.join(" · ");
-}
-
-function stillNeeded(row: CalibrationLabel): string | null {
-  if (row.right_needed === 0 && row.wrong_needed === 0) return null;
-  const parts = [
-    row.right_needed > 0 ? `${row.right_needed} more right` : null,
-    row.wrong_needed > 0 ? `${row.wrong_needed} more wrong` : null,
-  ].filter(Boolean);
-  return `${parts.join(" and ")} for a curve`;
 }
 
 interface CalibrationDialogProps {
@@ -179,7 +171,7 @@ export function CalibrationDialog({
 
   const name = resolveSpeciesName(row);
   const pillColor = getSpeciesColor(row.label);
-  const needed = stillNeeded(row);
+  const needed = neededForCurve(row);
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>

@@ -34,6 +34,15 @@ html {
 html:has([data-full-bleed]) {
   scrollbar-gutter: auto;
 }
+/* While a menu, dialog or select is open, Radix locks page scrolling and
+ * gives the body a right margin as wide as the scrollbar it hides, so the
+ * page does not jump. The gutter above already keeps that space, so here
+ * the margin came on top: the page narrowed by ~15px and a white band
+ * showed at the right. Not on the full-bleed pages, which have no gutter
+ * and need the margin. */
+html:not(:has([data-full-bleed])) body[data-scroll-locked] {
+  margin-right: 0 !important;
+}
 
 html, body {
   font-family: "Twemoji Country Flags", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
@@ -182,6 +191,16 @@ html, body {
   }
 }
 
+/* Toasts must take clicks while a modal is open. A Radix modal sets
+ * pointer-events: none on <body> to block everything outside it, and the
+ * toaster lives there too, so a toast's View, Undo and close buttons were
+ * dead under any open viewer or dialog. The toaster box itself has no
+ * height (its toasts float in it), so this blocks nothing else. The
+ * dialog's own onPointerDownOutside keeps such a click from closing it. */
+[data-sonner-toaster] {
+  pointer-events: auto;
+}
+
 @keyframes toast-slide-up {
   from {
     opacity: 0;
@@ -201,6 +220,13 @@ html, body {
 .leaflet-container {
   position: relative;
   z-index: 0;
+}
+
+/* Leaflet's layers list keeps its white background in dark mode, so its
+ * radio buttons must not take the dark scheme: dark on white, the
+ * unselected ones looked filled in. */
+.leaflet-control-layers {
+  color-scheme: light;
 }
 
 /* Fullscreen toggle — the FullscreenControl button toggles this class

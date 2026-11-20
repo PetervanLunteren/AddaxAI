@@ -64,10 +64,13 @@ def write_tables_csv(
     db: Session,
     project_id: str,
     target_dir: Path,
+    *,
+    include_frames: bool,
 ) -> TablesCsvResult:
     """Write ``addaxai-summary.csv``, ``addaxai-counts.csv``,
-    ``addaxai-files.csv``, ``addaxai-detections.csv`` and, when the run
-    holds a video, ``addaxai-frames.csv``.
+    ``addaxai-files.csv``, ``addaxai-detections.csv`` and, when
+    ``include_frames`` is on and the run holds a video,
+    ``addaxai-frames.csv``.
 
     All tables derive from the same project scope (no per-call species
     exclusion), so they stay join-consistent.
@@ -115,11 +118,11 @@ def write_tables_csv(
 
     # Every box of the tracks in the detections table, one row per
     # sampled frame. On a marine run it is an order of magnitude bigger
-    # than every other table together. A run without videos gets no
-    # frames file at all, rather than an empty one.
+    # than every other table together, so it is opt-in. A run without
+    # videos gets no frames file at all, rather than an empty one.
     frames_paths: list[Path] = []
     frame_count = 0
-    if export_crud.scope_has_videos(db, project):
+    if include_frames and export_crud.scope_has_videos(db, project):
         frames_path = target_dir / FRAMES_FILENAME
         frame_count = export_formats.write_csv(
             frames_path,

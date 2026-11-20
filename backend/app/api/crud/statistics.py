@@ -23,11 +23,10 @@ from app.api.schemas.statistics import (
     ActivityPatternResponse,
     AnimalPhoto,
     AttributeCount,
+    ClassCounts,
     DashboardOverview,
     DashboardSummary,
     Demographics,
-    DetectionCategories,
-    DetectionTrendPoint,
     HourlyCount,
     LabelProgressRow,
     ObservationRateMapFeature,
@@ -191,69 +190,6 @@ def _scoped_observations_query(
     if date_clauses:
         query = query.where(*date_clauses)
     return query
-
-
-# ---------------------------------------------------------------------------
-# Taxonomic rank resolution
-# ---------------------------------------------------------------------------
-
-def _rank_display_label(taxonomic_rank: str | None):
-    """Return (label_expr, needs_join) for the given taxonomic rank.
-
-    Raw / all / None:
-        label_expr = coalesce(Detection.label, Detection.category)
-        needs_join  = False
-
-    Any taxonomic rank (species/genus/family/order/class):
-        label_expr = CASE expression that maps each detection to:
-            - non-animals: Detection.category (person, vehicle)
-            - animals with a value at the rank: that taxonomy value
-            - animals with taxonomy but not at this rank: "Higher-level taxa"
-            - animals with no taxonomy (bait, custom labels, etc.): "No taxonomy"
-        needs_join  = True
-    """
-    if not taxonomic_rank or taxonomic_rank in ("raw", "all"):
-        # "Most specific": show scientific_name (Latin) with fallback to raw label
-        return (
-            func.coalesce(Detection.scientific_name, Detection.label, Detection.category),
-            False,
-        )
-
-    col_name = _RANK_COLUMNS.get(taxonomic_rank)
-    if not col_name:
-        return (
-            func.coalesce(Detection.label, Detection.category),
-            False,
-        )
-
-    rank_col = getattr(LabelTaxonomy, col_name)
-    # taxon_class is the broadest rank; if it's populated, the row has
-    # real taxonomy. Rows with all-null fields (level "unknown"/"none")
-    # are treated as having no taxonomy.
-    has_any_taxonomy = LabelTaxonomy.taxon_class.isnot(None)
-
-    # For species rank, build the binomial from the rank columns; the
-    # row's own scientific_name names the leaf and can sit below
-    # species ("V. vulpes (adult)" on a variant row), which would keep
-    # variants of one species from merging at this rank.
-    if taxonomic_rank == "species":
-        rank_display = species_rank_scientific_sql()
-    else:
-        # The taxon_* columns are stored lowercase (CSV convention).
-        # Family / genus / order / class names are conventionally
-        # capitalised, so upper-case the first letter for display.
-        # Mirrors app.ml.taxonomic_rank.to_display_case.
-        rank_display = func.upper(func.substr(rank_col, 1, 1)).concat(
-            func.substr(rank_col, 2)
-        )
-
-    label_expr = case(
-        (~is_wildlife_category(Detection.category), Detection.category),
-        (rank_display.isnot(None), rank_display),
-        (has_any_taxonomy, literal(HIGHER_LEVEL_TAXA)),
-        else_=literal(NO_TAXONOMY),
-    )
-    return label_expr, True
 
 
 # ---------------------------------------------------------------------------
@@ -1086,39 +1022,8 @@ def get_activity_overlap(
 # ---------------------------------------------------------------------------
 
 
-def get_detection_trend(
-    db: Session,
-    project_id: str,
-    label_taxonomy_ids: list[str] | None = None,
-    site_ids: list[str] | None = None,
-    date_from: str | None = None,
-    date_to: str | None = None,
-) -> list[DetectionTrendPoint]:
-    """Daily observation counts for the trend chart.
-
-    Scoped like every dashboard card (`_scoped_observations_query`).
-    """
-    date_expr = func.strftime("%Y-%m-%d", Event.event_start_local)
-
-    query = (
-        _scoped_observations_query(
-            [
-                date_expr.label("date"),
-                func.sum(EventObservation.effective_count).label("count"),
-            ],
-            project_id, label_taxonomy_ids, site_ids, date_from, date_to,
-        )
-        # Date-less events (NULL bounds) have no date; exclude them.
-        .where(Event.event_start_local.isnot(None))
-        .group_by(date_expr)
-        .order_by(date_expr.asc())
-    )
-
-    rows = db.execute(query).all()
-    return [
-        DetectionTrendPoint(date=row.date, count=row.count)
-        for row in rows
-    ]
+# The observation trend lives in crud/rate_trend.py, the one place that
+# cuts time into periods.
 
 
 # ---------------------------------------------------------------------------
@@ -1132,46 +1037,32 @@ def get_detection_categories(
     site_ids: list[str] | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
-) -> DetectionCategories:
-    """Count files (images and videos) per category.
+) -> ClassCounts:
+    """Count files (images and videos) per detector class, plus empty.
 
-    Each file is attributed to a single category by its
-    `observation_type` column, which encodes the priority rule
-    animal > human > vehicle > blank (see
-    `recalculate_observation_type` in `crud/file.py`). The four counts
-    therefore partition the files: a photo with both an animal and
-    a person lands in Animals only, never both. The sum can be at most
-    the total file count, never above it.
+    Each file is attributed to a single class by its `observation_type`
+    column: the class of its strongest passing box, or "blank" (see
+    `recalculate_observation_type` in `crud/file.py`). The counts
+    therefore partition the files: a photo with both an animal and a
+    person lands in one of them, never both, and the sum is at most the
+    total file count. Classes are named as the detector names them, so a
+    fish is a fish and a detector that knows no person shows none.
     """
     file_types = ("image", "video")
-
+    n = func.count(File.id)
     query = (
-        select(
-            File.observation_type.label("obs_type"),
-            func.count(File.id).label("n"),
-        )
+        select(File.observation_type, n)
         .select_from(File)
         .join(Deployment, File.deployment_id == Deployment.id)
         .where(File.file_type.in_(file_types))
+        .where(File.observation_type.isnot(None))
         .group_by(File.observation_type)
+        .order_by(n.desc(), File.observation_type)
     )
     query = _apply_filters(query, project_id, site_ids, date_from, date_to)
-    counts: dict[str, int] = {
-        row.obs_type: int(row.n or 0) for row in db.execute(query).all()
-    }
-
-    # `observation_type` is the detector's own category, so `person` is
-    # literally "person" now (it used to be stored as "human"). Anything
-    # that is not a person, a vehicle or a blank is wildlife and counts
-    # towards `animal`, which keeps a future `shark` or `fish` visible in
-    # this chart rather than silently dropping out of all four buckets.
-    known = ("person", "vehicle", "blank")
-    return DetectionCategories(
-        animal_count=sum(n for k, n in counts.items() if k not in known),
-        person_count=counts.get("person", 0),
-        vehicle_count=counts.get("vehicle", 0),
-        empty_count=counts.get("blank", 0),
-    )
+    counts = {obs_type: int(count) for obs_type, count in db.execute(query).all()}
+    empty = counts.pop("blank", 0)
+    return ClassCounts(classes=counts, empty=empty)
 
 
 # ---------------------------------------------------------------------------
@@ -1556,6 +1447,7 @@ def get_animal_photos(
     date_from: str | None = None,
     date_to: str | None = None,
     wildlife_only: bool = False,
+    min_box_px: int | None = None,
 ) -> list[AnimalPhoto]:
     """Random confident detections, for the dashboard photos.
 
@@ -1567,6 +1459,10 @@ def get_animal_photos(
     crop endpoint can cut (a bbox; for a video the box on its track's
     representative frame, `on_visible_frame`). Among those the pick is
     random, so every dashboard visit shows another one.
+
+    `min_box_px` keeps out boxes whose long side in source pixels is too
+    small to blow up sharply. A floor, not a weight, so the pick above it
+    stays uniform; when too few reach it, any box will do.
     """
     floor = max(PHOTO_MIN_CONFIDENCE, _get_counting_threshold(db, project_id))
     query = (
@@ -1605,6 +1501,14 @@ def get_animal_photos(
         query = query.where(_wildlife_clause(Detection.category, Detection.label))
     query = _apply_filters(query, project_id, site_ids, date_from, date_to)
 
+    rows = []
+    if min_box_px is not None:
+        rows = db.execute(query.where(or_(
+            Detection.bbox_width * File.width_px >= min_box_px,
+            Detection.bbox_height * File.height_px >= min_box_px,
+        ))).all()
+    if len(rows) < limit:
+        rows = db.execute(query).all()
     return [
         AnimalPhoto(
             detection_id=r.detection_id,
@@ -1619,5 +1523,5 @@ def get_animal_photos(
                 r.captured_at_local.date() if r.captured_at_local else None
             ),
         )
-        for r in db.execute(query).all()
+        for r in rows
     ]

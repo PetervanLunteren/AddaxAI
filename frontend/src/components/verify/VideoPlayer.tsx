@@ -533,7 +533,7 @@ export function VideoPlayer({
       video.addEventListener("seeked", onSeeked);
       video.currentTime = 0;
     }
-  }, [imgW, imgH, s, frameRate, overlayIndex, selectedTrackId, file.file_path, isExporting]);
+  }, [imgW, imgH, s, frameRate, overlayIndex, selectedTrackId, file.file_path, isExporting, sourceVideoId]);
 
   // Register export function for the download button
   useEffect(() => {

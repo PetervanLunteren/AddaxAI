@@ -62,7 +62,7 @@ def test_writes_the_tables_at_canonical_paths(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    result = write_tables_csv(db, project.id, target)
+    result = write_tables_csv(db, project.id, target, include_frames=True)
 
     # Summary + counts + files + detections: a folder run has no
     # deployments table (no sites, one synthetic deployment).
@@ -112,7 +112,7 @@ def test_counts_table_has_one_row_per_observation_without_deployment_id(
     db.commit()
 
     target = tmp_path / "out"
-    write_tables_csv(db, project.id, target)
+    write_tables_csv(db, project.id, target, include_frames=True)
 
     with open(target / COUNTS_FILENAME, newline="") as f:
         counts = list(csv.DictReader(f))
@@ -148,7 +148,7 @@ def test_folder_run_headers_omit_deployment_id_and_notes(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_tables_csv(db, project.id, target)
+    write_tables_csv(db, project.id, target, include_frames=True)
 
     files_headers = (
         (target / FILES_FILENAME).read_text().splitlines()[0].split(",")
@@ -208,7 +208,7 @@ def test_folder_run_files_table_keeps_the_species_columns(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_tables_csv(db, project.id, target)
+    write_tables_csv(db, project.id, target, include_frames=True)
 
     with open(target / FILES_FILENAME, newline="", encoding="utf-8") as f:
         headers, row = list(csv.reader(f))
@@ -279,7 +279,7 @@ def test_event_id_is_blank_for_unclustered_files(db, tmp_path):
     make_detection(db, file_id=file.id, category="animal", confidence=0.9)
 
     target = tmp_path / "out"
-    write_tables_csv(db, project.id, target)
+    write_tables_csv(db, project.id, target, include_frames=True)
 
     for filename in (FILES_FILENAME, DETECTIONS_FILENAME):
         lines = (target / filename).read_text().splitlines()
@@ -311,7 +311,7 @@ def test_event_id_carries_the_real_event_id_when_clustered(db, tmp_path):
     db.commit()
 
     target = tmp_path / "out"
-    write_tables_csv(db, project.id, target)
+    write_tables_csv(db, project.id, target, include_frames=True)
 
     for filename in (FILES_FILENAME, DETECTIONS_FILENAME):
         lines = (target / filename).read_text().splitlines()
@@ -345,7 +345,7 @@ def test_row_count_totals_all_tables(db, tmp_path):
         )
 
     target = tmp_path / "out"
-    result = write_tables_csv(db, project.id, target)
+    result = write_tables_csv(db, project.id, target, include_frames=True)
 
     assert result.row_count == 6
 
@@ -375,7 +375,7 @@ def test_relative_path_is_relative_to_deployment_folder(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_tables_csv(db, project.id, target)
+    write_tables_csv(db, project.id, target, include_frames=True)
 
     assert _relative_paths(target, FILES_FILENAME) == {"sub/IMG.jpg"}
     assert _relative_paths(target, DETECTIONS_FILENAME) == {"sub/IMG.jpg"}
@@ -398,7 +398,7 @@ def test_relative_path_falls_back_to_filename(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_tables_csv(db, project.id, target)
+    write_tables_csv(db, project.id, target, include_frames=True)
 
     assert _relative_paths(target, FILES_FILENAME) == {"IMG.jpg"}
     assert _relative_paths(target, DETECTIONS_FILENAME) == {"IMG.jpg"}
@@ -406,7 +406,7 @@ def test_relative_path_falls_back_to_filename(db, tmp_path):
 
 def test_unknown_project_raises(db, tmp_path):
     with pytest.raises(ValueError, match="not found"):
-        write_tables_csv(db, "no-such-id", tmp_path / "out")
+        write_tables_csv(db, "no-such-id", tmp_path / "out", include_frames=True)
 
 
 def test_detections_export_honours_project_threshold(db, tmp_path):
@@ -443,7 +443,7 @@ def test_detections_export_honours_project_threshold(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_tables_csv(db, project.id, target)
+    write_tables_csv(db, project.id, target, include_frames=True)
 
     # Parse the label column rather than searching the raw text: "cat" is
     # a substring of the "classification_label" header.
@@ -476,7 +476,7 @@ def test_frames_table_has_one_row_per_box_and_counts_toward_row_count(db, tmp_pa
                        bbox_x=0.1, bbox_y=0.1, bbox_width=0.2, bbox_height=0.2)
 
     target = tmp_path / "out"
-    result = write_tables_csv(db, project.id, target)
+    result = write_tables_csv(db, project.id, target, include_frames=True)
 
     with open(target / FRAMES_FILENAME, newline="") as f:
         frames = list(csv.DictReader(f))
@@ -490,3 +490,10 @@ def test_frames_table_has_one_row_per_box_and_counts_toward_row_count(db, tmp_pa
     assert len(result.output_paths) == 5
     # 1 summary + 0 counts (no event) + 1 file + 1 detection + 3 frames.
     assert result.row_count == 6
+
+    # Off, the same run writes no frames file and counts no frame rows.
+    (target / FRAMES_FILENAME).unlink()
+    without = write_tables_csv(db, project.id, target, include_frames=False)
+    assert not (target / FRAMES_FILENAME).exists()
+    assert len(without.output_paths) == 4
+    assert without.row_count == 3

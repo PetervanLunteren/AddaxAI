@@ -631,9 +631,9 @@ export default function SettingsPage() {
       const afterStats = await fetchStats(projectId, data.counting_threshold);
 
       showSummary(buildSaveResults(beforeStats, afterStats));
-    } catch (error: any) {
+    } catch (error) {
       setIsSaving(false);
-      toast.error(error.message || "Failed to save settings");
+      toast.error((error instanceof Error && error.message) || "Failed to save settings");
     }
   };
 
@@ -655,8 +655,8 @@ export default function SettingsPage() {
       } else {
         toast.success(reEmbedResult.message);
       }
-    } catch (error: any) {
-      toast.error(error.message || "Failed to start re-embedding");
+    } catch (error) {
+      toast.error((error instanceof Error && error.message) || "Failed to start re-embedding");
     }
   };
 

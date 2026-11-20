@@ -417,12 +417,9 @@ export function EventCountPanel({
             label: obs.label,
             category: obs.category,
           });
-          // Species colour when the observation names a species, the
-          // its category when nothing named it, which is a class with a
-          // colour of its own like any other.
-          const swatch = getSpeciesColor(
-            obs.label_taxonomy_id || obs.label || obs.category,
-          );
+          // The colour of the row's taxonomy row: its species, or its
+          // detector class's builtin row when no species was named.
+          const swatch = getSpeciesColor(obs.label_taxonomy_id || obs.label || "");
           return (
             <div
               key={obs.id}

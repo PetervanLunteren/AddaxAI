@@ -2,7 +2,7 @@
 Tests for the shared taxonomic_rank resolver.
 
 Exercises resolve_rank() directly; no DB. The dashboard's SQL CASE in
-statistics._rank_display_label is expected to produce the same output
+statistics.get_species_distribution is expected to produce the same output
 for the same inputs — these tests are the contract both impls satisfy.
 """
 

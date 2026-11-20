@@ -470,7 +470,9 @@ def _reject_unknown_taxonomy(db: Session) -> Iterator[None]:
     """A client-supplied label_taxonomy_id that names no row fails the
     foreign key at commit, which surfaced as a bare 500. Nothing is half
     applied (the write is one transaction), so answer 422 naming the
-    field. Wraps every observation write that accepts the id."""
+    field. Wraps every observation write that accepts the id. A
+    project whose detector declares no primary class (a catalog error)
+    is a 400 naming the model."""
     try:
         yield
     except IntegrityError as e:
@@ -479,6 +481,9 @@ def _reject_unknown_taxonomy(db: Session) -> Iterator[None]:
             status_code=422,
             detail="label_taxonomy_id does not name an existing taxonomy row",
         ) from e
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 class EventConfirmRequest(BaseModel):
@@ -493,10 +498,14 @@ class SetCountRequest(BaseModel):
     count: int | None = Field(None, ge=0)
 
 
+# `category` on the three requests below: only for a detector class the
+# person picked ("person", "fish"). With a species the server decides it
+# (`category_after_human_edit`), so a client never has to know the
+# project's detector.
 class AddSpeciesRequest(BaseModel):
-    """Record a species the AI missed entirely (or bump an existing row)."""
+    """Record a species the AI missed entirely."""
 
-    category: str
+    category: str | None = None
     count: int = Field(..., ge=1)
     label: str | None = None
     label_taxonomy_id: str | None = None
@@ -505,7 +514,7 @@ class AddSpeciesRequest(BaseModel):
 class RelabelObservationRequest(BaseModel):
     """Change the species of a count row (its count carries to the target)."""
 
-    category: str
+    category: str | None = None
     label: str | None = None
     label_taxonomy_id: str | None = None
 
@@ -514,7 +523,7 @@ class HumanObservationRow(BaseModel):
     """One cohort as "Same as last" copies it: a species, its count and
     the demographics of the individuals on that row."""
 
-    category: str
+    category: str | None = None
     count: int = Field(..., ge=1)
     label: str | None = None
     label_taxonomy_id: str | None = None
@@ -578,7 +587,8 @@ async def add_event_observation(
     body: AddSpeciesRequest,
     db: Session = Depends(get_db),
 ):
-    """Add a species the AI missed (or set the count of an existing one)."""
+    """Add a species the AI missed. A species the event already counts is
+    left as it is."""
     if not db.get(Event, event_id):
         raise HTTPException(status_code=404, detail="Event not found")
     with _reject_unknown_taxonomy(db):

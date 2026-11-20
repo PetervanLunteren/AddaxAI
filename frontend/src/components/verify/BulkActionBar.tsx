@@ -45,7 +45,7 @@ interface BulkActionBarProps {
   onRelabel?: (
     ids: string[],
     label: string | null,
-    category: string,
+    category: string | undefined,
     displayName: string,
     before: UndoSnapshot,
   ) => void;

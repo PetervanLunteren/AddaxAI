@@ -1,6 +1,8 @@
 /**
- * Filter bar for the dashboard's Explore tab: labels, sites, site tags and
- * date range, in the card every Insights page wears.
+ * Filter bar for the dashboard's Explore tab, and for the Insights pages
+ * that share its filters (Trend, Species rates): labels, sites, site tags
+ * and date range, in the card every Insights page wears. A page can add
+ * its own display control as `children`, e.g. the Trend page's period.
  *
  * Labels are picked in the same taxonomy tree modal as on the Counts,
  * Labels and Map pages, and starts the same way: every label ticked. A
@@ -19,6 +21,7 @@ import type { SiteResponse } from "../../api/types";
 import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
 import { buildSiteOptions } from "../../lib/site-filter-options";
 import { speciesLabelMap } from "../../lib/species-name-mode";
+import { cn } from "../../lib/utils";
 import type {
   ExploreFilterPatch,
   ExploreFilters,
@@ -44,9 +47,12 @@ interface ExploreFilterBarProps {
   sites: SiteResponse[] | undefined;
   update: (patch: ExploreFilterPatch) => void;
   clearAll: () => void;
+  /** Extra fields after Date range, each a `FilterField`. */
+  children?: React.ReactNode;
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+/** One labelled control of the bar. */
+export function FilterField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
       <label className="text-xs font-medium text-muted-foreground">{label}</label>
@@ -62,6 +68,7 @@ export function ExploreFilterBar({
   sites,
   update,
   clearAll,
+  children,
 }: ExploreFilterBarProps) {
   const { data: noSite } = useNoSiteDeployments(projectId);
 
@@ -109,8 +116,13 @@ export function ExploreFilterBar({
 
   return (
     <InsightsFilterBarShell chips={chips} onClearAll={clearAll}>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Field label="Labels">
+      <div
+        className={cn(
+          "grid grid-cols-1 gap-4 sm:grid-cols-2",
+          children ? "lg:grid-cols-5" : "lg:grid-cols-4",
+        )}
+      >
+        <FilterField label="Labels">
           <LabelFilterField
             projectId={projectId}
             value={filters.labels}
@@ -121,8 +133,8 @@ export function ExploreFilterBar({
               dateTo: filters.dateTo,
             }}
           />
-        </Field>
-        <Field label="Sites">
+        </FilterField>
+        <FilterField label="Sites">
           <MultiSelect
             options={siteOptions}
             value={filters.siteIds ?? []}
@@ -132,8 +144,8 @@ export function ExploreFilterBar({
             emptyMessage="No sites found."
             summary={(n) => `${n} site${n > 1 ? "s" : ""}`}
           />
-        </Field>
-        <Field label="Site tags">
+        </FilterField>
+        <FilterField label="Site tags">
           <MultiSelect
             options={tagOptions}
             value={filters.tagPairs ?? []}
@@ -143,14 +155,15 @@ export function ExploreFilterBar({
             emptyMessage="No site tags."
             summary={(n) => `${n} tag${n > 1 ? "s" : ""}`}
           />
-        </Field>
-        <Field label="Date range">
+        </FilterField>
+        <FilterField label="Date range">
           <DateRangePicker
             from={filters.dateFrom}
             to={filters.dateTo}
             onChange={({ from, to }) => update({ dateFrom: from, dateTo: to })}
           />
-        </Field>
+        </FilterField>
+        {children}
       </div>
     </InsightsFilterBarShell>
   );

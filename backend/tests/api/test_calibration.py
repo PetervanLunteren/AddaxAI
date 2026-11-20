@@ -4,8 +4,8 @@ Tests for the Calibration page backend (`crud/calibration.py`, `routers/calibrat
 1. Which detections the sample draws from (same scope as the Labels grid).
 2. Answers: stored with the AI's label and score of that moment, never
    touching verification.
-3. The per-label summary: counts, the minimum, the rule-of-three
-   fallback, thresholds and curve.
+3. The per-label summary: counts, the minimum, the lower bound shown
+   before a curve, thresholds and curve.
 """
 
 import numpy as np
@@ -158,10 +158,12 @@ def test_below_the_minimum_shows_what_is_still_needed(db: Session) -> None:
     row = calibration_crud.get_calibration(db, project.id).labels[0]
     assert (row.right, row.wrong, row.unsure) == (6, 1, 1)
     assert (row.right_needed, row.wrong_needed) == (4, 9)
-    assert row.curve is None and row.thresholds is None and row.no_error_bound is None
+    assert row.curve is None and row.thresholds is None
+    # Too few wrong answers for a curve: the share right gets a lower bound.
+    assert row.lower_bound == pytest.approx(0.479297, abs=1e-6)
 
 
-def test_no_errors_gives_the_rule_of_three_bound(db: Session) -> None:
+def test_no_errors_gives_a_bound_close_to_the_rule_of_three(db: Session) -> None:
     project, dep = _project(db)
     dets = [_wolf(db, dep.id, 0.9) for _ in range(60)]
     db.commit()
@@ -169,8 +171,23 @@ def test_no_errors_gives_the_rule_of_three_bound(db: Session) -> None:
         calibration_crud.save_answer(db, d.id, "wolf", "right")
 
     row = calibration_crud.get_calibration(db, project.id).labels[0]
-    assert row.no_error_bound is not None and abs(row.no_error_bound - 0.95) < 1e-9
+    assert row.lower_bound == pytest.approx(0.05 ** (1 / 60))
     assert row.curve is None
+
+
+def test_a_label_short_of_right_answers_gets_no_bound(db: Session) -> None:
+    """Mostly wrong, e.g. a species that does not occur: a bound near 0 says nothing."""
+    project, dep = _project(db)
+    dets = [_wolf(db, dep.id, 0.9) for _ in range(14)]
+    db.commit()
+    for d in dets[:2]:
+        calibration_crud.save_answer(db, d.id, "wolf", "right")
+    for d in dets[2:]:
+        calibration_crud.save_answer(db, d.id, "wolf", "wrong")
+
+    row = calibration_crud.get_calibration(db, project.id).labels[0]
+    assert (row.right, row.wrong, row.right_needed) == (2, 12, 8)
+    assert row.curve is None and row.lower_bound is None
 
 
 def test_enough_answers_give_thresholds_and_a_curve(db: Session) -> None:
@@ -190,6 +207,7 @@ def test_enough_answers_give_thresholds_and_a_curve(db: Session) -> None:
 
     row = calibration_crud.get_calibration(db, project.id).labels[0]
     assert row.thresholds is not None and row.curve is not None
+    assert row.lower_bound is None
     assert [t.target for t in row.thresholds] == [0.9, 0.95, 0.99]
     assert row.curve[0].score == 0.5
     assert all(0 <= pt.lower <= pt.p <= pt.upper <= 1 for pt in row.curve)

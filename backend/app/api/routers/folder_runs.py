@@ -213,6 +213,9 @@ class SaveOutputsRequest(MediaOptions):
     separate_folders: bool = False
     recognition_json: bool = False
     csv: bool = False
+    # With ``csv``: also write ``addaxai-frames.csv`` when the run holds a
+    # video. XLSX never carries it.
+    include_frames: bool = False
     xlsx: bool = False
     # Write the ``addaxai-run-info.txt`` manifest. The Save step's "Run
     # details" checkbox. Defaults to True for a client that omits it,

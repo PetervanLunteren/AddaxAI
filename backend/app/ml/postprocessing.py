@@ -646,7 +646,6 @@ def update_database_from_smoothed_results(
     from app.ml.taxonomy_db import clear_classification, ensure_builtin_labels
 
     class_names = smoothed_results.get("classification_categories", {})
-    builtin_ids = ensure_builtin_labels(db)
 
     # Build lookup: (file_path, bbox_key, frame_number) -> Detection record.
     # Post-2026-05 every detection points directly at its parent file row
@@ -666,6 +665,9 @@ def update_database_from_smoothed_results(
         .filter(Detection.bbox_x.isnot(None))
         .all()
     )
+    # Ensured here, outside the per-detection try below, so a class
+    # without a row fails the run loudly instead of logging a warning.
+    builtin_ids = ensure_builtin_labels(db, {d.category for d in detections})
 
     detection_lookup: dict[tuple, Detection] = {}
     for det in detections:
@@ -834,8 +836,11 @@ def update_database_from_smoothed_results(
         for det in detections:
             if is_human_decided(det):
                 continue
+            # A box without a label points at its class's builtin row,
+            # which an excluded class sharing that name ("fish") would
+            # otherwise match: nothing to clear there.
             if (
-                det.label_taxonomy_id
+                det.label
                 and det.label_taxonomy_id in excluded_taxonomy_ids
             ):
                 clear_classification(det, builtin_ids)

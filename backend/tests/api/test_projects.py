@@ -7,6 +7,7 @@ import pytest
 from tests.conftest import (
     make_deployment,
     make_detection,
+    make_event_with_files,
     make_file,
     make_project,
     make_site,
@@ -689,7 +690,7 @@ def test_custom_label_reuses_the_builtin_row(client, db):
     from app.ml.taxonomy_db import BUILTIN_MODEL_ID, ensure_builtin_labels
     from app.models.label_taxonomy import LabelTaxonomy
 
-    builtin = ensure_builtin_labels(db)
+    builtin = ensure_builtin_labels(db, ["animal", "person", "vehicle"])
     p = make_project(db)
 
     resp = client.post(
@@ -854,7 +855,7 @@ def test_rename_collides_with_builtin_and_model_names(client, db):
     from app.ml.taxonomy_db import ensure_builtin_labels
     from app.models.label_taxonomy import LabelTaxonomy
 
-    ensure_builtin_labels(db)
+    ensure_builtin_labels(db, ["animal", "person", "vehicle"])
     p = make_project(db, classification_model_id="tiny-model")
     db.add(LabelTaxonomy(
         classification_model_id="tiny-model", name="fox", level="species",
@@ -1008,6 +1009,32 @@ def test_categories_are_empty_when_the_model_is_not_installed(client, db, monkey
 
     assert r.status_code == 200
     assert r.json() == []
+
+
+def test_categories_include_the_classes_the_project_already_counts(
+    client, db, monkeypatch
+):
+    """A project whose detector was changed still holds boxes of the old
+    one's class, and a person must be able to set a box back to it. The
+    picker offers the detector's classes first, then what the project's
+    events count besides."""
+    from datetime import datetime
+
+    from app.api.crud.event_observation import calculate_max_n_for_event
+
+    project = make_project(db, detection_model_id="SHARKTRACK-1-0")
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+    ev = make_event_with_files(
+        db, deployment_id=dep.id, event_start_local=datetime(2026, 2, 10, 8, 0),
+    )
+    make_detection(db, file_id=ev.files[0].id, category="fish")
+    calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    db.commit()
+
+    _patch_manifest(monkeypatch, classes=["elasmobranch"])
+    r = client.get(f"/api/projects/{project.id}/categories")
+    assert r.json() == ["elasmobranch", "fish"]
 
 
 def test_a_folder_run_inherits_the_slots_last_used_with_its_model(client, db):

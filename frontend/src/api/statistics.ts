@@ -7,6 +7,7 @@
  */
 
 import { api } from "../lib/api-client";
+import type { ClassCounts } from "./types";
 
 // --- Response types (matching backend schemas) ---
 
@@ -115,16 +116,68 @@ export interface ActivityPatternResponse {
   deployments_without_site: number;
 }
 
+export type TrendGranularity = "day" | "week" | "month";
+/** The Trend page's period sizes: a day across sites is mostly zeros. */
+export type TrendPeriodSize = Exclude<TrendGranularity, "day">;
+
+/** One period of the Explore trend and the observations in it. */
 export interface DetectionTrendPoint {
-  date: string;
+  /** "2024-01-15", "2024-W03" or "2024-01". */
+  period: string;
+  start: string;
+  end: string;
   count: number;
 }
 
-export interface DetectionCategories {
-  animal_count: number;
-  person_count: number;
-  vehicle_count: number;
-  empty_count: number;
+/**
+ * `first_date` and `last_date` bound the periods: the date filter, or else
+ * the first and last day with an observation. A span of years too wide to
+ * chart comes back with those two dates and no points (lib/date-span.ts).
+ */
+export interface DetectionTrendResponse {
+  granularity: TrendGranularity;
+  first_date: string | null;
+  last_date: string | null;
+  points: DetectionTrendPoint[];
+}
+
+/**
+ * Mean of per-site rates with its spread, per 100 trap nights. `mean` is
+ * null without a site; `sd` and the interval are null with fewer than two.
+ */
+export interface RateSummary {
+  n_sites: number;
+  mean: number | null;
+  sd: number | null;
+  ci_low: number | null;
+  ci_high: number | null;
+}
+
+export interface TrendPeriod extends RateSummary {
+  period: string;
+  start: string;
+  end: string;
+}
+
+export interface SpeciesRate extends RateSummary {
+  label: string;
+  label_taxonomy_id: string | null;
+  common_name: string;
+  scientific_name: string;
+}
+
+export interface RateTrendResponse {
+  granularity: TrendGranularity;
+  first_date: string | null;
+  last_date: string | null;
+  periods: TrendPeriod[];
+}
+
+/** The Species rates page. The dates are as on `RateTrendResponse`. */
+export interface SpeciesRatesResponse {
+  first_date: string | null;
+  last_date: string | null;
+  species: SpeciesRate[];
 }
 
 export interface LabelProgressRow {
@@ -286,6 +339,16 @@ function scopeParams(projectId: string, scope?: DashboardScope): URLSearchParams
   return params;
 }
 
+function trendParams(
+  projectId: string,
+  scope: DashboardScope,
+  granularity?: TrendGranularity,
+): URLSearchParams {
+  const params = scopeParams(projectId, scope);
+  if (granularity) params.set("granularity", granularity);
+  return params;
+}
+
 // --- API client ---
 
 export const statisticsApi = {
@@ -325,10 +388,27 @@ export const statisticsApi = {
       `/api/statistics/activity-pattern?${scopeParams(projectId, scope)}`,
     ),
 
-  /** Daily observations for the trend chart. */
-  getDetectionTrend: (projectId: string, scope: DashboardScope) =>
-    api.get<DetectionTrendPoint[]>(
-      `/api/statistics/detection-trend?${scopeParams(projectId, scope)}`,
+  /** Observations per period for the Explore trend. Without a
+   *  granularity the backend picks one from the span. */
+  getDetectionTrend: (
+    projectId: string,
+    scope: DashboardScope,
+    granularity?: TrendGranularity,
+  ) =>
+    api.get<DetectionTrendResponse>(
+      `/api/statistics/detection-trend?${trendParams(projectId, scope, granularity)}`,
+    ),
+
+  /** The Trend page: mean site rate per week or month. */
+  getRateTrend: (projectId: string, scope: DashboardScope, granularity?: TrendPeriodSize) =>
+    api.get<RateTrendResponse>(
+      `/api/statistics/rate-trend?${trendParams(projectId, scope, granularity)}`,
+    ),
+
+  /** The Species rates page: mean site rate per species. */
+  getSpeciesRates: (projectId: string, scope: DashboardScope) =>
+    api.get<SpeciesRatesResponse>(
+      `/api/statistics/species-rates?${scopeParams(projectId, scope)}`,
     ),
 
   /** Events, observations, trap nights and sites for the dashboard tiles. */
@@ -350,10 +430,12 @@ export const statisticsApi = {
     limit: number,
     scope?: DashboardScope,
     wildlifeOnly = false,
+    minBoxPx?: number,
   ) => {
     const params = scopeParams(projectId, scope);
     params.set("limit", String(limit));
     if (wildlifeOnly) params.set("wildlife_only", "true");
+    if (minBoxPx !== undefined) params.set("min_box_px", String(minBoxPx));
     return api.get<AnimalPhoto[]>(`/api/statistics/animal-photos?${params}`);
   },
 
@@ -362,7 +444,7 @@ export const statisticsApi = {
    */
   getDetectionCategories: (projectId: string, siteIds?: string, dateFrom?: string, dateTo?: string) => {
     const query = buildParams(projectId, { siteIds, dateFrom, dateTo });
-    return api.get<DetectionCategories>(`/api/statistics/categories?${query}`);
+    return api.get<ClassCounts>(`/api/statistics/categories?${query}`);
   },
 
   /**

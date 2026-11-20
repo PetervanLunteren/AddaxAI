@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.api.crud import file as file_crud
 from app.api.schemas.label import (
     EmptyFilter,
+    LabelFilters,
     LabelsFileItem,
     LabelsFilesResponse,
     LabelsFilesSort,
@@ -122,6 +123,9 @@ async def cohorts(
     request: Request,
     min_count: int = Query(8, ge=1, le=1000),
     max_cohorts: int = Query(200, ge=1, le=1000),
+    site_ids: str | None = Query(None, description="Comma-separated site IDs"),
+    date_from: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
+    date_to: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
     db: Session = Depends(get_db),
 ):
     """Group descendant-promotion suggestions for the Edit-step review panel.
@@ -130,13 +134,19 @@ async def cohorts(
     the sort endpoint: progress lines during the FAISS + neighbour walk,
     then a final `{"type":"result", "cohorts":[...]}` line whose payload
     matches CohortsResponse. The panel renders a skeleton from progress
-    events and uses the result to render its cards. Cohorts span the
-    whole project, no filters apply.
+    events and uses the result to render its cards. Only the scope
+    applies, sites and dates: the vote runs inside it, and no other
+    filter exists here (see `LabelFilters.scope_only`).
     """
     _set_project_tz(db, project_id)
+    scope = LabelFilters(
+        site_ids=site_ids.split(",") if site_ids else None,
+        date_from=_parse_dt(date_from, "date_from"),
+        date_to=_parse_dt(date_to, "date_to"),
+    )
     try:
         stream = stream_cohorts_async(
-            request, project_id, min_count, max_cohorts, db
+            request, project_id, min_count, max_cohorts, scope, db
         )
     except FileNotFoundError as e:
         raise HTTPException(status_code=503, detail=str(e)) from None

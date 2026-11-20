@@ -22,18 +22,14 @@ import sqlite3
 import pytest
 from sqlalchemy import text
 
-from app.db.migration_check import lost_rows, snapshot, sqlite_health
+from app.db.migration_check import (
+    lost_rows,
+    rows_changed_on_purpose,
+    snapshot,
+    sqlite_health,
+)
 from app.db.migrations import _alembic_config, get_current_revision
 from tests.db.conftest import insert_row, upgrade_to
-
-# Migrations that delete rows on purpose, and from which tables. Every
-# other migration must keep every row. Add an entry here only together
-# with a test in test_migration_data.py that pins what the deletion does.
-_DELETES_ON_PURPOSE: dict[str, frozenset[str]] = {
-    # Drops detections without a box (the retired box-less observation
-    # flow).
-    "f2a3b4c5d6e7": frozenset({"detections"}),
-}
 
 # Migrations run with foreign keys off (alembic/env.py, see DEVELOPERS.md
 # "Database migrations"), so a DELETE in a migration does not cascade.
@@ -144,9 +140,4 @@ def test_migration_keeps_every_row(engine, isolated_db_settings, step):
             ).fetchone()[0]
         assert really_null == 0
     assert health == []
-    allowed = _DELETES_ON_PURPOSE.get(rev, frozenset())
-    unexpected = [
-        p for p in lost_rows(before, snapshot(db_path))
-        if p.removeprefix("table ").split(":")[0].split(" ")[0] not in allowed
-    ]
-    assert unexpected == []
+    assert lost_rows(before, snapshot(db_path), rows_changed_on_purpose([rev])) == []

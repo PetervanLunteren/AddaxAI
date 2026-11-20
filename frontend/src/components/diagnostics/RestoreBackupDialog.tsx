@@ -12,7 +12,7 @@
  * Type-to-confirm `RESTORE`, gated on a backup being selected first.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Check, FileSearch } from "lucide-react";
 import { backupApi, type BackupEntry, type BackupKind } from "../../api/backup";
@@ -83,7 +83,7 @@ export function RestoreBackupDialog({
     queryFn: backupApi.list,
     enabled: open,
   });
-  const entries: BackupEntry[] = data?.entries ?? [];
+  const entries = useMemo((): BackupEntry[] => data?.entries ?? [], [data]);
 
   useEffect(() => {
     if (!open) {

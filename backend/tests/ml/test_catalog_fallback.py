@@ -15,6 +15,7 @@ from unittest.mock import patch
 import pytest
 
 from app.ml.catalog_updater import ModelCatalogUpdater, _bundled_catalog_path, merge_catalogs
+from app.ml.manifest_manager import ManifestManager
 
 _REPO_CATALOG = Path(__file__).resolve().parents[3] / "models.json"
 
@@ -92,8 +93,10 @@ def test_a_remote_entry_missing_a_field_keeps_the_shipped_value(updater: ModelCa
     remote = _remote_with()
     for entry in remote["models"]["det"]:
         entry.pop("domain", None)
+        entry.pop("primary_class", None)
     catalog = _fetch(updater, remote)
     assert all(e.get("domain") for e in catalog["models"]["det"])
+    assert all(e.get("primary_class") for e in catalog["models"]["det"])
     assert {e["model_id"] for e in catalog["models"]["det"]} == {
         e["model_id"] for e in json.loads(_REPO_CATALOG.read_text())["models"]["det"]
     }
@@ -115,6 +118,78 @@ def test_merge_is_pure_and_keeps_every_model_of_both_sides():
     ]
     assert merged["models"]["emb"] == []
     assert bundled["models"]["det"][0] == {"model_id": "A", "domain": "camera_trap", "x": 1}
+
+
+@pytest.fixture
+def offline(tmp_path: Path) -> ModelCatalogUpdater:
+    """The updater as ADDAXAI_DISABLE_MODEL_UPDATES builds it."""
+    return ModelCatalogUpdater(models_dir=tmp_path / "models", offline=True)
+
+
+async def _sync_offline(updater: ModelCatalogUpdater) -> None:
+    """Sync with every network door watched: none may open."""
+    with (
+        patch("app.ml.catalog_updater.urllib.request.urlopen") as mock_open,
+        patch("huggingface_hub.HfApi.model_info") as mock_info,
+    ):
+        await updater.sync()
+    mock_open.assert_not_called()
+    mock_info.assert_not_called()
+
+
+def _shipped_ids() -> dict[str, set[str]]:
+    models = json.loads(_REPO_CATALOG.read_text())["models"]
+    return {t: {e["model_id"] for e in entries} for t, entries in models.items()}
+
+
+async def test_offline_writes_a_manifest_for_every_shipped_model(offline: ModelCatalogUpdater):
+    """The flag turns off the network, not the catalog. Until 2026-11-19
+    it skipped the whole sync, so a first launch with it set downloaded
+    the weights and listed no models (issue #139)."""
+    await _sync_offline(offline)
+    for model_type, ids in _shipped_ids().items():
+        for model_id in ids:
+            assert (offline.models_dir / model_type / model_id / "manifest.json").is_file()
+
+
+async def test_offline_gives_a_weights_only_folder_its_manifest(offline: ModelCatalogUpdater):
+    """Simon's screenshot: the weights on disk, no manifest.json next to
+    them, so the model did not exist for the app."""
+    model_dir = offline.models_dir / "det" / "MD5A-0-0"
+    model_dir.mkdir(parents=True)
+    (model_dir / "md_v5a.0.0.pt").write_bytes(b"w")
+
+    await _sync_offline(offline)
+
+    assert ManifestManager(offline.models_dir).get_model("MD5A-0-0").model_id == "MD5A-0-0"
+
+
+async def test_offline_replaces_a_manifest_the_shipped_catalog_disagrees_with(
+    offline: ModelCatalogUpdater,
+):
+    """A models folder copied from an older version keeps working under a
+    newer app: the same rule as online, the catalog wins."""
+    shipped = next(
+        e for e in json.loads(_REPO_CATALOG.read_text())["models"]["det"]
+        if e["model_id"] == "MD5A-0-0"
+    )
+    model_dir = offline.models_dir / "det" / "MD5A-0-0"
+    model_dir.mkdir(parents=True)
+    old = {k: v for k, v in shipped.items() if k != "domain"}
+    (model_dir / "manifest.json").write_text(json.dumps(old))
+
+    await _sync_offline(offline)
+
+    assert json.loads((model_dir / "manifest.json").read_text()) == shipped
+
+
+async def test_offline_never_fetches_a_taxonomy(offline: ModelCatalogUpdater):
+    """A classifier stub has no taxonomy.csv; online the sync fetches it
+    from HuggingFace. Offline it stays missing until the model itself is
+    downloaded, which brings the file along."""
+    with patch.object(offline, "download_taxonomy") as mock_taxonomy:
+        await _sync_offline(offline)
+    mock_taxonomy.assert_not_called()
 
 
 def test_no_bundled_file_means_no_catalog(updater: ModelCatalogUpdater):

@@ -114,16 +114,27 @@ class ModelCatalogUpdater:
     Only creates manifest.json files - does not download weights.
     """
 
-    def __init__(self, models_dir: Path | None = None, catalog_url: str | None = None):
+    def __init__(
+        self,
+        models_dir: Path | None = None,
+        catalog_url: str | None = None,
+        offline: bool = False,
+    ):
         """
         Initialize catalog updater.
 
         Args:
             models_dir: Directory where models are stored (default: settings.models_dir)
             catalog_url: URL to fetch catalog from (default: from config)
+            offline: Open no URL. The manifests are still written, from the
+                catalog shipped in the app, because they are what makes a
+                model exist; only the remote catalog, the taxonomy fetch and
+                the comparison with HuggingFace are skipped. Set by
+                ADDAXAI_DISABLE_MODEL_UPDATES.
         """
         self.models_dir = models_dir or get_settings().models_dir
         self.models_dir.mkdir(parents=True, exist_ok=True)
+        self.offline = offline
 
         # Default to GitHub raw URL
         self.catalog_url = catalog_url or (
@@ -151,6 +162,9 @@ class ModelCatalogUpdater:
         Raises:
             Never raises - logs errors and returns None
         """
+        if self.offline:
+            return self._bundled_catalog(quiet=True)
+
         try:
             logger.info(f"Fetching model catalog from {self.catalog_url}")
 
@@ -310,8 +324,13 @@ class ModelCatalogUpdater:
             # it broken forever, on a flat label list with no rollup.
             # Present file means no request, so once a model's taxonomy is
             # on disk this costs nothing; a repo that genuinely has no
-            # taxonomy.csv pays one cheap 404 per launch.
-            if model_type == "cls" and not (model_dir / "taxonomy.csv").exists():
+            # taxonomy.csv pays one cheap 404 per launch. Offline it waits
+            # for the model download, which brings the file along.
+            if (
+                model_type == "cls"
+                and not self.offline
+                and not (model_dir / "taxonomy.csv").exists()
+            ):
                 self.download_taxonomy(
                     model_id, model_dir, manifest_data.get("hf_repo")
                 )
@@ -401,6 +420,10 @@ class ModelCatalogUpdater:
             local_models = self.get_local_models()
             total_local = sum(len(s) for s in local_models.values())
             is_fresh_install = total_local == 0
+            # Both checks below ask the outside world: HuggingFace for the
+            # files, the env check can fetch micromamba. Nothing to compare
+            # on a fresh install, and not allowed offline.
+            check_upstream = not is_fresh_install and not self.offline
 
             for model_type in ["det", "cls", "emb"]:
                 for manifest_data in catalog["models"].get(model_type, []):
@@ -430,8 +453,7 @@ class ModelCatalogUpdater:
                         )
 
                     # Compare the installed files against the upstream repo.
-                    # Skipped on fresh installs: nothing is on disk yet.
-                    if not is_fresh_install:
+                    if check_upstream:
                         stale = await self._find_stale_files(model_type, manifest_data)
                         if stale:
                             logger.info(
@@ -454,7 +476,7 @@ class ModelCatalogUpdater:
             # by the app, not by the central models.json. Recorded here
             # only so the count reaches the log; the endpoint recomputes
             # it per request so a rebuild takes effect immediately.
-            if not is_fresh_install:
+            if check_upstream:
                 result["drifted_envs"] = find_drifted_envs()
 
             if is_fresh_install:

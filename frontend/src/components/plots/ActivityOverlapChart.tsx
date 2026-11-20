@@ -41,6 +41,7 @@ import type {
   ActivityOverlapResponse,
   SunBands,
 } from "../../api/statistics";
+import type { DrawnChartRef } from "../../lib/chart-image";
 import { inSunBand } from "../../lib/sun-bands";
 
 ChartJS.register(
@@ -169,6 +170,8 @@ interface ActivityOverlapChartProps {
    *  display preference). Fall back to the response's scientific key. */
   speciesAName?: string;
   speciesBName?: string;
+  /** The drawn chart, for the page's "Image (PNG)" download. */
+  chartRef?: DrawnChartRef;
 }
 
 const SAMPLES = 240;
@@ -183,6 +186,7 @@ export function ActivityOverlapChart({
   data,
   speciesAName,
   speciesBName,
+  chartRef,
 }: ActivityOverlapChartProps) {
   // Use the effective axis the backend actually delivered, not the
   // user's toggle. Sun mode can silently downgrade to clock when a
@@ -408,7 +412,7 @@ export function ActivityOverlapChart({
 
   return (
     <div className="h-full w-full">
-      <Line data={chartData} options={options} />
+      <Line ref={chartRef} data={chartData} options={options} />
     </div>
   );
 }

@@ -140,7 +140,8 @@ export const eventsApi = {
   addObservation: async (
     eventId: string,
     data: {
-      category: string;
+      /** Only for a detector class; a species gets its class on the server. */
+      category?: string;
       count: number;
       label?: string | null;
       label_taxonomy_id?: string | null;
@@ -158,7 +159,7 @@ export const eventsApi = {
     eventId: string,
     observationId: string,
     data: {
-      category: string;
+      category?: string;
       label?: string | null;
       label_taxonomy_id?: string | null;
     },

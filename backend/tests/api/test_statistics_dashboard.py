@@ -10,6 +10,7 @@ tiles and the demographics card, and the random photos.
 import uuid
 from datetime import date, datetime
 
+from app.api.crud import rate_trend
 from app.api.crud import statistics as stats_crud
 from app.models.event_observation import EventObservation
 from app.models.label_taxonomy import LabelTaxonomy
@@ -89,11 +90,13 @@ def test_trend_respects_the_date_window(db):
     """The window used to be accepted and ignored."""
     project, *_ = _project(db)
 
-    points = stats_crud.get_detection_trend(
+    points = rate_trend.get_detection_trend(
         db, project.id, date_from="2024-08-01", date_to="2024-08-31"
-    )
+    ).points
 
-    assert [(p.date, p.count) for p in points] == [("2024-08-20", 4)]
+    # The window bounds the periods; nothing was seen until the 20th.
+    assert (points[0].period, points[-1].period) == ("2024-08-01", "2024-08-31")
+    assert [(p.period, p.count) for p in points if p.count] == [("2024-08-20", 4)]
 
 
 def test_activity_respects_the_date_window(db):
@@ -109,7 +112,7 @@ def test_activity_respects_the_date_window(db):
 def test_nothing_picked_means_every_label(db):
     project, *_ = _project(db)
 
-    points = stats_crud.get_detection_trend(db, project.id)
+    points = rate_trend.get_detection_trend(db, project.id).points
     activity = stats_crud.get_activity_pattern(db, project.id)
 
     assert sum(p.count for p in points) == 6
@@ -134,14 +137,14 @@ def test_a_picked_person_is_counted(db):
 def test_trend_and_activity_narrow_to_the_taxon(db):
     project, _, _, leopard, _, _ = _project(db)
 
-    points = stats_crud.get_detection_trend(
+    points = rate_trend.get_detection_trend(
         db, project.id, label_taxonomy_ids=[leopard.id]
-    )
+    ).points
     activity = stats_crud.get_activity_pattern(
         db, project.id, label_taxonomy_ids=[leopard.id]
     )
 
-    assert [(p.date, p.count) for p in points] == [("2024-06-10", 2)]
+    assert [(p.period, p.count) for p in points if p.count] == [("2024-06-10", 2)]
     assert activity.total_observations == 2
 
 
@@ -382,3 +385,73 @@ def test_photos_carry_site_and_camera_date(client, db):
     assert photo["site_name"] == "Ridge"
     assert photo["captured_date"] == "2024-03-05"
     assert photo["file_id"] == f.id
+
+
+def _sized_file(db, dep, width=2000, height=1500):
+    return make_file(db, deployment_id=dep.id, width_px=width, height_px=height)
+
+
+def test_the_floor_keeps_boxes_too_small_to_blow_up_out(db):
+    """The long side in source pixels decides, so a box of the same
+    fraction is sharp in a large photo and too small in a small one."""
+    project, dep = _photo_project(db)
+    big_photo = _sized_file(db, dep, 2000, 1500)
+    small_photo = _sized_file(db, dep, 1000, 750)
+    sharp = make_detection(db, file_id=big_photo.id, bbox_width=0.15,
+                           bbox_height=0.1)  # 300 px wide
+    tall = make_detection(db, file_id=big_photo.id, bbox_width=0.05,
+                          bbox_height=0.2)  # 300 px high
+    make_detection(db, file_id=small_photo.id, bbox_width=0.15,
+                   bbox_height=0.1)  # 150 px wide
+
+    picked = {
+        stats_crud.get_animal_photos(db, project.id, 1, min_box_px=256)[0]
+        .detection_id
+        for _ in range(30)
+    }
+
+    assert picked == {sharp.id, tall.id}
+
+
+def test_the_floor_falls_back_to_any_box_when_none_reach_it(db):
+    project, dep = _photo_project(db)
+    f = _sized_file(db, dep, 1000, 750)
+    small = make_detection(db, file_id=f.id, bbox_width=0.1, bbox_height=0.1)
+    unsized = make_file(db, deployment_id=dep.id)  # no stored size
+    unknown = make_detection(db, file_id=unsized.id)
+
+    [photo] = stats_crud.get_animal_photos(db, project.id, 1, min_box_px=256)
+
+    assert photo.detection_id in {small.id, unknown.id}
+
+
+def test_no_floor_by_default(db):
+    """The Explore wall asks without one: small species stay in view."""
+    project, dep = _photo_project(db)
+    f = _sized_file(db, dep, 1000, 750)
+    small = make_detection(db, file_id=f.id, bbox_width=0.1, bbox_height=0.1)
+    big = make_detection(db, file_id=f.id, bbox_width=0.5, bbox_height=0.5)
+
+    assert _photo_ids(db, project) == {small.id, big.id}
+
+
+def test_the_endpoint_passes_the_floor(client, db):
+    project, dep = _photo_project(db)
+    f = _sized_file(db, dep, 2000, 1500)
+    small = make_detection(db, file_id=f.id, bbox_width=0.05, bbox_height=0.05)
+    sharp = make_detection(db, file_id=f.id, bbox_width=0.3, bbox_height=0.3)
+
+    response = client.get(
+        "/api/statistics/animal-photos",
+        params={"project_id": project.id, "limit": 2, "min_box_px": 256},
+    )
+
+    assert response.status_code == 200
+    # Only one box reaches the floor, so a limit of two falls back to the
+    # unfloored draw and both come back.
+    assert {p["detection_id"] for p in response.json()} == {small.id, sharp.id}
+    one = client.get(
+        "/api/statistics/animal-photos",
+        params={"project_id": project.id, "limit": 1, "min_box_px": 256},
+    )
+    assert [p["detection_id"] for p in one.json()] == [sharp.id]

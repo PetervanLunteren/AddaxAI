@@ -252,6 +252,7 @@ export function ExportDialog({
                 <div className={wide ? WIDE_COLUMNS : undefined}>
                   <ExportSection title="Save in" caption={folderCaption}>
                     <FolderSelector
+                      variant="destination"
                       value={outputDir || null}
                       onChange={(dir) => {
                         // The last error was about the last try; a new folder starts over.

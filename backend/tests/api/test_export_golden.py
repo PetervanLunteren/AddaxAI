@@ -312,7 +312,7 @@ def _collect_outputs(client, db, project) -> dict[str, str]:
         folder = tempfile.mkdtemp()
         resp = client.post(
             f"/api/projects/{project.id}/export/tables",
-            json={"output_dir": folder, "format": fmt},
+            json={"output_dir": folder, "format": fmt, "include_frames": True},
         )
         assert resp.status_code == 200, resp.text
         for name in resp.json()["files"]:
@@ -322,7 +322,7 @@ def _collect_outputs(client, db, project) -> dict[str, str]:
     folder = tempfile.mkdtemp()
     resp = client.post(
         f"/api/projects/{project.id}/export/tables",
-        json={"output_dir": folder, "format": "xlsx"},
+        json={"output_dir": folder, "format": "xlsx", "include_frames": False},
     )
     assert resp.status_code == 200, resp.text
     outputs["tables.xlsx.txt"] = _xlsx_text((Path(folder) / resp.json()["files"][0]).read_bytes())
@@ -340,7 +340,7 @@ def _collect_outputs(client, db, project) -> dict[str, str]:
     )
 
     folder = Path(tempfile.mkdtemp())
-    write_tables_csv(db, project.id, folder)
+    write_tables_csv(db, project.id, folder, include_frames=True)
     for path in sorted(folder.iterdir()):
         outputs[f"folder-run-{path.name}"] = _csv_text(path.read_bytes())
     write_tables_xlsx(db, project.id, folder)

@@ -29,21 +29,25 @@ from app.ml.taxonomic_rank import (
     TaxonomicRank,
     resolve_rank,
 )
-from app.ml.taxonomy_db import model_scope, project_row_last
+from app.ml.taxonomy_db import builtin_label_ids, model_scope, project_row_last
 from app.models.deployment import Deployment
 from app.models.detection import Detection
 from app.models.file import File
 from app.models.label_taxonomy import LabelTaxonomy
 from app.models.project import Project
 
-DETECTOR_CATEGORIES: tuple[str, ...] = ("animal", "person", "vehicle")
+# Detector classes are not a constant here: they are the builtin label
+# rows ("animal", "person", "vehicle", "fish", ...), read per request
+# through `builtin_label_ids` and passed down as `detector`. A box without
+# a species resolves to its class's name, so those names are what marks a
+# matrix class as the detector's rather than a species.
 OTHER_BUCKET = "other"
 # Rank-resolver buckets (not detector categories) kept fixed at the
 # bottom of the class ordering and exempt from top-N collapse.
 SEMANTIC_BUCKETS: tuple[str, ...] = (HIGHER_LEVEL_TAXA, NO_TAXONOMY)
 
 
-def _display_for(name: str, row: LabelTaxonomy | None) -> str:
+def _display_for(name: str, row: LabelTaxonomy | None, detector: frozenset[str]) -> str:
     """
     Human-friendly label for the matrix axis.
 
@@ -54,7 +58,7 @@ def _display_for(name: str, row: LabelTaxonomy | None) -> str:
     """
     if name == OTHER_BUCKET:
         return "Other"
-    if name in DETECTOR_CATEGORIES:
+    if name in detector:
         return name
     if name in SEMANTIC_BUCKETS:
         return name
@@ -63,11 +67,11 @@ def _display_for(name: str, row: LabelTaxonomy | None) -> str:
     return name.replace("_", " ")
 
 
-def _common_for(name: str, row: LabelTaxonomy | None) -> str:
+def _common_for(name: str, row: LabelTaxonomy | None, detector: frozenset[str]) -> str:
     """Common-name counterpart of `_display_for` for the matrix axis."""
     if name == OTHER_BUCKET:
         return "Other"
-    if name in DETECTOR_CATEGORIES:
+    if name in detector:
         return name
     if name in SEMANTIC_BUCKETS:
         return name
@@ -107,12 +111,18 @@ def _class_for_current(
     taxonomy_lookup: dict[str, LabelTaxonomy],
     rank: TaxonomicRank,
 ) -> str:
-    """Current (ground-truth) class at the requested rank."""
+    """Current (ground-truth) class at the requested rank.
+
+    A box without a species carries its class's display name ("Animal")
+    in ``scientific_name``; passing it would set the truth "Animal"
+    against the AI's "animal" and score every agreement as a miss. Only
+    a species brings its scientific name.
+    """
     row = taxonomy_lookup.get(det.label.lower()) if det.label else None
     return resolve_rank(
         category=det.category,
         label=det.label,
-        scientific_name=det.scientific_name,
+        scientific_name=det.scientific_name if det.label else None,
         taxonomy_row=row,
         rank=rank,
     )
@@ -135,6 +145,9 @@ def _class_for_original(
     Classifier-enabled projects with a NULL original_label on an animal
     indicate pre-migration data and are skipped instead of resolved.
     """
+    # A box drawn by hand (no job made it) was never an AI prediction.
+    if det.job_id is None:
+        return None
     if det.category in ("person", "vehicle"):
         return det.category
     if not det.original_label:
@@ -158,15 +171,15 @@ def _class_for_original(
 
 
 def _ordered_classes(
-    all_classes: set[str], row_totals: dict[str, int],
+    all_classes: set[str], row_totals: dict[str, int], detector: frozenset[str],
 ) -> list[str]:
     """
-    Stable ordering: detector head (animal / person / vehicle), then
+    Stable ordering: detector classes first (by name), then
     real classes by descending support with alphabetical tiebreaker,
     then the semantic buckets (Higher-level taxa / No taxonomy) pinned
     to the bottom.
     """
-    head = [c for c in DETECTOR_CATEGORIES if c in all_classes]
+    head = sorted(c for c in all_classes if c in detector)
     buckets = [c for c in SEMANTIC_BUCKETS if c in all_classes]
     rest = sorted(
         (c for c in all_classes if c not in head and c not in buckets),
@@ -180,13 +193,14 @@ def _apply_top_n(
     counts: Counter,
     row_totals: dict[str, int],
     top_n: int | None,
+    detector: frozenset[str],
 ) -> tuple[list[str], Counter, bool]:
     """
     Keep the top-N classes by row support; fold the rest into a single
     'other' row + column. Detector categories and the semantic buckets
     are exempt and always kept.
     """
-    exempt = set(DETECTOR_CATEGORIES) | set(SEMANTIC_BUCKETS)
+    exempt = detector | set(SEMANTIC_BUCKETS)
     real = [c for c in ordered if c not in exempt]
     if top_n is None or len(real) <= top_n:
         return ordered, counts, False
@@ -196,7 +210,7 @@ def _apply_top_n(
     if not dropped:
         return ordered, counts, False
 
-    head = [c for c in ordered if c in DETECTOR_CATEGORIES]
+    head = [c for c in ordered if c in detector]
     buckets = [c for c in ordered if c in SEMANTIC_BUCKETS]
     kept = head + kept_real + [OTHER_BUCKET] + buckets
 
@@ -320,10 +334,11 @@ def get_classification_performance(
         all_classes.add(t)
         all_classes.add(p)
 
-    ordered = _ordered_classes(all_classes, row_totals)
+    detector = frozenset(builtin_label_ids(db))
+    ordered = _ordered_classes(all_classes, row_totals, detector)
 
     ordered, counts, other_bucket_present = _apply_top_n(
-        ordered, counts, row_totals, top_n,
+        ordered, counts, row_totals, top_n, detector,
     )
 
     matrix = [[0] * len(ordered) for _ in ordered]
@@ -373,11 +388,11 @@ def get_classification_performance(
         # Semantic buckets and detector categories have no taxonomy row.
         row = (
             None
-            if c in DETECTOR_CATEGORIES or c == OTHER_BUCKET or c in SEMANTIC_BUCKETS
+            if c in detector or c == OTHER_BUCKET or c in SEMANTIC_BUCKETS
             else taxonomy_lookup.get(c.lower()) or by_scientific.get(c.lower())
         )
-        display_lookup[c] = _display_for(c, row)
-        common_lookup[c] = _common_for(c, row)
+        display_lookup[c] = _display_for(c, row, detector)
+        common_lookup[c] = _common_for(c, row, detector)
         taxonomy_id_lookup[c] = row.id if row is not None else None
 
     per_class: list[ClassMetrics] = []
@@ -407,7 +422,7 @@ def get_classification_performance(
     # honest.
     averaged_over = {
         c for c in ordered
-        if c not in DETECTOR_CATEGORIES
+        if c not in detector
         and c not in SEMANTIC_BUCKETS
         and c != OTHER_BUCKET
     }
@@ -420,6 +435,7 @@ def get_classification_performance(
     return PerformanceResponse(
         taxonomic_rank=taxonomic_rank,
         classes=ordered,
+        detector_classes=[c for c in ordered if c in detector],
         class_scientific_names=[display_lookup[c] for c in ordered],
         class_common_names=[common_lookup[c] for c in ordered],
         class_taxonomy_ids=[taxonomy_id_lookup[c] for c in ordered],

@@ -59,9 +59,15 @@ export function SitesPage() {
     [searchParams]
   );
   const search = (filters.search as string | undefined) ?? "";
-  const habitatFilter = (filters.habitat as string[] | undefined) ?? [];
+  const habitatFilter = useMemo(
+    () => (filters.habitat as string[] | undefined) ?? [],
+    [filters]
+  );
   const hasDeploymentsFilter = (filters.has_deployments as string | undefined) ?? "";
-  const tagKeysFilter = (filters.tag_keys as string[] | undefined) ?? [];
+  const tagKeysFilter = useMemo(
+    () => (filters.tag_keys as string[] | undefined) ?? [],
+    [filters]
+  );
 
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");

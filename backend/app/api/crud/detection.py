@@ -8,7 +8,7 @@ Following DEVELOPERS.md principles:
 """
 
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 
 from sqlalchemy import and_, false, func, or_, select
@@ -212,11 +212,16 @@ def create_human_detection(db: Session, data: DetectionCreateHuman) -> Detection
     exactly the place, and BRUV practice marks every fish on the MaxN
     frame.
     """
+    from app.ml.primary_class import category_after_human_edit
+
     now = datetime.now(UTC)
+    category = category_after_human_edit(
+        None, data.category, data.label, primary_class_for_file(db, data.file_id)
+    )
     db_detection = Detection(
         file_id=data.file_id,
         job_id=None,
-        category=data.category,
+        category=category,
         confidence=1.0,
         bbox_x=data.bbox_x,
         bbox_y=data.bbox_y,
@@ -248,13 +253,13 @@ def create_human_detection(db: Session, data: DetectionCreateHuman) -> Detection
         (
             db_detection.common_name,
             db_detection.scientific_name,
-        ) = resolve_label_names(data.label, tax, data.category)
+        ) = resolve_label_names(data.label, tax)
     else:
-        # Unclassified (MD-only): the builtin row of its category, so it
-        # shares the colour of the machine boxes and sits in the filter.
+        # No species: the builtin row of its class, so it shares the
+        # colour of the machine boxes and sits in the filter.
         from app.ml.taxonomy_db import clear_classification, ensure_builtin_labels
 
-        clear_classification(db_detection, ensure_builtin_labels(db))
+        clear_classification(db_detection, ensure_builtin_labels(db, [category]))
 
     db.commit()
     db.refresh(db_detection)
@@ -318,8 +323,16 @@ def update_detection(db: Session, detection_id: str, update: DetectionUpdate) ->
     if detection is None:
         return None
 
-    if update.category is not None:
-        detection.category = update.category
+    label_set = "label" in update.model_fields_set
+    if label_set or update.category is not None:
+        from app.ml.primary_class import category_after_human_edit
+
+        detection.category = category_after_human_edit(
+            detection.category,
+            update.category,
+            update.label if label_set else detection.label,
+            primary_class_for_file(db, detection.file_id),
+        )
     bbox_fields = ("bbox_x", "bbox_y", "bbox_width", "bbox_height")
     for field in bbox_fields:
         value = getattr(update, field)
@@ -351,7 +364,7 @@ def update_detection(db: Session, detection_id: str, update: DetectionUpdate) ->
             (
                 detection.common_name,
                 detection.scientific_name,
-            ) = resolve_label_names(update.label, tax, detection.category)
+            ) = resolve_label_names(update.label, tax)
             # A human-assigned label has no model softmax score, so stamp 1.0
             # (matches bulk relabel) rather than leaving the replaced label's
             # stale score. An explicit label_confidence in the payload still
@@ -365,7 +378,7 @@ def update_detection(db: Session, detection_id: str, update: DetectionUpdate) ->
     ):
         from app.ml.taxonomy_db import clear_classification, ensure_builtin_labels
 
-        clear_classification(detection, ensure_builtin_labels(db))
+        clear_classification(detection, ensure_builtin_labels(db, [detection.category]))
     if update.label_confidence is not None:
         detection.label_confidence = update.label_confidence
 
@@ -423,6 +436,26 @@ def _get_project_id_for_detection(db: Session, detection: Detection) -> str | No
         .first()
     )
     return row[0] if row else None
+
+
+def primary_class_for_file(db: Session, file_id: str) -> Callable[[], str]:
+    """The project detector's primary class for a box on this file, read
+    only when called (see ``category_after_human_edit``)."""
+
+    def primary() -> str:
+        from app.ml.primary_class import project_primary_class
+        from app.models import Project
+
+        project = (
+            db.query(Project)
+            .join(Deployment, Deployment.project_id == Project.id)
+            .join(File, File.deployment_id == Deployment.id)
+            .filter(File.id == file_id)
+            .one()
+        )
+        return project_primary_class(project)
+
+    return primary
 
 
 def _resolve_detection_taxonomy(
@@ -570,24 +603,25 @@ def apply_card_labels(db: Session, cards: Iterable[Detection]) -> int:
 
     Returns the number of boxes changed.
     """
+    from app.ml.taxonomy_db import builtin_display_name, ensure_builtin_labels
+
     changed = 0
     for card in cards:
         if card.track_id is None:
             continue
-        changed += (
-            db.query(Detection)
-            .filter(
-                Detection.track_id == card.track_id,
-                Detection.id != card.id,
-                or_(
-                    Detection.classification_method.is_(None),
-                    Detection.classification_method != "human",
-                ),
-            )
-            .update(
+        siblings = db.query(Detection).filter(
+            Detection.track_id == card.track_id,
+            Detection.id != card.id,
+            or_(
+                Detection.classification_method.is_(None),
+                Detection.classification_method != "human",
+            ),
+        )
+        if card.label:
+            changed += siblings.update(
                 {
                     "label": card.label,
-                    "label_confidence": 1.0 if card.label else None,
+                    "label_confidence": 1.0,
                     "label_taxonomy_id": card.label_taxonomy_id,
                     "scientific_name": card.scientific_name,
                     "common_name": card.common_name,
@@ -595,7 +629,27 @@ def apply_card_labels(db: Session, cards: Iterable[Detection]) -> int:
                 },
                 synchronize_session=False,
             )
-        )
+            continue
+        # A card without a species says "no species" for the track. Each
+        # box then points at the row of its own class, not the card's:
+        # the tracker does not keep classes apart, so a track can hold a
+        # vehicle box behind a deer, and that box must stay a "Vehicle"
+        # in the label filter. One UPDATE per class in the track.
+        categories = [c for (c,) in siblings.with_entities(Detection.category).distinct()]
+        builtin_ids = ensure_builtin_labels(db, categories)
+        for category in categories:
+            name = builtin_display_name(category)
+            changed += siblings.filter(Detection.category == category).update(
+                {
+                    "label": None,
+                    "label_confidence": None,
+                    "label_taxonomy_id": builtin_ids[category],
+                    "scientific_name": name,
+                    "common_name": name,
+                    "classification_method": "track",
+                },
+                synchronize_session=False,
+            )
     return changed
 
 
@@ -623,7 +677,7 @@ def mark_detections_false(db: Session, detections: list[Detection]) -> None:
     from app.models.label_taxonomy import LabelTaxonomy
 
     tax = db.get(LabelTaxonomy, taxonomy_id) if taxonomy_id else None
-    common_name, scientific_name = resolve_label_names(FALSE_DETECTION, tax, "")
+    common_name, scientific_name = resolve_label_names(FALSE_DETECTION, tax)
 
     for det in detections:
         det.label = FALSE_DETECTION

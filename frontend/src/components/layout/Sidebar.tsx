@@ -28,6 +28,7 @@ import {
   LayoutDashboard,
   Lightbulb,
   LineChart,
+  ListOrdered,
   Map,
   MapPin,
   PanelLeftClose,
@@ -37,6 +38,7 @@ import {
   Table2,
   Tag,
   Tally5,
+  TrendingUp,
 } from "lucide-react";
 import { projectsApi } from "../../api/projects";
 import { useBrokenDeployments } from "../../hooks/useBrokenDeployments";
@@ -103,6 +105,16 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
           to: `/projects/${projectId}/insights/map`,
           icon: Map,
           label: "Map",
+        },
+        {
+          to: `/projects/${projectId}/insights/trend`,
+          icon: TrendingUp,
+          label: "Trend",
+        },
+        {
+          to: `/projects/${projectId}/insights/species-rates`,
+          icon: ListOrdered,
+          label: "Species rates",
         },
         {
           to: `/projects/${projectId}/insights/timeline`,
@@ -252,13 +264,19 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
             </div>
           ))}
 
-        {/* Navigation */}
-        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-4">
-          {workItems.map(renderNavLink)}
-          <div className="my-2 border-t" />
-          {configItems.map(renderNavLink)}
-          <div className="my-2 border-t" />
-          {utilityItems.map(renderNavLink)}
+        {/* Navigation. The scroll box is a plain block with the shared
+            scroll shade, so a list taller than the window scrolls and
+            shows a shadow where more is hidden. The rows sit in a column
+            inside it: as a direct flex column with a fixed height, the
+            box squeezed its h-9 rows instead of scrolling. */}
+        <nav className="scroll-shade flex-1 overflow-y-auto">
+          <div className="flex flex-col gap-1 p-4">
+            {workItems.map(renderNavLink)}
+            <div className="my-2 border-t" />
+            {configItems.map(renderNavLink)}
+            <div className="my-2 border-t" />
+            {utilityItems.map(renderNavLink)}
+          </div>
         </nav>
 
         {/* Collapse / expand toggle. */}
@@ -377,7 +395,9 @@ function LeafNavLink({ item, collapsed }: { item: NavItem; collapsed: boolean })
  * own) showing a chevron that rotates with the expanded state; children
  * render as NavLinks underneath. Expanded/collapsed of the group is
  * persisted to localStorage per parent path. Default on first visit:
- * expanded.
+ * collapsed, to keep the menu short (Insights has eight pages), unless
+ * the visit lands on one of its pages: then the list shows where you
+ * are and what is next to it.
  *
  * Collapsed rail: renders as a single icon that opens the children in a
  * hover flyout instead (see CollapsedNavGroupFlyout).
@@ -389,7 +409,7 @@ function CollapsibleNavGroup({ item, collapsed }: { item: NavItem; collapsed: bo
   const storageKey = `addaxai:sidebar-expand:${item.to}`;
   const [expanded, setExpanded] = useState<boolean>(() => {
     const saved = localStorage.getItem(storageKey);
-    return saved === null ? true : saved === "true";
+    return saved === null ? isActiveParent : saved === "true";
   });
 
   if (collapsed) {

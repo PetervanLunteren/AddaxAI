@@ -14,7 +14,7 @@ import type { Feature, FeatureCollection, Geometry, Polygon } from "geojson";
 import type { LatLngBounds, Layer } from "leaflet";
 
 import type { ObservationRateMapFeature } from "../../api/statistics";
-import { getRateColor } from "../../lib/heat-color-scale";
+import { getRateColor, type RateRamp } from "../../lib/heat-color-scale";
 import {
   aggregateSitesToHexes,
   generateHexGrid,
@@ -32,6 +32,7 @@ interface HexbinLayerProps {
    */
   viewportBounds: LatLngBounds;
   maxRate?: number;
+  ramp: RateRamp;
 }
 
 interface HexFeatureProperties {
@@ -44,6 +45,7 @@ export function HexbinLayer({
   zoomLevel,
   viewportBounds,
   maxRate,
+  ramp,
 }: HexbinLayerProps) {
   const map = useMap();
 
@@ -67,14 +69,14 @@ export function HexbinLayer({
       ...cell.hex,
       properties: {
         hexCell: cell,
-        color: getRateColor(cell.rate_per_100, effectiveMax),
+        color: getRateColor(cell.rate_per_100, effectiveMax, ramp),
       },
     }));
     return featureCollection(features) as FeatureCollection<
       Polygon,
       HexFeatureProperties
     >;
-  }, [hexCells, effectiveMax]);
+  }, [hexCells, effectiveMax, ramp]);
 
   const styleFunction = useCallback(
     (feature: Feature<Geometry, HexFeatureProperties> | undefined) => {

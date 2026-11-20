@@ -127,16 +127,89 @@ class ActivityPatternResponse(BaseModel):
     deployments_without_site: int = 0
 
 
+TrendGranularity = Literal["day", "week", "month"]
+
+
 class DetectionTrendPoint(BaseModel):
-    date: str
+    """One period of the Explore trend and the observations in it."""
+
+    period: str  # "2024-01-15", "2024-W03" or "2024-01"
+    start: date
+    end: date
     count: int
 
 
-class DetectionCategories(BaseModel):
-    animal_count: int
-    person_count: int
-    vehicle_count: int
-    empty_count: int
+class DetectionTrendResponse(BaseModel):
+    """`first_date` and `last_date` bound the periods: the date filter, or
+    else the first and last day with an observation. A span of years too
+    wide to chart (a corrupt capture year) comes back with those two
+    dates and no points."""
+
+    granularity: TrendGranularity
+    first_date: date | None
+    last_date: date | None
+    points: list[DetectionTrendPoint]
+
+
+class RateSummary(BaseModel):
+    """Mean of per-site rates with its spread, per 100 trap nights.
+
+    `n_sites` is how many sites went into it. `mean` is None without a
+    site, `sd` and the interval are None with fewer than two.
+    """
+
+    n_sites: int
+    mean: float | None
+    sd: float | None
+    ci_low: float | None
+    ci_high: float | None
+
+
+class TrendPeriod(RateSummary):
+    period: str  # "2024-W03" or "2024-01"
+    start: date
+    end: date
+
+
+class SpeciesRate(RateSummary):
+    label: str
+    label_taxonomy_id: str | None
+    common_name: str
+    scientific_name: str
+
+
+class RateTrendResponse(BaseModel):
+    """`first_date` and `last_date` are the first and last day a camera at
+    a site ran in scope, with the same wide-span rule as the trend."""
+
+    granularity: TrendGranularity
+    first_date: date | None
+    last_date: date | None
+    periods: list[TrendPeriod]
+
+
+class SpeciesRatesResponse(BaseModel):
+    """The Species rates page. The dates are as on `RateTrendResponse`."""
+
+    first_date: date | None
+    last_date: date | None
+    species: list[SpeciesRate]
+
+
+class ClassCounts(BaseModel):
+    """Counts per detector class, by the class's own name, plus the empty
+    files. One shape for the dashboard's Files tile (files per class) and
+    the deployment and site info sheets (individuals per class).
+
+    Keyed by whatever the detector calls its classes ("animal", "person",
+    "fish", "elasmobranch"), largest first, classes with nothing left out.
+    It used to be three fixed fields, animal / person / vehicle, which put
+    every shark under "animal" and showed "Person 0, Vehicle 0" on
+    projects whose detector knows neither.
+    """
+
+    classes: dict[str, int]
+    empty: int
 
 
 class LabelProgressRow(BaseModel):

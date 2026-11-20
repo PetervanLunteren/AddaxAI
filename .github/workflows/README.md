@@ -13,6 +13,12 @@ signed. Linux is unsigned and non-blocking.
 | `release.published` | A release was created in the GitHub UI (with notes) and clicked "Publish". The workflow builds binaries and attaches them to that release. |
 | `workflow_dispatch` | Manual run from the Actions tab. Produces debug builds (workflow artifacts only, kept 14 days). Windows builds are signed; macOS is signed only if its secrets are set. |
 
+On a release the workflow first runs `tests.yml` on the released commit
+(lint, typecheck, frontend and backend tests). The build jobs wait for it
+and are skipped when it fails, so the release stays without installers
+until a fixed commit is released. Manual runs skip this gate, because they
+exist to try out work in progress.
+
 There is no `push: tags: v*` trigger. Releases are deliberately a two-step
 process: write release notes in the UI first, then publish. Failed builds
 do not leave orphaned releases behind, and the tag can be retyped without
@@ -141,6 +147,22 @@ charged minutes per release, i.e. ~16 releases/month within the free tier.
 | `npm ci` fails on Windows | Lockfile drift (someone ran `npm install` without committing the lockfile) |
 | Linux job marked yellow | It is non-blocking; the workflow still succeeded. Look at the failed step to fix |
 | `Missing required secret: ADDAX_3YEAR_2025_...` on Windows | Windows signing secrets not configured in repo settings |
+
+## `retry-starved-build.yml`
+
+GitHub's hosted macOS arm64 runners are sometimes out of capacity. The
+macOS job then waits 15 minutes in the queue, never gets a runner, and is
+cancelled with zero steps, which fails the release build.
+
+This workflow runs after every `build-electron.yml` run. If the run failed
+and a job never started (cancelled, no runner, no steps), it re-runs that
+job and keeps watching until a runner picks it up, up to attempt 12 of the
+run. A job that ran and failed, such as a build error or a failed
+notarization, is not retried. A run cancelled by hand is not retried
+either.
+
+It can also be started by hand from the Actions tab with the id of an
+existing build run.
 
 ## `download-metrics.yml`
 

@@ -110,6 +110,7 @@ const FILES_SHORTCUTS: readonly Shortcut[] = [
   ["V", "Mark correct, then the next one"],
   ["D", "Draw a box"],
   ["B", "Hide or show the boxes"],
+  ["Hold I", "Show all stored boxes"],
   ["F", "Flag for review"],
   ["P", "Play a video / back to its frame"],
   ["Tab / Shift + Tab", "Select the next / previous box"],

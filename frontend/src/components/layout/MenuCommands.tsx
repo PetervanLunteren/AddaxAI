@@ -26,6 +26,7 @@ import { useLatestRelease } from "../../hooks/useLatestRelease";
 import { formatVersion, parseVersion } from "../../lib/version";
 import { exportDiagnosticReport } from "../../lib/diagnostic-export";
 import { getSpeciesNameMode, setSpeciesNameMode } from "../../lib/species-name-mode";
+import { getRateUnit, isRateUnit, setRateUnit } from "../../lib/trap-night-rate";
 import { useTheme } from "../../lib/theme";
 import { ResetAppDialog } from "../diagnostics/ResetAppDialog";
 import { BackupNowDialog } from "../diagnostics/BackupNowDialog";
@@ -180,6 +181,7 @@ export function MenuCommands() {
   // a change reloads the page, so the next mount re-syncs the checkmark.
   useEffect(() => {
     window.electronAPI?.setSpeciesNameMenuMode?.(getSpeciesNameMode());
+    window.electronAPI?.setRateUnitMenuMode?.(getRateUnit());
   }, []);
 
   // Same for the data type, except this one re-sends on change: the
@@ -221,6 +223,13 @@ export function MenuCommands() {
     };
 
     return api.onMenuCommand((id) => {
+      // View -> Rate unit: one id per unit, "rate-unit-<unit>". Reloads,
+      // like species names.
+      const unit = id.replace(/^rate-unit-/, "");
+      if (id !== unit && isRateUnit(unit)) {
+        setRateUnit(unit);
+        return;
+      }
       switch (id) {
         case "nav-home":
           navigate("/");

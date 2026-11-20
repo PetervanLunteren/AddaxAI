@@ -2,10 +2,10 @@
  * Reusable "About this view" section for pages under /insights.
  *
  * Every plot page drops this in at the bottom, below the chart and
- * footer, and passes its own content for each of the five fixed
- * sub-sections. The fixed structure keeps the UX predictable across
- * plots: once users learn where to find "Caveats" on one plot, they
- * know where to look on the next.
+ * footer, with two sections: what it shows and how it is computed.
+ * A page whose method rests on published work adds its references.
+ * Nothing else: the fixed structure keeps the UX predictable across
+ * plots, so a user who has read one knows where to look on the next.
  *
  * Collapse state is persisted in localStorage (not sessionStorage)
  * because it's a learned UX preference — "I've read this, hide it
@@ -25,13 +25,6 @@ export interface PlotReference {
   url?: string;
 }
 
-export interface PlotSettingInfluence {
-  /** Short name of the project setting, e.g. "Timezone". */
-  label: string;
-  /** One-line explanation of how it affects this plot. */
-  detail: string;
-}
-
 interface PlotExplainerProps {
   /** Stable identifier used for the localStorage persistence key. */
   plotKey: string;
@@ -39,8 +32,6 @@ interface PlotExplainerProps {
   what: React.ReactNode;
   /** "How is it computed?" Method summary + key parameters. */
   how: React.ReactNode;
-  /** Project settings that flow into this plot's output. */
-  settings?: PlotSettingInfluence[];
   /** Scientific references backing the plot's methods and defaults. */
   references?: PlotReference[];
 }
@@ -86,7 +77,6 @@ export function PlotExplainer({
   plotKey,
   what,
   how,
-  settings,
   references,
 }: PlotExplainerProps) {
   const [expanded, setExpanded] = useState<boolean>(() => readStoredExpanded(plotKey));
@@ -118,21 +108,6 @@ export function PlotExplainer({
         <div className="space-y-6 border-t px-4 py-4">
           <Section title="What it shows">{what}</Section>
           <Section title="How it's computed">{how}</Section>
-
-          {settings && settings.length > 0 && (
-            <Section title="Project settings">
-              <ul className="list-disc space-y-1 pl-5">
-                {settings.map((setting) => (
-                  <li key={setting.label}>
-                    <span className="font-medium text-foreground">
-                      {setting.label}:
-                    </span>{" "}
-                    {setting.detail}
-                  </li>
-                ))}
-              </ul>
-            </Section>
-          )}
 
           {references && references.length > 0 && (
             <Section title="References">

@@ -93,29 +93,38 @@ async def update_model_catalog(app: FastAPI) -> None:
     Background task to sync model catalog.
 
     Runs non-blocking during startup - app continues immediately.
+
+    ADDAXAI_DISABLE_MODEL_UPDATES makes the sync offline rather than
+    skipping it: manifest.json is what makes a model exist, and the sync is
+    its only writer. Skipping it left a first launch with the weights on
+    disk and no models listed (issue #139, 2026-11-19). The update notice
+    stays off, so a model new in this version is not announced on a machine
+    that may not reach HuggingFace.
     """
     settings = get_settings()
-
-    # Skip if disabled
-    if settings.disable_model_updates:
-        logger.info("Model catalog updates disabled")
-        app.state.model_updates = {
-            "new_models": [],
-            "refreshed_models": [],
-            "drifted_models": [],
-            "drifted_envs": [],
-            "checked_at": None,
-            "disabled": True,
-        }
-        return
+    offline = settings.disable_model_updates
+    disabled = {
+        "new_models": [],
+        "refreshed_models": [],
+        "drifted_models": [],
+        "drifted_envs": [],
+        "checked_at": None,
+        "disabled": True,
+    }
+    if offline:
+        logger.info(
+            "Model catalog updates disabled, manifests come from the shipped catalog"
+        )
 
     try:
-        updater = ModelCatalogUpdater(catalog_url=settings.model_catalog_url)
+        updater = ModelCatalogUpdater(
+            catalog_url=settings.model_catalog_url, offline=offline
+        )
         result = await updater.sync()
-        app.state.model_updates = result
+        app.state.model_updates = disabled if offline else result
     except Exception as e:
         logger.error(f"Model catalog sync failed: {e}", exc_info=True)
-        app.state.model_updates = {
+        app.state.model_updates = disabled if offline else {
             "new_models": [],
             "refreshed_models": [],
             "drifted_models": [],

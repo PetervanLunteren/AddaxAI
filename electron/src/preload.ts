@@ -193,6 +193,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   /**
+   * Same for the rate unit, so the View → Rate unit radio matches the
+   * stored preference. Sent on mount; a change reloads the page.
+   */
+  setRateUnitMenuMode: (unit: string): void => {
+    ipcRenderer.send('menu:rate-unit', unit);
+  },
+
+  /**
    * Tell the main process whether first-run setup has finished, so the
    * setup-only menu items (Home, backup/restore, backups folder, species
    * names) can be disabled during the wizard and enabled afterward. Sent

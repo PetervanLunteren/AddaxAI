@@ -73,7 +73,7 @@ def _export(
     back the file for ``table``. ``spatial`` reads the one spatial file;
     any table in ``xlsx`` reads the five-sheet workbook."""
     out = tempfile.mkdtemp()
-    body: dict[str, object] = {"output_dir": out, "format": fmt}
+    body: dict[str, object] = {"output_dir": out, "format": fmt, "include_frames": True}
     if deployment_ids is not None:
         body["deployment_ids"] = deployment_ids
     endpoint = "spatial" if table == "spatial" else "tables"
@@ -1562,7 +1562,13 @@ def test_summary_folds_a_literal_animal_label_onto_the_unclassified_row(client, 
         files_verified=[False, False],
     )
     f_literal, f_null = ev.files
+    # The literal label links to the builtin row, as
+    # `link_detections_to_taxonomy` does in the app.
+    from app.ml.taxonomy_db import ensure_builtin_labels
+
+    animal_row = ensure_builtin_labels(db, ["animal"])["animal"]
     make_detection(db, file_id=f_literal.id, confidence=0.9, label="animal",
+                   label_taxonomy_id=animal_row,
                    common_name="Animal", scientific_name="Animal")
     make_detection(db, file_id=f_null.id, confidence=0.9, label=None,
                    common_name="Animal", scientific_name="Animal")
@@ -3133,7 +3139,8 @@ def test_csv_writes_five_files_and_a_second_export_never_overwrites(client, db, 
     url = f"/api/projects/{project.id}/export/tables"
     today = date.today().isoformat()
 
-    first = client.post(url, json={"output_dir": str(tmp_path), "format": "csv"})
+    csv_body = {"output_dir": str(tmp_path), "format": "csv", "include_frames": False}
+    first = client.post(url, json=csv_body)
     assert first.status_code == 200, first.text
     assert first.json() == {
         "output_dir": str(tmp_path),
@@ -3145,11 +3152,11 @@ def test_csv_writes_five_files_and_a_second_export_never_overwrites(client, db, 
     files_csv = tmp_path / f"files-kenya-2024-{today}.csv"
     files_csv.write_text("the user's own edits")
 
-    second = client.post(url, json={"output_dir": str(tmp_path), "format": "csv"})
+    second = client.post(url, json=csv_body)
     assert second.json()["files"][3] == f"files-kenya-2024-{today}_2.csv"
     assert files_csv.read_text() == "the user's own edits"
 
-    xlsx = client.post(url, json={"output_dir": str(tmp_path)})
+    xlsx = client.post(url, json={"output_dir": str(tmp_path), "include_frames": False})
     assert xlsx.json()["files"] == [f"spreadsheet-kenya-2024-{today}.xlsx"]
 
 
@@ -3157,10 +3164,17 @@ def test_every_export_refuses_a_missing_folder_and_an_empty_selection(client, db
     project, _deps = _two_sited_deployments(db)
     for endpoint in ("tables", "spatial", "camtrap-dp/prepare"):
         url = f"/api/projects/{project.id}/export/{endpoint}"
-        missing = client.post(url, json={"output_dir": str(tmp_path / "nope")})
+        # `include_frames` is the tables export's own choice; the others
+        # ignore it.
+        missing = client.post(
+            url, json={"output_dir": str(tmp_path / "nope"), "include_frames": False}
+        )
         assert missing.status_code == 400, endpoint
         assert "Choose a folder" in missing.json()["detail"]
-        empty = client.post(url, json={"output_dir": str(tmp_path), "deployment_ids": []})
+        empty = client.post(
+            url,
+            json={"output_dir": str(tmp_path), "deployment_ids": [], "include_frames": False},
+        )
         assert empty.status_code == 422, endpoint
     assert list(tmp_path.iterdir()) == []
 
@@ -3218,7 +3232,7 @@ def test_a_long_project_name_is_shortened_in_file_names(client, db, tmp_path):
 
     resp = client.post(
         f"/api/projects/{project.id}/export/tables",
-        json={"output_dir": str(tmp_path), "format": "xlsx"},
+        json={"output_dir": str(tmp_path), "format": "xlsx", "include_frames": False},
     )
 
     assert resp.status_code == 200, resp.text
@@ -3237,7 +3251,7 @@ def test_a_folder_without_write_access_is_a_readable_error(client, db, tmp_path)
         for endpoint in ("tables", "spatial"):
             resp = client.post(
                 f"/api/projects/{project.id}/export/{endpoint}",
-                json={"output_dir": str(tmp_path)},
+                json={"output_dir": str(tmp_path), "include_frames": False},
             )
             assert resp.status_code == 400, endpoint
             assert resp.json()["detail"] == "Could not write to that folder: Permission denied"
@@ -3979,11 +3993,11 @@ def test_frames_export_is_left_out_when_the_scope_holds_no_video(client, db):
     make_detection(db, file_id=photo.id, confidence=0.9, label="deer")
     db.commit()
 
-    def written() -> list[str]:
+    def written(include_frames: bool = True, fmt: str = "csv") -> list[str]:
         out = tempfile.mkdtemp()
         resp = client.post(
             f"/api/projects/{project.id}/export/tables",
-            json={"output_dir": out, "format": "csv"},
+            json={"output_dir": out, "format": fmt, "include_frames": include_frames},
         )
         assert resp.status_code == 200, resp.text
         return resp.json()["files"]
@@ -3993,6 +4007,11 @@ def test_frames_export_is_left_out_when_the_scope_holds_no_video(client, db):
     make_file(db, deployment_id=deployment.id, file_type="video", file_format="mp4")
     db.commit()
     assert any(n.startswith("frames-") for n in written())
+    # Opt-in: off, a video scope gets the five tables and no frames file.
+    assert len(written(include_frames=False)) == 5
+    assert any(n.startswith("frames-") for n in written(fmt="tsv"))
+    # XLSX never carries it, whatever the flag says.
+    assert len(written(fmt="xlsx")) == 1
     h, rows = _csv(client, project.id, "frames")
     assert next(iter(h)) == "detection_id" and rows == []
 
@@ -4026,3 +4045,32 @@ def test_frames_export_survives_a_clip_with_more_tracks_than_sql_parameters(db):
     finally:
         raw.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, before)
     assert len(rows) == 2000
+
+
+def test_a_fish_without_a_species_is_named_in_the_tables(client, db):
+    """A box from an underwater detector carries its class's names, as a
+    MegaDetector "Animal" does, instead of blank name columns."""
+    project, _site, deployment = _build_simple_project(db)
+    f = make_file(db, deployment_id=deployment.id)
+    make_detection(db, file_id=f.id, confidence=0.9, category="fish")
+    db.commit()
+
+    (row,) = _detection_rows(client, project.id)
+    assert (row["detection_category"], row["scientific_name"], row["common_name"]) == (
+        "fish", "Fish", "Fish",
+    )
+    summary = _summary_rows(client, project.id)
+    assert summary[("fish", "")]["scientific_name"] == "Fish"
+
+
+def test_the_tables_export_asks_whether_to_include_frames(client, db, tmp_path):
+    """No default: a client that does not say is refused, not guessed for."""
+    project, _site, _deployment = _build_simple_project(db, timezone="UTC")
+    db.commit()
+
+    resp = client.post(
+        f"/api/projects/{project.id}/export/tables",
+        json={"output_dir": str(tmp_path), "format": "csv"},
+    )
+
+    assert resp.status_code == 422

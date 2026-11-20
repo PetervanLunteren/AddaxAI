@@ -16,6 +16,7 @@ import {
 import { Card, CardContent } from "../ui/card";
 import {
   ALL_METRICS,
+  computeLabelDiff,
   METRIC_FIELD,
   METRIC_META,
   type SaveMetric,
@@ -75,24 +76,6 @@ function SmallCode({ children }: { children: React.ReactNode }) {
   return (
     <code className="bg-muted px-1 py-0.5 rounded">{children}</code>
   );
-}
-
-/** Compute per-label diffs from two snapshots, sorted by absolute change. */
-function computeLabelDiff(
-  before: LabelCount[],
-  after: LabelCount[],
-): { label: string; before: number; after: number }[] {
-  const beforeMap = new Map(before.map((s) => [s.label, s.count]));
-  const afterMap = new Map(after.map((s) => [s.label, s.count]));
-  const allLabels = new Set([...beforeMap.keys(), ...afterMap.keys()]);
-
-  const diff: { label: string; before: number; after: number }[] = [];
-  for (const lbl of allLabels) {
-    const b = beforeMap.get(lbl) ?? 0;
-    const a = afterMap.get(lbl) ?? 0;
-    if (b !== a) diff.push({ label: lbl, before: b, after: a });
-  }
-  return diff.sort((a, b) => Math.abs(b.after - b.before) - Math.abs(a.after - a.before));
 }
 
 // --- Stat card ---

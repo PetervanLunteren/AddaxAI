@@ -9,7 +9,9 @@
  *
  * The context line names the view, so it still reads after a break:
  * "Frames the AI followed" plus the clip name (nothing else in that view
- * shows it), or "Suggestions left: 8". It says "followed", not "one
+ * shows it), or "Suggestions left: 8, in all sites, all dates": the
+ * review runs inside the scope and the filter bar is hidden, so its
+ * line says which sites and dates. It says "followed", not "one
  * animal", because whether it was one animal is what the view checks.
  * It names no species: every card below carries its own label chip.
  *
@@ -27,7 +29,7 @@ interface FocusedViewBarProps {
    *  "Back to suggestions" for frames opened from a suggestion. */
   backLabel: string;
   /** What the view is: "Frames the AI followed, <clip>" or
-   *  "Suggestions left: <n>". */
+   *  "Suggestions left: <n>, in <sites>, <dates>". */
   context: string;
   onBack: () => void;
 }

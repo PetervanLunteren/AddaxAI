@@ -45,7 +45,7 @@ import { Label } from "../ui/label";
 function normalizeNote(raw: string): string {
   return raw
     .normalize("NFKD")
-    .replace(/[^\x00-\x7F]/g, "") // ascii-fold, like encode("ascii", "ignore")
+    .replace(/\P{ASCII}/gu, "") // ascii-fold, like encode("ascii", "ignore")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .slice(0, 40);

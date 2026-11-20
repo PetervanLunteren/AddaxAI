@@ -16,6 +16,7 @@ import {
   DEFAULT_CLASSIFICATION_GATE,
   DEFAULT_COUNTING_THRESHOLD,
 } from "./confidence";
+import { toApiModelId } from "./model-id";
 import type {
   FieldValues,
   Path,
@@ -72,6 +73,18 @@ export const VIDEO_FPS_OPTIONS: readonly { value: string; label: string }[] = [
 
 type AdvancedKey = keyof typeof ADVANCED_SETTINGS_DEFAULTS;
 
+/** Settings that only do something with a classification model. Their
+ *  rows are hidden without one, so a value left over from an earlier run
+ *  with a classifier (smoothing off, say) is not a deviation the user can
+ *  see or needs to hear about: an underwater form used to announce
+ *  "1 custom setting" with every visible row at its default. */
+const CLASSIFIER_ONLY_KEYS: ReadonlySet<AdvancedKey> = new Set<AdvancedKey>([
+  "event_smoothing",
+  "smoothing_strength",
+  "taxonomic_rollup",
+  "classification_batch_size",
+]);
+
 const ADVANCED_KEYS = Object.keys(ADVANCED_SETTINGS_DEFAULTS) as AdvancedKey[];
 
 /** Which advanced settings in `values` deviate from their default.
@@ -79,6 +92,8 @@ const ADVANCED_KEYS = Object.keys(ADVANCED_SETTINGS_DEFAULTS) as AdvancedKey[];
  * Keys absent from `values` are skipped: not every consumer form carries
  * every advanced setting (the folder-run setup step has no
  * counting_threshold; that lives on the project Settings page only).
+ * So are the classifier-only settings while `values` names no
+ * classification model (`CLASSIFIER_ONLY_KEYS`).
  *
  * Settings persist across runs by design (see lib/folderRunSettings: run 2
  * starts identical to run 1), so a value changed once for a test silently
@@ -87,8 +102,14 @@ const ADVANCED_KEYS = Object.keys(ADVANCED_SETTINGS_DEFAULTS) as AdvancedKey[];
 export function advancedNonDefaultKeys(
   values: Record<string, unknown>,
 ): AdvancedKey[] {
+  const hasClassifier = !!toApiModelId(
+    values.classification_model_id as string | null | undefined,
+  );
   return ADVANCED_KEYS.filter(
-    (key) => key in values && values[key] !== ADVANCED_SETTINGS_DEFAULTS[key],
+    (key) =>
+      key in values &&
+      values[key] !== ADVANCED_SETTINGS_DEFAULTS[key] &&
+      (hasClassifier || !CLASSIFIER_ONLY_KEYS.has(key)),
   );
 }
 

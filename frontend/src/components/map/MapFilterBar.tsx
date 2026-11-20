@@ -1,15 +1,15 @@
 /**
  * Filter bar for the Map page.
  *
- * 6-column responsive layout:
- *   view mode | sites | date from | date to | labels | map style
+ * 5-column responsive layout, the most a filter bar holds:
+ *   view mode | sites | date range | labels | colours
  *
- * View mode and map style are baked into the same bar as the data
+ * View mode and colours are baked into the same bar as the data
  * filters for a single coherent filter row, matching the pattern on
  * the Sites and Deployments metadata pages. All state is controlled
  * via props; the parent page owns the filter values and persists
- * them (URL for data filters, localStorage for view mode + base
- * layer).
+ * them (URL for data filters, localStorage for the two display
+ * choices). The background is chosen inside the map itself.
  */
 
 import {
@@ -21,9 +21,6 @@ import {
   Circle,
   Group,
   Hexagon,
-  Map as MapIcon,
-  Navigation,
-  Satellite,
 } from "lucide-react";
 
 import { eventsApi } from "../../api/events";
@@ -31,10 +28,17 @@ import { sitesApi } from "../../api/sites";
 import { DateRangePicker } from "../ui/date-range-picker";
 import { MultiSelect, type MultiSelectOption } from "../ui/multi-select";
 import { SegmentedControl } from "../ui/segmented-control";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import { RATE_RAMPS, type RateRamp } from "../../lib/heat-color-scale";
 import { LabelFilterField } from "../verify/LabelFilterField";
 
 export type ViewMode = "hexbins" | "points" | "clusters";
-export type BaseLayer = "positron" | "satellite" | "osm";
 
 export interface MapFilters {
   site_ids?: string[];
@@ -52,8 +56,8 @@ interface MapFilterBarProps {
   onChange: (next: MapFilters) => void;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
-  baseLayer: BaseLayer;
-  onBaseLayerChange: (layer: BaseLayer) => void;
+  ramp: RateRamp;
+  onRampChange: (ramp: RateRamp) => void;
 }
 
 export function MapFilterBar({
@@ -64,8 +68,8 @@ export function MapFilterBar({
   onChange,
   viewMode,
   onViewModeChange,
-  baseLayer,
-  onBaseLayerChange,
+  ramp,
+  onRampChange,
 }: MapFilterBarProps) {
 
   const { data: sites } = useQuery({
@@ -154,20 +158,24 @@ export function MapFilterBar({
           />
         </div>
 
-        {/* Map style */}
+        {/* Colours: the ramp the rates are drawn in. A choice, because
+            no one ramp reads on every background. */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">
-            Map style
+            Colours
           </label>
-          <SegmentedControl
-            options={[
-              { value: "positron", title: "Light", icon: <MapIcon className="h-4 w-4" /> },
-              { value: "satellite", title: "Satellite", icon: <Satellite className="h-4 w-4" /> },
-              { value: "osm", title: "OpenStreetMap", icon: <Navigation className="h-4 w-4" /> },
-            ]}
-            value={baseLayer}
-            onChange={(v) => onBaseLayerChange(v as BaseLayer)}
-          />
+          <Select value={ramp} onValueChange={(v) => onRampChange(v as RateRamp)}>
+            <SelectTrigger className="h-9 min-h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {RATE_RAMPS.map((r) => (
+                <SelectItem key={r.id} value={r.id}>
+                  {r.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
     </InsightsFilterBarShell>

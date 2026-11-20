@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.core.logging_config import get_logger
 from app.ml.taxonomic_rank import NO_TAXONOMY, species_binomial, to_display_case
 from app.ml.taxonomic_rollup import format_leaf_annotation
+from app.ml.taxonomy_db import BUILTIN_MODEL_ID
 from app.models import Project
 from app.models.label_taxonomy import LabelTaxonomy
 
@@ -174,10 +175,19 @@ def build_label_filter_tree(
     # write last. Selecting that leaf then filtered on one of the two ids
     # while the count promised both. One leaf per row, keyed by id, is the
     # only shape that cannot drift from the counts it was built from.
+    #
+    # Detector classes ("Animal", "Fish", "Person": the builtin rows a
+    # box without a species points at) are leaves at the root, so
+    # "detected, species not set" is one click away. Keyed on the builtin
+    # model id, not on the missing ranks: a model's or a custom label
+    # without ranks is still "No taxonomy".
     has_taxonomy = []
     unranked_rows = []
+    class_rows = []
     for row in taxonomy_rows_raw:
-        if any([
+        if row.classification_model_id == BUILTIN_MODEL_ID:
+            class_rows.append(row)
+        elif any([
             row.taxon_class, row.taxon_order,
             row.taxon_family, row.taxon_genus,
         ]):
@@ -186,7 +196,7 @@ def build_label_filter_tree(
             unranked_rows.append(row)
     taxonomy_rows = has_taxonomy
 
-    if not taxonomy_rows and not unranked_rows:
+    if not taxonomy_rows and not unranked_rows and not class_rows:
         return None
 
     # Build hierarchical tree
@@ -289,29 +299,30 @@ def build_label_filter_tree(
         if leaf_id not in current:
             current[leaf_id] = leaf_node
 
-    # Add the rank-less rows to the "No taxonomy" group. One leaf per row,
-    # named the same way the ranked leaves are, so two rows sharing a name
-    # stay tellable apart ("Animal" for the detector's own category,
-    # "Animalia" for a kingdom-level rollup).
+    # Detector classes at the root, the other rank-less rows in the "No
+    # taxonomy" group. One leaf per row, named the same way the ranked
+    # leaves are, so two rows sharing a name stay tellable apart ("Animal"
+    # for the detector's own class, "Animalia" for a kingdom-level rollup).
     #
     # The node id stays "other": only leaf ids reach `all_leaf_ids` and the
     # filter, so this one is never user-visible, and changing it would
     # break saved filter URLs for no gain.
+    def _unranked_leaf(row: LabelTaxonomy) -> dict:
+        count = taxonomy_id_counts.get(row.id, 0)
+        return {
+            "id": row.id,
+            "name": row.scientific_name or row.name.replace("_", " ").capitalize(),
+            "count": count,
+            "children": {},
+            "is_leaf": True,
+            "_event_count": count,
+        }
+
+    for row in class_rows:
+        root[row.id] = _unranked_leaf(row)
+
     if unranked_rows:
-        other_children: dict = {}
-        for row in unranked_rows:
-            count = taxonomy_id_counts.get(row.id, 0)
-            display = (
-                row.scientific_name or row.name.replace("_", " ").capitalize()
-            )
-            other_children[row.id] = {
-                "id": row.id,
-                "name": display,
-                "count": count,
-                "children": {},
-                "is_leaf": True,
-                "_event_count": count,
-            }
+        other_children = {row.id: _unranked_leaf(row) for row in unranked_rows}
         root[other_key] = {
             "id": "other",
             "name": NO_TAXONOMY,

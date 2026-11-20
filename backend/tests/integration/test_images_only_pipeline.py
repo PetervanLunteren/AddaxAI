@@ -215,6 +215,15 @@ def test_detector_vocabulary_is_read_from_the_run(deployment_scaffold):
     assert {d.category for d in f.detections} == {"fish", "shark"}
     # And the file reads as its strongest detection, not "animal".
     assert f.observation_type == "shark"
+    # Every box without a species points at its class's builtin row, so
+    # the label filter can find it, and carries the class's name.
+    from app.ml.taxonomy_db import builtin_label_ids
+
+    builtin = builtin_label_ids(db)
+    assert {(d.category, d.label_taxonomy_id, d.scientific_name) for d in f.detections} == {
+        ("fish", builtin["fish"], "Fish"),
+        ("shark", builtin["shark"], "Shark"),
+    }
 
 
 def test_unknown_category_id_is_refused(deployment_scaffold):

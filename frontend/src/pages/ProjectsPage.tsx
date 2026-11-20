@@ -12,6 +12,8 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Plus, MoreVertical, Pencil, Copy, Trash2, ImageIcon } from "lucide-react";
 import { projectsApi, type ProjectWithStats } from "../api/projects";
 import { modelsApi } from "../api/models";
+import { ModelSelectValue } from "../components/models/ModelSelectValue";
+import { toApiModelId } from "../lib/model-id";
 import { logger } from "../lib/logger";
 import { API_BASE_URL } from "../lib/api-client";
 import { Button } from "../components/ui/button";
@@ -66,17 +68,26 @@ export function ProjectsPage() {
   });
 
 
+  const { data: detectionModels = [] } = useQuery({
+    queryKey: ["models", "detection"],
+    queryFn: () => modelsApi.listDetectionModels(),
+  });
   const { data: classificationModels = [] } = useQuery({
     queryKey: ["models", "classification"],
     queryFn: () => modelsApi.listClassificationModels(),
   });
 
-  // Helper to get classification model name by ID
-  const getClassificationModelName = (modelId: string | null) => {
-    if (!modelId || modelId === "none") return "∅ Detection only";
-    const model = classificationModels.find((m) => m.model_id === modelId);
-    return model ? `${model.emoji} ${model.friendly_name}` : modelId;
-  };
+  // The models a card names: the detector, then the classifier when the
+  // project has one. One line each, so a long name is never cut short,
+  // and a project without a classifier simply shows its detector. A
+  // model this install does not know reads as its id.
+  const projectModels = (project: ProjectWithStats) =>
+    [
+      [detectionModels, project.detection_model_id] as const,
+      [classificationModels, toApiModelId(project.classification_model_id)] as const,
+    ].flatMap(([models, id]) =>
+      id ? [models.find((m) => m.model_id === id) ?? { friendly_name: id }] : [],
+    );
 
   // Log errors
   if (error) {
@@ -218,11 +229,12 @@ export function ProjectsPage() {
                     </>
                   )}
 
-                  <div className="space-y-2">
-                    <p className="text-sm text-muted-foreground">
-                      {getClassificationModelName(project.classification_model_id)}
-                    </p>
-
+                  <div className="space-y-1 text-sm text-muted-foreground">
+                    {projectModels(project).map((model) => (
+                      <p key={model.friendly_name} className="flex">
+                        <ModelSelectValue model={model} />
+                      </p>
+                    ))}
                   </div>
                 </CardContent>
                 <div className="border-t border-border/50 mx-6" />

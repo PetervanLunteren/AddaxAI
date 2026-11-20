@@ -10,6 +10,9 @@
 import { Check, Copy } from "lucide-react";
 import { useState } from "react";
 
+import type { ClassCounts } from "../../api/types";
+import { capitalize } from "../../lib/utils";
+
 export function Section({
   title,
   children,
@@ -37,6 +40,26 @@ export function Row({
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="break-words">{value}</dd>
     </div>
+  );
+}
+
+/**
+ * What a deployment or site holds, per detector class and by the class's
+ * own name: "Fish" on a fish project, "Animal", "Person" and "Vehicle"
+ * on a camera trap one. Only the classes that were found, then Empty.
+ */
+export function ObservationCategoriesSection({
+  categories,
+}: {
+  categories: ClassCounts;
+}) {
+  return (
+    <Section title="Observation categories">
+      {Object.entries(categories.classes).map(([name, count]) => (
+        <Row key={name} label={capitalize(name)} value={count.toLocaleString()} />
+      ))}
+      <Row label="Empty" value={categories.empty.toLocaleString()} />
+    </Section>
   );
 }
 

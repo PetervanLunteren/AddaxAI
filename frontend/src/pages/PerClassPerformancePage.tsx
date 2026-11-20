@@ -29,6 +29,9 @@ import {
   type FilterSchema,
 } from "../lib/filter-url";
 import { DEFAULT_TAXONOMIC_RANK, isTaxonomicRank } from "../lib/taxonomic-rank";
+import { PageHeader } from "../components/layout/PageHeader";
+import { DATA_CSV, DownloadMenu } from "../components/plots/DownloadMenu";
+import { classPerformanceCsv, performanceFilters, saveCsv } from "../lib/insights-csv";
 
 const FILTER_SCHEMA: FilterSchema = {
   site_ids: "string[]",
@@ -111,20 +114,38 @@ export function PerClassPerformancePage() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b bg-card/80 backdrop-blur-sm">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">
-                Class performance
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Precision, recall, and F1 score per class
-              </p>
-            </div>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title="Class performance"
+        subtitle="Precision, recall, and F1 score per class"
+        actions={
+          // Nothing verified yet means nothing to save: the page shows
+          // its empty state instead of a view.
+          <DownloadMenu
+            items={
+              data?.grand_total
+                ? [
+                    {
+                      label: DATA_CSV,
+                      onSelect: () =>
+                        saveCsv(
+                          "class-performance",
+                          classPerformanceCsv(
+                            data,
+                            performanceFilters({
+                              siteIds: filters.siteIds,
+                              siteNames: buildSiteNameMap(sites),
+                              taxonomicRank: filters.taxonomicRank,
+                              topN: filters.topN,
+                            }),
+                          ),
+                        ),
+                    },
+                  ]
+                : []
+            }
+          />
+        }
+      />
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
         <PerformanceFilterBar
           projectId={projectId}

@@ -195,3 +195,53 @@ def test_unprocessed_count_zero_without_embedding_model(client, db):
     )
     assert resp.status_code == 200
     assert resp.json()["count"] == 0
+
+
+# ── cohorts: the scope reaches the worker ────────────────────────────────
+
+
+def _cohort_params_sent(client, project_id: str, query: str) -> dict:
+    """Call the cohorts endpoint and return the params the worker got."""
+    sent: dict = {}
+
+    async def fake_stream(_request, operation, _project_id, params):
+        sent.update(operation=operation, **params)
+        for line in _ndjson_stream({"type": "result", "cohorts": []}):
+            yield line
+
+    with patch(
+        "app.services.label_service.stream_labels_subprocess_async", fake_stream
+    ):
+        resp = client.get(f"/api/projects/{project_id}/labels/cohorts{query}")
+        assert resp.status_code == 200
+        assert _read_result(resp)["cohorts"] == []
+    return sent
+
+
+def test_cohorts_send_the_site_and_date_scope_to_the_worker(client, db):
+    p = make_project(db, counting_threshold=0.2)
+    sent = _cohort_params_sent(
+        client,
+        p.id,
+        "?site_ids=site-a,null&date_from=2024-06-01&date_to=2024-09-30",
+    )
+    assert sent["operation"] == "cohorts"
+    assert sent["filters"] == {
+        "site_ids": ["site-a", "null"],
+        "date_from": "2024-06-01 00:00:00",
+        "date_to": "2024-09-30 23:59:59.999999",
+        "project_floor": 0.2,
+    }
+
+
+def test_cohorts_without_a_scope_send_only_the_floor(client, db):
+    p = make_project(db, counting_threshold=0.2)
+    sent = _cohort_params_sent(client, p.id, "")
+    assert sent["filters"] == {"project_floor": 0.2}
+    assert (sent["min_count"], sent["max_cohorts"]) == (8, 200)
+
+
+def test_cohorts_reject_a_date_that_is_not_a_date(client, db):
+    p = make_project(db)
+    resp = client.get(f"/api/projects/{p.id}/labels/cohorts?date_from=yesterday")
+    assert resp.status_code == 422

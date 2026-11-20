@@ -18,26 +18,14 @@ import { CalibrationCurve } from "../components/calibration/CalibrationCurve";
 import { CalibrationDialog } from "../components/calibration/CalibrationDialog";
 import { PlotExplainer } from "../components/plots/PlotExplainer";
 import { Button } from "../components/ui/button";
-import { curveSummary } from "../lib/calibration-summary";
+import { curveSummary, statusLine } from "../lib/calibration-summary";
 import { resolveSpeciesName } from "../lib/species-name-mode";
+import { PageHeader } from "../components/layout/PageHeader";
 
 const DASH = <span className="text-muted-foreground">–</span>;
 
 function hasAnswers(row: CalibrationLabel): boolean {
   return row.right + row.wrong + row.unsure > 0;
-}
-
-/** The progress line under a label's name. Only for labels someone has started on. */
-function status(row: CalibrationLabel): string | null {
-  if (row.thresholds || !hasAnswers(row)) return null;
-  if (row.no_error_bound !== null) {
-    return `No errors in ${row.right} answers: at least ${Math.floor(row.no_error_bound * 100)}% right`;
-  }
-  const needed = [
-    row.right_needed > 0 ? `${row.right_needed} more right` : null,
-    row.wrong_needed > 0 ? `${row.wrong_needed} more wrong` : null,
-  ].filter(Boolean);
-  return `${needed.join(" and ")} needed for a curve`;
 }
 
 export function CalibrationPage() {
@@ -56,18 +44,10 @@ export function CalibrationPage() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b bg-card/80 backdrop-blur-sm">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Calibration</h1>
-              <p className="text-sm text-muted-foreground">
-                From which score the AI labels can be trusted, per label
-              </p>
-            </div>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title="Calibration"
+        subtitle="From which score the AI labels can be trusted, per label"
+      />
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
         {isLoading ? (
@@ -78,7 +58,7 @@ export function CalibrationPage() {
           <div className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground">
             {data && data.left_out > 0
               ? `All ${data.left_out} AI labels have fewer than ${data.min_detections} detections, too few to calibrate.`
-              : "No AI labels to calibrate yet. Run a classification model on this project first."}
+              : "Calibration needs species labels from a classification model. This project has none yet."}
           </div>
         ) : (
           <div className="overflow-x-auto rounded-lg border bg-card">
@@ -119,7 +99,7 @@ export function CalibrationPage() {
                   const started = hasAnswers(row);
                   // Every detection answered: nothing left to draw.
                   const exhausted = started && row.right + row.wrong + row.unsure >= row.detections;
-                  const note = status(row);
+                  const note = statusLine(row);
                   const name = resolveSpeciesName(row);
                   return (
                     <Fragment key={row.label}>
@@ -223,7 +203,8 @@ export function CalibrationPage() {
                 across the label's score range, so the sample is not tilted towards
                 mistakes the way verified detections are. A curve is fitted once there
                 are at least 10 right and 10 wrong answers, and is only drawn over the
-                scores that were answered. Can't tell answers are stored but left out
+                scores that were answered. A label with fewer than 10 wrong answers
+                shows the share right your answers can vouch for instead. Can't tell answers are stored but left out
                 of the fit. Answers never verify or relabel a detection.
               </p>
               <p>

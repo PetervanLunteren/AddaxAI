@@ -17,10 +17,13 @@ import { useQuery } from "@tanstack/react-query";
 import { eventsApi } from "../api/events";
 import { sitesApi } from "../api/sites";
 import { speciesLabelMap } from "../lib/species-name-mode";
-import type { ObservationRateMapFilters } from "../api/statistics";
+import {
+  statisticsApi,
+  type ObservationRateMapFeature,
+  type ObservationRateMapFilters,
+} from "../api/statistics";
 import {
   MapFilterBar,
-  type BaseLayer,
   type MapFilters,
   type ViewMode,
 } from "../components/map/MapFilterBar";
@@ -40,6 +43,10 @@ import {
   filtersToSearchParams,
   type FilterSchema,
 } from "../lib/filter-url";
+import { PageHeader } from "../components/layout/PageHeader";
+import { DATA_CSV, DownloadMenu } from "../components/plots/DownloadMenu";
+import { isRateRamp, type RateRamp } from "../lib/heat-color-scale";
+import { mapSitesCsv, rateCsvScope, saveCsv } from "../lib/insights-csv";
 
 const FILTER_SCHEMA: FilterSchema = {
   site_ids: "string[]",
@@ -49,7 +56,7 @@ const FILTER_SCHEMA: FilterSchema = {
 };
 
 const VIEW_MODE_KEY = "addaxai:map-view-mode";
-const BASE_LAYER_KEY = "addaxai:map-base-layer";
+const RAMP_KEY = "addaxai:map-color-ramp";
 
 function readStoredViewMode(): ViewMode {
   const saved = localStorage.getItem(VIEW_MODE_KEY);
@@ -59,12 +66,9 @@ function readStoredViewMode(): ViewMode {
   return "hexbins";
 }
 
-function readStoredBaseLayer(): BaseLayer {
-  const saved = localStorage.getItem(BASE_LAYER_KEY);
-  if (saved === "positron" || saved === "satellite" || saved === "osm") {
-    return saved;
-  }
-  return "positron";
+function readStoredRamp(): RateRamp {
+  const saved = localStorage.getItem(RAMP_KEY);
+  return isRateRamp(saved) ? saved : "teal";
 }
 
 export function MapPage() {
@@ -72,15 +76,15 @@ export function MapPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [viewMode, setViewMode] = useState<ViewMode>(readStoredViewMode);
-  const [baseLayer, setBaseLayer] = useState<BaseLayer>(readStoredBaseLayer);
+  const [ramp, setRamp] = useState<RateRamp>(readStoredRamp);
 
   useEffect(() => {
     localStorage.setItem(VIEW_MODE_KEY, viewMode);
   }, [viewMode]);
 
   useEffect(() => {
-    localStorage.setItem(BASE_LAYER_KEY, baseLayer);
-  }, [baseLayer]);
+    localStorage.setItem(RAMP_KEY, ramp);
+  }, [ramp]);
 
   const filters = useMemo<MapFilters>(() => {
     const parsed = filtersFromSearchParams(searchParams, FILTER_SCHEMA);
@@ -116,7 +120,29 @@ export function MapPage() {
     [filters]
   );
 
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["observation-rate-map", projectId, apiFilters],
+    queryFn: () => statisticsApi.getObservationRateMap(projectId!, apiFilters),
+    enabled: !!projectId,
+  });
+
   const { data: noSite } = useNoSiteDeployments(projectId);
+
+  // Every site in the filters, not only those in view.
+  const saveSitesCsv = (features: ObservationRateMapFeature[]) => {
+    const scope = rateCsvScope({
+      dateFrom: filters.date_from,
+      dateTo: filters.date_to,
+      siteIds: filters.site_ids,
+      siteNames: buildSiteNameMap(sites),
+      labelIds: filters.labels,
+      labelNames: filterOptions ? speciesLabelMap(filterOptions) : {},
+    });
+    saveCsv("map-sites", mapSitesCsv(features, scope), {
+      from: scope.dateFrom,
+      to: scope.dateTo,
+    });
+  };
 
   const { data: sites } = useQuery({
     queryKey: ["sites", projectId],
@@ -169,19 +195,19 @@ export function MapPage() {
 
   return (
     <div className="min-h-screen">
-      {/* Header */}
-      <header className="border-b bg-card/80 backdrop-blur-sm">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">Map</h1>
-              <p className="text-sm text-muted-foreground">
-                Compare observation rates across your sites
-              </p>
-            </div>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        title="Map"
+        subtitle="Compare observation rates across your sites"
+        actions={
+          <DownloadMenu
+            items={
+              data?.features.length
+                ? [{ label: DATA_CSV, onSelect: () => saveSitesCsv(data.features) }]
+                : []
+            }
+          />
+        }
+      />
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
         <NoSiteBanner
@@ -196,16 +222,17 @@ export function MapPage() {
           onChange={handleFiltersChange}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
-          baseLayer={baseLayer}
-          onBaseLayerChange={setBaseLayer}
+          ramp={ramp}
+          onRampChange={setRamp}
           chips={chips}
           onClearAll={clearAllDataFilters}
         />
         <ObservationRateMap
-          projectId={projectId}
-          filters={apiFilters}
+          data={data}
+          isLoading={isLoading}
+          error={error}
           viewMode={viewMode}
-          baseLayer={baseLayer}
+          ramp={ramp}
         />
 
         <PlotExplainer
@@ -213,8 +240,8 @@ export function MapPage() {
           what={
             <>
               <p>
-                A marker per site, coloured by its observation rate per
-                100 trap nights. A site can have multiple deployments
+                A marker per site, coloured by its observation rate.
+                A site can have multiple deployments
                 over time; each marker aggregates across them. Three
                 layer modes: hexbins aggregate nearby sites onto a hex
                 grid, points show each site individually, and clusters
@@ -233,7 +260,8 @@ export function MapPage() {
           }
           how={
             <p>
-              rate = observations / trap_nights × 100, summed per site
+              rate = observations / trap_nights, shown in the unit
+              chosen under View &gt; Rate unit, summed per site
               across its deployments and restricted to the active date
               and label filters. Events respect the project's detection
               threshold with the verified override applied, so verified

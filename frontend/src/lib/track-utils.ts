@@ -348,10 +348,39 @@ export function frameBoxes(
   if (file.file_type !== "video") {
     return file.detections.filter((d) => passesDrawFilter(d, threshold)) as BboxedDetection[];
   }
-  const shown = frameNumber ?? file.best_frame_number;
   const onShow = trackCards(file.tracks ?? [], file.detections, threshold);
-  return file.detections.filter(
-    (d) => (shown == null || d.frame_number === shown) && drawsInClip(d, onShow, threshold),
+  return boxesOnFrame(file, frameNumber).filter((d) =>
+    drawsInClip(d, onShow, threshold),
+  ) as BboxedDetection[];
+}
+
+/** The boxes that sit on the picture on screen: all of a photo's, and
+ *  for a clip those of the frame shown (the cover by default). */
+function boxesOnFrame(file: FileWithDetections, frameNumber?: number): DetectionResponse[] {
+  if (file.file_type !== "video") return file.detections;
+  const shown = frameNumber ?? file.best_frame_number;
+  return file.detections.filter((d) => shown == null || d.frame_number === shown);
+}
+
+/**
+ * The stored boxes of the frame on screen that `frameBoxes` leaves out:
+ * below the counting threshold, marked false, or on a track that is not
+ * on show. What "Hold to show all stored boxes" draws, so a person can
+ * see whether the detector missed an animal or found it with a low
+ * score, and what that score was. Built on `frameBoxes`, so a box is
+ * never in both and the two cannot drift. Rejected boxes are in on
+ * purpose: signing off a file marks its unseen weak boxes false, and
+ * leaving them out would make every checked file look as if the
+ * detector had seen nothing.
+ */
+export function hiddenFrameBoxes(
+  file: FileWithDetections,
+  threshold: number,
+  frameNumber?: number,
+): BboxedDetection[] {
+  const drawn = new Set(frameBoxes(file, threshold, frameNumber).map((d) => d.id));
+  return boxesOnFrame(file, frameNumber).filter(
+    (d) => d.bbox_x !== null && !drawn.has(d.id),
   ) as BboxedDetection[];
 }
 

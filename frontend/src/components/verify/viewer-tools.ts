@@ -4,6 +4,7 @@
  * components for fast refresh to work.
  */
 
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { create } from "zustand";
@@ -121,5 +122,77 @@ export function useFileTriage(onChanged?: () => void): FileTriage {
       if (!pending) likeMutation.mutate(f);
     },
     pending,
+  };
+}
+
+/** The key that holds "show all stored boxes". */
+export const PEEK_KEY = "i";
+
+export interface HoldToPeek {
+  /** True only while the key or the rail button is held down. */
+  peeking: boolean;
+  /** For the rail button: pressed is held, released or left is not. */
+  holdProps: {
+    onPointerDown: () => void;
+    onPointerUp: () => void;
+    onPointerLeave: () => void;
+    onPointerCancel: () => void;
+  };
+}
+
+/**
+ * "Show all stored boxes" for as long as something is held: the `I` key
+ * or the rail's button. Held, never toggled, on purpose: those boxes are
+ * not results, and a view that could be left on would have people
+ * verifying and counting with them on screen. So everything that can
+ * end a hold without a release ends it here too: the window losing
+ * focus (the key up then goes to another app), and `enabled` going
+ * false (a clip starts playing, the file goes away).
+ *
+ * It listens for itself rather than through the host's key handler,
+ * because the hosts only hear key down and a hold needs key up.
+ */
+export function useHoldToPeek(enabled: boolean): HoldToPeek {
+  const [held, setHeld] = useState(false);
+
+  useEffect(() => {
+    const release = () => setHeld(false);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== PEEK_KEY) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // Typing an "i" is not a hold, and keys in a popover are its own:
+      // the same two guards as the viewers' key handlers.
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLSelectElement ||
+        (e.target instanceof HTMLElement &&
+          e.target.closest("[data-radix-popper-content-wrapper]"))
+      ) {
+        return;
+      }
+      setHeld(true);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === PEEK_KEY) release();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", release);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", release);
+    };
+  }, []);
+
+  return {
+    peeking: held && enabled,
+    holdProps: {
+      onPointerDown: () => setHeld(true),
+      onPointerUp: () => setHeld(false),
+      onPointerLeave: () => setHeld(false),
+      onPointerCancel: () => setHeld(false),
+    },
   };
 }

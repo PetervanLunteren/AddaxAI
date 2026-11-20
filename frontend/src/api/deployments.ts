@@ -6,7 +6,7 @@ import { api } from "../lib/api-client";
 import type {
   BulkRelinkRequest,
   BulkRelinkResponse,
-  DeploymentDetectionCategories,
+  ClassCounts,
   DeploymentFileCounts,
   DeploymentInfo,
   DeploymentResponse,
@@ -28,7 +28,7 @@ import type {
 export type {
   BulkRelinkRequest,
   BulkRelinkResponse,
-  DeploymentDetectionCategories,
+  ClassCounts,
   DeploymentFileCounts,
   DeploymentInfo,
   DeploymentResponse,

@@ -39,7 +39,7 @@ export function QueueCard({ projectId }: QueueCardProps) {
     // Only poll when there are deployments being processed
     refetchInterval: (query) => {
       const hasProcessing = query.state.data?.some(
-        (entry: any) => entry.status === "processing"
+        (entry) => entry.status === "processing"
       );
       return hasProcessing ? 5000 : false;
     },

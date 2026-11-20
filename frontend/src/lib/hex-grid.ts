@@ -114,7 +114,6 @@ export function generateHexGrid(
   // above MAX_HEXES is almost certainly a bug (bad bounds, zoom mismatch).
   const estimatedHexes = (lastCol - firstCol + 1) * (lastRow - firstRow + 1);
   if (estimatedHexes <= 0 || estimatedHexes > MAX_HEXES) {
-    // eslint-disable-next-line no-console
     console.warn(
       `[hex-grid] Skipping grid: would allocate ${estimatedHexes} hexes ` +
         `(cols=${firstCol}..${lastCol}, rows=${firstRow}..${lastRow}, ` +

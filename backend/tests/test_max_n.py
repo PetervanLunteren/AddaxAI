@@ -1290,9 +1290,10 @@ def test_add_species_merges_only_into_the_row_with_the_same_demographics(db):
     set_observation_attributes(db, cow.id, sex="male")
     female = add_human_species(db, ev.id, category="animal", count=2, label="cow", sex="female")
     assert female.id != cow.id
+    # Adding the same cohort again changes nothing: its count stays 2.
     again = add_human_species(db, ev.id, category="animal", count=3, label="cow", sex="female")
     assert again.id == female.id
-    assert again.effective_count == 3
+    assert again.effective_count == 2
 
 
 def test_relabel_keeps_the_cohorts_demographics(db):

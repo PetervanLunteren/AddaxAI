@@ -110,7 +110,9 @@ class DetectionCreateHuman(BaseModel):
     """Schema for creating a human-drawn detection (no job_id required)."""
 
     file_id: str = Field(..., description="ID of the file")
-    category: DetectionCategory = Field(..., description="Detection category")
+    # Only for a detector class the person picked. Without it the box takes
+    # the project detector's primary class (`category_after_human_edit`).
+    category: DetectionCategory | None = Field(None, description="Detection category")
     bbox_x: float = Field(..., ge=0.0, le=1.0)
     bbox_y: float = Field(..., ge=0.0, le=1.0)
     bbox_width: float = Field(..., ge=0.0, le=1.0)

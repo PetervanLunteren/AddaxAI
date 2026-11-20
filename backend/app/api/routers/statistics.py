@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.api.crud import performance as performance_crud
+from app.api.crud import rate_trend as rate_trend_crud
 from app.api.crud import statistics as stats_crud
 from app.api.crud import timeline as timeline_crud
 from app.api.schemas.performance import PerformanceResponse
@@ -15,13 +16,15 @@ from app.api.schemas.statistics import (
     ActivityPatternResponse,
     AnimalPhoto,
     CaptureDateCoverage,
+    ClassCounts,
     DashboardOverview,
     DashboardSummary,
     Demographics,
-    DetectionCategories,
-    DetectionTrendPoint,
+    DetectionTrendResponse,
     ObservationRateMapResponse,
+    RateTrendResponse,
     SpeciesCount,
+    SpeciesRatesResponse,
     VerificationProgressByLabel,
 )
 from app.api.schemas.timeline import TimelineResponse
@@ -173,16 +176,56 @@ def activity_overlap(
     )
 
 
-@router.get("/detection-trend", response_model=list[DetectionTrendPoint])
+@router.get("/detection-trend", response_model=DetectionTrendResponse)
 def detection_trend(
     project_id: str = Query(...),
     label_taxonomy_ids: str | None = Query(None),
     site_ids: str | None = Query(None),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
+    granularity: Literal["day", "week", "month"] | None = Query(None),
     db: Session = Depends(get_db),
-) -> list[DetectionTrendPoint]:
-    return stats_crud.get_detection_trend(
+) -> DetectionTrendResponse:
+    """The Explore trend. Without `granularity` the span decides."""
+    return rate_trend_crud.get_detection_trend(
+        db, project_id, _parse_taxon_ids(label_taxonomy_ids),
+        _parse_site_ids(site_ids),
+        _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),
+        granularity,
+    )
+
+
+@router.get("/rate-trend", response_model=RateTrendResponse)
+def rate_trend(
+    project_id: str = Query(...),
+    label_taxonomy_ids: str | None = Query(None),
+    site_ids: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    granularity: Literal["week", "month"] | None = Query(None),
+    db: Session = Depends(get_db),
+) -> RateTrendResponse:
+    """The Trend page: the mean of site rates per week or month.
+    A day is not offered: across sites it is mostly zeros."""
+    return rate_trend_crud.get_rate_trend(
+        db, project_id, _parse_taxon_ids(label_taxonomy_ids),
+        _parse_site_ids(site_ids),
+        _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),
+        granularity,
+    )
+
+
+@router.get("/species-rates", response_model=SpeciesRatesResponse)
+def species_rates(
+    project_id: str = Query(...),
+    label_taxonomy_ids: str | None = Query(None),
+    site_ids: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    db: Session = Depends(get_db),
+) -> SpeciesRatesResponse:
+    """The Species rates page: the mean of site rates per label."""
+    return rate_trend_crud.get_species_rates(
         db, project_id, _parse_taxon_ids(label_taxonomy_ids),
         _parse_site_ids(site_ids),
         _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),
@@ -232,6 +275,7 @@ def animal_photos(
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
     wildlife_only: bool = Query(False),
+    min_box_px: int | None = Query(None, ge=1),
     db: Session = Depends(get_db),
 ) -> list[AnimalPhoto]:
     """Random confident detections for the dashboard photos."""
@@ -239,18 +283,18 @@ def animal_photos(
         db, project_id, limit, _parse_taxon_ids(label_taxonomy_ids),
         _parse_site_ids(site_ids),
         _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),
-        wildlife_only,
+        wildlife_only, min_box_px,
     )
 
 
-@router.get("/categories", response_model=DetectionCategories)
+@router.get("/categories", response_model=ClassCounts)
 def categories(
     project_id: str = Query(...),
     site_ids: str | None = Query(None),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
     db: Session = Depends(get_db),
-) -> DetectionCategories:
+) -> ClassCounts:
     return stats_crud.get_detection_categories(
         db, project_id, _parse_site_ids(site_ids),
         _valid_date(date_from, "date_from"), _valid_date(date_to, "date_to"),

@@ -572,14 +572,15 @@ def get_deployment_info(db: Session, deployment_id: str):
     """
     from sqlalchemy import case
 
+    from app.api.crud.event_observation import count_individuals_by_class
     from app.api.crud.statistics import _apply_threshold, _get_counting_threshold
     from app.api.schemas.deployment import (
-        DeploymentDetectionCategories,
         DeploymentFileCounts,
         DeploymentInfoResponse,
         DeploymentTopSpecies,
         DeploymentVerification,
     )
+    from app.api.schemas.statistics import ClassCounts
     from app.models import Detection, EventObservation, LabelTaxonomy
 
     deployment = get_deployment(db, deployment_id)
@@ -633,51 +634,7 @@ def get_deployment_info(db: Session, deployment_id: str):
         or 0
     )
 
-    # Detection categories (animal / person / vehicle) via MaxN sums
-    # grouped by EventObservation.category. Matches the dashboard's
-    # `get_detection_categories` so the numbers line up.
-    cat_row = db.execute(
-        select(
-            func.coalesce(
-                func.sum(
-                    case(
-                        (
-                            is_wildlife_category(EventObservation.category),
-                            EventObservation.effective_count,
-                        ),
-                        else_=0,
-                    )
-                ),
-                0,
-            ),
-            func.coalesce(
-                func.sum(
-                    case(
-                        (EventObservation.category == "person", EventObservation.effective_count),
-                        else_=0,
-                    )
-                ),
-                0,
-            ),
-            func.coalesce(
-                func.sum(
-                    case(
-                        (EventObservation.category == "vehicle", EventObservation.effective_count),
-                        else_=0,
-                    )
-                ),
-                0,
-            ),
-        )
-        .select_from(EventObservation)
-        .join(Event, Event.id == EventObservation.event_id)
-        .where(Event.deployment_id == deployment_id)
-    ).one()
-    animal_count, person_count, vehicle_count = (
-        int(cat_row[0]),
-        int(cat_row[1]),
-        int(cat_row[2]),
-    )
+    class_counts = count_individuals_by_class(db, [deployment_id])
 
     # Empty = files whose all detections were skipped (observation_type
     # == "blank"). Scoped to this deployment.
@@ -795,12 +752,7 @@ def get_deployment_info(db: Session, deployment_id: str):
         ),
         event_count=int(event_count),
         observation_count=int(observation_count),
-        detection_categories=DeploymentDetectionCategories(
-            animal=animal_count,
-            person=person_count,
-            vehicle=vehicle_count,
-            empty=int(empty_count),
-        ),
+        detection_categories=ClassCounts(classes=class_counts, empty=int(empty_count)),
         top_species=top_species,
         trap_nights=trap_nights,
         observation_rate_per_100_trap_nights=rate,

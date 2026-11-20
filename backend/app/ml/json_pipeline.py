@@ -37,7 +37,7 @@ from app.ml.json_utils import (
 from app.ml.observation_type import derive_observation_type
 from app.ml.progress import ProgressTicker
 from app.ml.results_json import iter_images, read_top_level_object
-from app.ml.taxonomy_db import clear_classification
+from app.ml.taxonomy_db import clear_classification, ensure_builtin_labels
 from app.models import Deployment, Detection, File, Project, Track
 from app.utils.media_dates import (
     date_from_exif_dict,
@@ -137,7 +137,6 @@ def load_json_to_database(
     taxonomy_name_to_id: (
         dict[str, tuple[str, str | None]] | None
     ) = None,
-    builtin_taxonomy_ids: dict[str, str] | None = None,
     datetime_offset_seconds: int = 0,
     camera_offsets: dict[str, int] | None = None,
     use_file_mtime_fallback: bool = False,
@@ -160,8 +159,6 @@ def load_json_to_database(
             video_frames are read from artifacts_folder/video_frames/.
         taxonomy_name_to_id: Pre-resolved mapping of
             {lowercase_label: (taxonomy_id, scientific_name)}.
-        builtin_taxonomy_ids: Mapping of builtin category names
-            to taxonomy UUIDs, e.g. {"animal": "uuid", ...}.
 
     Returns:
         PipelineResult with statistics
@@ -203,6 +200,9 @@ def load_json_to_database(
                 f"ids mean, and guessing is how every category silently "
                 f"became 'animal'."
             )
+        # Every class this run can emit gets its builtin row up front, so
+        # a box without a species always has one to point at.
+        builtin_ids = ensure_builtin_labels(db, detection_categories.values())
 
         # Project detection threshold: observation_type counts only
         # detections at or above it (verified is always False at ingestion),
@@ -588,9 +588,7 @@ def load_json_to_database(
                 # An unclassified detection carries its category's
                 # builtin taxonomy row, one rule with every other writer.
                 if not label:
-                    clear_classification(
-                        detection_record, builtin_taxonomy_ids or {}
-                    )
+                    clear_classification(detection_record, builtin_ids)
 
             if tracked_records:
                 _link_tracks(
@@ -726,7 +724,6 @@ def load_json_to_database_owned_session(
     taxonomy_name_to_id: (
         dict[str, tuple[str, str | None]] | None
     ) = None,
-    builtin_taxonomy_ids: dict[str, str] | None = None,
     datetime_offset_seconds: int = 0,
     camera_offsets: dict[str, int] | None = None,
     use_file_mtime_fallback: bool = False,
@@ -755,7 +752,6 @@ def load_json_to_database_owned_session(
             db=db,
             artifacts_folder=artifacts_folder,
             taxonomy_name_to_id=taxonomy_name_to_id,
-            builtin_taxonomy_ids=builtin_taxonomy_ids,
             datetime_offset_seconds=datetime_offset_seconds,
             camera_offsets=camera_offsets,
             use_file_mtime_fallback=use_file_mtime_fallback,

@@ -15,8 +15,10 @@
  * would be saved with the new frame's number.
  */
 
+import { toast } from "sonner";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Stage, Layer, Rect, Text, Image as KonvaImage, Transformer, Shape, Group } from "react-konva";
+import type Konva from "konva";
 import { useMutation } from "@tanstack/react-query";
 import { ImageOff } from "lucide-react";
 import { Button } from "../ui/button";
@@ -25,7 +27,10 @@ import { detectionsApi } from "../../api/detections";
 import { reportMissingMedia } from "../../hooks/useBrokenDeployments";
 import { getDetectionColor } from "../../lib/detection-utils";
 import { canvasImage, frameImageUrl } from "../../lib/clip-frames";
-import { frameBoxes } from "../../lib/track-utils";
+import { frameBoxes, hiddenFrameBoxes } from "../../lib/track-utils";
+
+/** Konva name of a box drawn by "show all stored boxes". */
+const STORED_BOX = "stored-box";
 import { basename } from "../../lib/path-utils";
 import {
   roundedRectPath,
@@ -93,6 +98,10 @@ interface AnnotationCanvasProps {
   defaultCategory?: string;
   defaultLabel?: string;
   boxesHidden?: boolean;
+  /** Also draw every stored box the frame does not show (below the
+   *  threshold, marked false, on a track not on show), dashed and not
+   *  clickable. True only while "show all stored boxes" is held. */
+  showAllBoxes: boolean;
   exportFnRef?: React.MutableRefObject<(() => void) | null>;
   zoomFnRef?: React.MutableRefObject<{
     zoomIn: () => void;
@@ -127,13 +136,14 @@ export function AnnotationCanvas({
   defaultCategory,
   defaultLabel,
   boxesHidden,
+  showAllBoxes,
   exportFnRef,
   zoomFnRef,
 }: AnnotationCanvasProps) {
   // Repaint when the project's colour map lands or changes.
   useSpeciesColorsVersion();
-  const stageRef = useRef<any>(null);
-  const transformerRef = useRef<any>(null);
+  const stageRef = useRef<Konva.Stage>(null);
+  const transformerRef = useRef<Konva.Transformer>(null);
   // The last Shift+wheel step: a trackpad fires a burst of wheel events
   // per swipe, so without a gap one flick would jump dozens of frames,
   // each a decode from the clip. Held here, where the input arrives,
@@ -176,6 +186,13 @@ export function AnnotationCanvas({
   // The boxes of the frame the canvas is rendering, by the one rule
   // every rendered still and the player share (`frameBoxes`).
   const filteredDetections = frameBoxes(file, detectionThreshold, frameNumber);
+  // Lowest score first, so where they overlap the likelier box is drawn
+  // last, on top, and its pill is the one you can read.
+  const storedOnlyBoxes = showAllBoxes
+    ? hiddenFrameBoxes(file, detectionThreshold, frameNumber).sort(
+        (a, b) => a.confidence - b.confidence,
+      )
+    : [];
   // Every box on an editable still can be moved and resized, a clip's
   // frame like a photo (2026-11-03; a clip's boxes were fixed before).
   // The Counts modal mounts the canvas read-only, so only the Files
@@ -313,7 +330,10 @@ export function AnnotationCanvas({
       // just for the export and restore it after.
       const pills = stage.find(".label-pill");
       const spots = stage.find(".spotlight");
-      [...pills, ...spots].forEach((n: any) => n.visible(true));
+      // Boxes shown by holding I are not results: never in the download.
+      const stored = stage.find(`.${STORED_BOX}`);
+      [...pills, ...spots].forEach((n) => n.visible(true));
+      stored.forEach((n) => n.visible(false));
       stage.batchDraw();
 
       const pixelRatio = Math.max(1, imgWidth / stage.width());
@@ -322,8 +342,9 @@ export function AnnotationCanvas({
       // Restore transform, transformer, and on-screen annotation visibility:
       // pills stay shown, the spotlight reverts to its read-only state.
       transformer?.visible(wasVisible ?? true);
-      pills.forEach((n: any) => n.visible(true));
-      spots.forEach((n: any) => n.visible(!readOnly));
+      pills.forEach((n) => n.visible(true));
+      spots.forEach((n) => n.visible(!readOnly));
+      stored.forEach((n) => n.visible(true));
       stage.scale(savedScale);
       stage.position(savedPos);
       stage.batchDraw();
@@ -338,7 +359,7 @@ export function AnnotationCanvas({
       link.click();
       document.body.removeChild(link);
     };
-  }, [exportFnRef, image, file.file_path, imgWidth]);
+  }, [exportFnRef, image, file.file_path, imgWidth, readOnly]);
 
   // Register zoom functions for external buttons
   useEffect(() => {
@@ -397,7 +418,7 @@ export function AnnotationCanvas({
       const normH = pixelToNorm(box.height, imgHeight);
       return detectionsApi.create({
         file_id: file.id,
-        category: defaultCategory || "animal",
+        category: defaultCategory,
         bbox_x: Math.max(0, Math.min(1, normX)),
         bbox_y: Math.max(0, Math.min(1, normY)),
         bbox_width: Math.max(0, Math.min(1, normW)),
@@ -413,6 +434,9 @@ export function AnnotationCanvas({
       onMutated?.();
       onCreated?.(created.id);
     },
+    // A box that could not be saved vanishes from the canvas, so say why
+    // (a video frame missing, a detector the catalog gives no class to).
+    onError: (err: Error) => toast.error("Could not save the box", { description: err.message }),
   });
 
   // Update detection mutation (for move/resize)
@@ -457,7 +481,7 @@ export function AnnotationCanvas({
   });
 
   // Plain wheel = zoom; Shift+wheel = step to the prev/next frame.
-  const handleWheel = (e: any) => {
+  const handleWheel = (e: Konva.KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault();
     if (e.evt.shiftKey && onScrubFrame) {
       const now = performance.now();
@@ -474,7 +498,7 @@ export function AnnotationCanvas({
       return;
     }
     const stage = stageRef.current;
-    const pointer = stage.getPointerPosition();
+    const pointer = stage?.getPointerPosition();
     if (!pointer) return;
 
     const oldScale = zoom;
@@ -508,7 +532,7 @@ export function AnnotationCanvas({
   };
 
   // Mouse handlers for drawing and panning
-  const handleMouseDown = (e: any) => {
+  const handleMouseDown = (e: Konva.KonvaEventObject<PointerEvent>) => {
     const target = e.target;
     const isEmptyArea =
       target === stageRef.current || target.className === "Image";
@@ -535,7 +559,7 @@ export function AnnotationCanvas({
       onSelectDetection(null);
       if (zoom > 1) {
         setIsPanning(true);
-        const pointer = stageRef.current.getPointerPosition();
+        const pointer = stageRef.current?.getPointerPosition();
         if (pointer) lastPanPosRef.current = { x: pointer.x, y: pointer.y };
       }
     }
@@ -599,7 +623,10 @@ export function AnnotationCanvas({
   };
 
   // Handle drag end for moving boxes
-  const handleDragEnd = (detection: DetectionResponse, e: any) => {
+  const handleDragEnd = (
+    detection: DetectionResponse,
+    e: Konva.KonvaEventObject<DragEvent>,
+  ) => {
     const node = e.target;
     updateMutation.mutate({
       id: detection.id,
@@ -611,7 +638,10 @@ export function AnnotationCanvas({
   };
 
   // Handle transform end for resizing
-  const handleTransformEnd = (detection: DetectionResponse, e: any) => {
+  const handleTransformEnd = (
+    detection: DetectionResponse,
+    e: Konva.KonvaEventObject<Event>,
+  ) => {
     const node = e.target;
     const newWidth = node.width() * node.scaleX();
     const newHeight = node.height() * node.scaleY();
@@ -715,7 +745,7 @@ export function AnnotationCanvas({
               name="spotlight"
               visible={!readOnly}
               sceneFunc={(context) => {
-                const ctx = (context as any)._context as CanvasRenderingContext2D;
+                const ctx = context._context;
                 ctx.save();
                 // Dark overlay over entire stage
                 ctx.fillStyle = DIM_FILL;
@@ -740,6 +770,63 @@ export function AnnotationCanvas({
               listening={false}
             />
           )}
+
+          {/* "Show all stored boxes": dashed and never clickable. Drawn
+              under the real boxes: a weak box is often a near copy of a
+              strong one, and its pill must not cover the result's. Named
+              STORED_BOX so the annotated download hides them. */}
+          {!loading &&
+            storedOnlyBoxes.map((detection) => {
+              const box = {
+                x: normToPixel(detection.bbox_x, imgWidth),
+                y: normToPixel(detection.bbox_y, imgHeight),
+                width: normToPixel(detection.bbox_width, imgWidth),
+                height: normToPixel(detection.bbox_height, imgHeight),
+              };
+              const pill = computePillLayout(detection);
+              const at = placePill(
+                box,
+                { width: pill.pillWidth, height: pill.pillHeight },
+                stageSize,
+              );
+              return (
+                <Group key={detection.id} name={STORED_BOX} listening={false}>
+                  <Rect
+                    {...box}
+                    stroke={pill.color}
+                    strokeWidth={2 / zoom}
+                    dash={[6 / zoom, 4 / zoom]}
+                    cornerRadius={BBOX_CORNER_RADIUS}
+                  />
+                  <Group x={at.x} y={at.y}>
+                    <Rect
+                      width={pill.pillWidth}
+                      height={pill.pillHeight}
+                      fill={PILL_BG}
+                      cornerRadius={BBOX_CORNER_RADIUS}
+                    />
+                    <Text
+                      x={TEXT_START_X}
+                      y={PILL_PAD_Y}
+                      text={pill.categoryText}
+                      fill="white"
+                      fontSize={FONT}
+                      fontFamily={OVERLAY_FONT_FAMILY}
+                    />
+                    {pill.hasLabel && (
+                      <Text
+                        x={TEXT_START_X}
+                        y={PILL_PAD_Y + FONT + LINE_GAP}
+                        text={pill.labelText}
+                        fill="white"
+                        fontSize={FONT}
+                        fontFamily={OVERLAY_FONT_FAMILY}
+                      />
+                    )}
+                  </Group>
+                </Group>
+              );
+            })}
 
           {!loading && !boxesHidden && filteredDetections.map((detection) => {
             const x = normToPixel(detection.bbox_x, imgWidth);

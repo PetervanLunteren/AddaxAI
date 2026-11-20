@@ -32,6 +32,43 @@ export const OSM_LAYER = {
 };
 
 /**
+ * The backgrounds the Map page offers, in the order of its layers
+ * control. `name` is what the control shows, and also how Leaflet tells
+ * the layers apart, so names are unique. An entry without `url` is the
+ * street map (`StreetBaseLayer`). The ids are stored per device, so
+ * they do not change.
+ */
+export const BASE_LAYERS = [
+  // "Street", not "Light": in dark mode it is drawn dark.
+  { id: "positron", name: "Street" },
+  {
+    id: "satellite",
+    name: "Satellite",
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    attribution:
+      "Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community",
+  },
+  { id: "osm", name: "OpenStreetMap", ...OSM_LAYER },
+  {
+    id: "topo",
+    name: "Topographic",
+    url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+    // The credit line opentopomap.org asks for.
+    attribution:
+      'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)',
+    // Its tiles stop one level before the map does; the last level is
+    // enlarged instead of left blank.
+    maxNativeZoom: 17,
+  },
+] as const;
+
+export type BaseLayer = (typeof BASE_LAYERS)[number]["id"];
+
+export function isBaseLayer(value: unknown): value is BaseLayer {
+  return BASE_LAYERS.some((layer) => layer.id === value);
+}
+
+/**
  * MapLibre needs WebGL2; the handful of machines without it get OSM
  * raster tiles instead of a blank map.
  */

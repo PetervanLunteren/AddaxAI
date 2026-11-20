@@ -7,6 +7,7 @@ from pathlib import Path
 
 from PIL import Image
 
+from app.ml.taxonomy_db import ensure_builtin_labels
 from app.models import LabelTaxonomy
 from tests.conftest import (
     make_deployment,
@@ -424,12 +425,14 @@ def test_max_at_once_is_the_peak_per_species_at_the_first_frame_it_reached(clien
                    label="Shark")
     db.commit()
 
+    fish_row = ensure_builtin_labels(db, ["fish"])["fish"]
     by_species = {
         (m["label_taxonomy_id"], m["label"], m["category"]): m
         for m in client.get(f"/api/files/{clip.id}?scope=cards").json()["max_at_once"]
     }
-    assert by_species[(None, None, "fish")] == {
-        "label_taxonomy_id": None, "label": None, "category": "fish",
+    # A fish without a species counts under its class's builtin row.
+    assert by_species[(fish_row, None, "fish")] == {
+        "label_taxonomy_id": fish_row, "label": None, "category": "fish",
         "count": 5, "frame_number": 60,
     }
     assert by_species[(None, "Shark", "fish")]["count"] == 1
@@ -441,8 +444,9 @@ def test_max_at_once_of_a_photo_has_no_frame(client, db):
     make_detection(db, file_id=photo.id)
     make_detection(db, file_id=photo.id)
     db.commit()
+    animal_row = ensure_builtin_labels(db, ["animal"])["animal"]
     assert client.get(f"/api/files/{photo.id}").json()["max_at_once"] == [
-        {"label_taxonomy_id": None, "label": None, "category": "animal",
+        {"label_taxonomy_id": animal_row, "label": None, "category": "animal",
          "count": 2, "frame_number": None}
     ]
 

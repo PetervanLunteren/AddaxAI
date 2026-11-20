@@ -28,7 +28,6 @@ import {
 import { projectsApi } from "../../../api/projects";
 import { DEFAULT_COUNTING_THRESHOLD } from "../../../lib/confidence";
 import { invalidateProjectData } from "../../../lib/invalidate-project";
-import { isElectron } from "../../../lib/platform";
 import {
   loadLastUsedSaveOutputs,
   saveLastUsedSaveOutputs,
@@ -48,6 +47,9 @@ export interface ExportState {
    * not the recognition JSON beside them. */
   spreadsheet: boolean;
   format: SpreadsheetFormat;
+  /** CSV also writes addaxai-frames.csv when the run holds a video.
+   * Off by default, and moot for Excel (see lib/frames-table). */
+  includeFrames: boolean;
   recognitionJson: boolean;
   /** The addaxai-run-info.txt run manifest (models, settings, results).
    * Default on: it's the provenance record, but now opt-out like the rest. */
@@ -105,7 +107,6 @@ export interface UseSaveOutputsFormResult extends MediaFormHandles {
   /** Reset the completion screen back to the form. */
   clearResult: () => void;
 
-  handleBrowse: () => Promise<void>;
   handleOpenResults: () => Promise<void>;
 
   exportPicked: boolean;
@@ -238,7 +239,6 @@ export function useSaveOutputsForm({
     hasSeededOutputRef.current = true;
     // One-time seed of a default from an async-loaded prop, guarded by
     // the ref so it can't loop.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setOutputDir((cur) => (cur ? cur : sourceFolder));
   }, [sourceFolder]);
 
@@ -265,6 +265,7 @@ export function useSaveOutputsForm({
     format:
       persisted?.format ??
       (persisted?.xlsx && !persisted?.csv ? "xlsx" : "csv"),
+    includeFrames: persisted?.includeFrames ?? false,
     recognitionJson: persisted?.recognitionJson ?? true,
     summary: persisted?.summary ?? true,
   }));
@@ -294,6 +295,7 @@ export function useSaveOutputsForm({
       exportEnabled: exportOpts.enabled,
       spreadsheet: exportOpts.spreadsheet,
       format: exportOpts.format,
+      includeFrames: exportOpts.includeFrames,
       recognitionJson: exportOpts.recognitionJson,
       summary: exportOpts.summary,
     });
@@ -309,6 +311,7 @@ export function useSaveOutputsForm({
         exportOpts.enabled &&
         exportOpts.spreadsheet &&
         exportOpts.format === "csv",
+      include_frames: exportOpts.includeFrames,
       xlsx:
         exportOpts.enabled &&
         exportOpts.spreadsheet &&
@@ -340,12 +343,6 @@ export function useSaveOutputsForm({
   };
 
   const clearResult = () => setResult(null);
-
-  const handleBrowse = async () => {
-    if (!isElectron() || !window.electronAPI?.selectFolder) return;
-    const folder = await window.electronAPI.selectFolder();
-    if (folder) setOutputDir(folder);
-  };
 
   const handleOpenResults = async () => {
     if (!result || !window.electronAPI?.openPath) return;
@@ -391,7 +388,6 @@ export function useSaveOutputsForm({
     onJobError,
     onJobCancelled,
     clearResult,
-    handleBrowse,
     handleOpenResults,
     exportPicked,
     canSave,

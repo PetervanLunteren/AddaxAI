@@ -9,8 +9,8 @@ half-applied attempt (column added, alembic_version not updated) does not
 loop on startup with a duplicate-column error.
 
 Revision ID: fa19b0f2a459
-Revises: f769a2f4166a
-Create Date: 2026-11-17 12:00:00
+Revises: a8b2c4d6e8f0
+Create Date: 2026-11-20 12:00:00
 
 """
 from collections.abc import Sequence
@@ -22,7 +22,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "fa19b0f2a459"
-down_revision: str | None = "f769a2f4166a"
+down_revision: str | None = "a8b2c4d6e8f0"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -17,10 +17,12 @@ import { deploymentsApi, type DeploymentInfo } from "../../api/deployments";
 import { formatCameraDateTime } from "../../lib/datetime";
 import { isElectron } from "../../lib/platform";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
+import { describeRatePer100 } from "../../lib/trap-night-rate";
 import { Button } from "../ui/button";
 import {
   IdWithCopy,
   NotSet,
+  ObservationCategoriesSection,
   Row,
   Section,
   formatBytes,
@@ -217,12 +219,12 @@ function InfoBody({ info }: { info: DeploymentInfo }) {
           value={info.observation_count.toLocaleString()}
         />
         <Row
-          label="Rate per 100 trap nights"
+          label="Rate"
           value={
             info.observation_rate_per_100_trap_nights === null ? (
               <NotSet />
             ) : (
-              info.observation_rate_per_100_trap_nights.toFixed(2)
+              describeRatePer100(info.observation_rate_per_100_trap_nights)
             )
           }
         />
@@ -230,24 +232,7 @@ function InfoBody({ info }: { info: DeploymentInfo }) {
 
       <Separator />
 
-      <Section title="Observation categories">
-        <Row
-          label="Animal"
-          value={info.detection_categories.animal.toLocaleString()}
-        />
-        <Row
-          label="Person"
-          value={info.detection_categories.person.toLocaleString()}
-        />
-        <Row
-          label="Vehicle"
-          value={info.detection_categories.vehicle.toLocaleString()}
-        />
-        <Row
-          label="Empty"
-          value={info.detection_categories.empty.toLocaleString()}
-        />
-      </Section>
+      <ObservationCategoriesSection categories={info.detection_categories} />
 
       <Separator />
 

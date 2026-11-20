@@ -518,7 +518,7 @@ def test_a_box_left_unclassified_keeps_its_animal_row_and_stays_filterable(
     s = deployment_scaffold
     db = s["db"]
     json_path = _load_basic_images(s)
-    animal_row = ensure_builtin_labels(db)["animal"]
+    animal_row = ensure_builtin_labels(db, ["animal", "person", "vehicle"])["animal"]
 
     reload_raw_classifications_from_json(
         s["deployment"].id, json_path, s["deploy_dir"], db,

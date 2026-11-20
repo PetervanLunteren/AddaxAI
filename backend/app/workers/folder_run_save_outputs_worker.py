@@ -394,6 +394,7 @@ async def process_save_outputs_job(job_id: str) -> None:
                         db,
                         project.id,
                         output_root,
+                        include_frames=bool(payload.get("include_frames")),
                     ).to_dict()
                 if m == "xlsx":
                     return write_tables_xlsx(

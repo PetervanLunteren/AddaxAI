@@ -852,12 +852,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 # ============================================================
                 from app.ml.taxonomy_db import (
                     batch_resolve_taxonomy_ids,
-                    ensure_builtin_labels,
                     link_detections_to_taxonomy,
                     populate_taxonomy_from_csv,
                 )
-
-                builtin_taxonomy_ids = ensure_builtin_labels(db)
 
                 taxonomy_name_to_id: dict[str, tuple[str, str | None]] = {}
                 if classification_model_id:
@@ -950,7 +947,6 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         job_id,
                         artifacts_folder,
                         taxonomy_name_to_id,
-                        builtin_taxonomy_ids,
                         datetime_offset_seconds,
                         camera_offsets=camera_offsets,
                         use_file_mtime_fallback=use_file_mtime_fallback,

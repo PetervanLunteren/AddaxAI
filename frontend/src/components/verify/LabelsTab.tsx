@@ -39,6 +39,8 @@ import { tracksApi } from "../../api/tracks";
 import type { TrackDetectionsResponse } from "../../api/types";
 import { trackFrameAsCard } from "../../lib/track-utils";
 import { projectsApi } from "../../api/projects";
+import { sitesApi } from "../../api/sites";
+import { scopeFilters, scopeText } from "../../lib/label-scope";
 import { Button } from "../ui/button";
 import { SlowHint } from "./SlowHint";
 import { Callout } from "../ui/callout";
@@ -213,15 +215,16 @@ function toLabelFilters(f: LabelsFilterState): LabelFilters {
 
 /** The filters a sort runs with.
  *
- *  Suggestions compare each crop with its look-alikes across the whole
- *  run, the pool the toolbar pill counts. A filter there would remove
- *  voters as well as rows: "Verified" left an empty grid that said all
+ *  Suggestions compare each crop with its look-alikes inside the scope,
+ *  the sites and dates (`lib/label-scope.ts`), which is the pool the
+ *  toolbar pill counts. The selection stays out: it would remove voters
+ *  as well as rows. "Verified" left an empty grid that said all
  *  suggestions were reviewed, and a label filter left nothing to
- *  disagree with. So the review runs with none (the backend still adds
- *  the counting threshold), and the filters wait in the URL until Back.
+ *  disagree with. Those filters wait in the URL until Back. The backend
+ *  holds the same rule and adds the counting threshold.
  */
 function sortFilters(sort: LabelSort, f: LabelsFilterState): LabelFilters {
-  return sort === "suggestions" ? {} : toLabelFilters(f);
+  return sort === "suggestions" ? scopeFilters(f) : toLabelFilters(f);
 }
 
 /** Most common label among the selected detections (`labelMajority`
@@ -480,6 +483,27 @@ export function LabelsTab({
     queryFn: () => projectsApi.get(projectId),
   });
 
+  // The scope, sites and dates: what the suggestions pill, the review
+  // and the look-alikes in the detail window all run inside. Debounced
+  // like the sort, since each change starts the pill's neighbour vote.
+  const scope = useMemo(() => scopeFilters(lblFilters), [lblFilters]);
+  const scopeKey = useDebouncedValue(JSON.stringify(scope), FILTER_DEBOUNCE_MS);
+  const settledScope = useMemo(() => JSON.parse(scopeKey) as typeof scope, [scopeKey]);
+
+  // Site names for the review's bar, which names the scope while the
+  // filter bar is hidden. The same query as the filter bar's, so cached.
+  const showSites = project?.mode !== "folder_run";
+  const { data: sites } = useQuery({
+    queryKey: ["sites", projectId],
+    queryFn: () => sitesApi.list(projectId),
+    enabled: showSites,
+  });
+  const scopeWords = useMemo(() => {
+    const names: Record<string, string> = {};
+    for (const site of sites ?? []) names[site.id] = site.name;
+    return scopeText(scope, names, showSites);
+  }, [scope, sites, showSites]);
+
   // What the grid is currently showing at. The slider digs *down* below
   // the project's threshold rather than raising it, which is the backend's
   // `effective_floor`. The unprocessed-tail notice reads it; an opened
@@ -626,9 +650,9 @@ export function LabelsTab({
 
     let dets: DetectionSummary[] = sortResult?.detections ?? [];
 
-    // Suggestions ran with no filters (see `sortFilters`) and return only
-    // unverified cohort members, so the Verified filter must not apply
-    // here either: set to "Verified" it would empty the review.
+    // Suggestions ran inside the scope alone (see `sortFilters`) and
+    // return only unverified cohort members, so the Verified filter must
+    // not apply here either: set to "Verified" it would empty the review.
     if (resultSort === "suggestions") return dets;
 
     if (verificationFilter === "unverified") {
@@ -1042,14 +1066,15 @@ export function LabelsTab({
     (
       ids: string[],
       label: string | null,
-      category: string,
+      category: string | undefined,
       displayName: string,
       before: UndoSnapshot,
     ) => {
       applyUndoableAction(ids, (d) => ({
         ...d,
         label,
-        category,
+        // The server decides a species' class; only a picked class moves it.
+        ...(category ? { category } : {}),
         // Set BOTH names: the display prefers common_name, so leaving the
         // old one in place would keep showing the previous label until a
         // refetch.
@@ -1466,8 +1491,8 @@ export function LabelsTab({
           .then((r) => {
             applyUndoableAction(ids, (d) => ({
               ...d,
-              label: label.label ?? label.category,
-              category: label.category,
+              label: label.label ?? label.category ?? null,
+              ...(label.category ? { category: label.category } : {}),
               common_name: label.displayName,
               scientific_name: label.displayName,
               label_taxonomy_id: null,
@@ -1483,7 +1508,7 @@ export function LabelsTab({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedIds, detailDetection, allDetections, resultSort, openTrack, handleActionComplete, shortcutLabels, applyUndoableAction, handleMarkFalse, handleMarkUnknown, handleMatchMajority, handleBulkVerify, advanceSelectionAfter, undo, openTrackFrames, closeTrackFrames, reviewingSuggestions, exitSuggestionsMode]);
+  }, [selectedIds, detailDetection, allDetections, resultSort, openTrack, handleActionComplete, shortcutLabels, applyUndoableAction, handleMarkFalse, handleMarkUnknown, handleMatchMajority, handleBulkVerify, advanceSelectionAfter, undo, openTrackFrames, closeTrackFrames, reviewingSuggestions, exitSuggestionsMode, clearSelection]);
 
   // Click outside grid to deselect
   useEffect(() => {
@@ -1602,14 +1627,17 @@ export function LabelsTab({
   };
 
   // A focused view is a piece of work stepped into from the grid: an
-  // animal's frames, or the suggestions review. Nothing in the filter
-  // card, the toolbar or the notices above the grid applies to either:
-  // the filters are set aside (an open track's frames bypass them, the
-  // review runs without them), the sort is fixed, and the counts, the
-  // verified bar and the notices describe the grid behind. Showing
-  // controls that do nothing is worse than none, so both keep only
-  // `FocusedViewBar`. The frames view wins when both hold, because it
-  // can be opened from a suggestion's card.
+  // animal's frames, or the suggestions review. Each brings its own
+  // selection, so it replaces the user's (label, verification and the
+  // rest), the sort is fixed, and the counts, the verified bar and the
+  // notices describe the grid behind. Showing controls that do nothing
+  // is worse than none, so both keep only `FocusedViewBar`. What a
+  // focused view never changes is the scope, the sites and dates
+  // (`lib/label-scope.ts`): the review runs inside it and says so in
+  // its bar, since the filter bar is hidden. A track is one clip at one
+  // site, so the scope changes nothing there and its bar does not name
+  // it. The frames view wins when both hold, because it can be opened
+  // from a suggestion's card.
   const focused = openTrack !== null || reviewingSuggestions;
   const suggestionsLeft = allDetections.length;
   const focusedBar = openTrack
@@ -1623,7 +1651,9 @@ export function LabelsTab({
     : {
         backLabel: "Back to detections",
         // No number until the review has loaded, or it reads 0 first.
-        context: isLoading || !hasResults ? "Suggestions" : `Suggestions left: ${suggestionsLeft}`,
+        context: `${
+          isLoading || !hasResults ? "Suggestions" : `Suggestions left: ${suggestionsLeft}`
+        }, ${scopeWords}`,
         onBack: exitSuggestionsMode,
       };
 
@@ -1670,6 +1700,7 @@ export function LabelsTab({
         />
         <SuggestionsToolbarPill
           projectId={projectId}
+          scope={settledScope}
           onEnter={() => {
             preSuggestionsSortRef.current = lblSort;
             setLblSort("suggestions");
@@ -1858,10 +1889,10 @@ export function LabelsTab({
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <Check className="h-8 w-8 mb-3 text-primary" />
-            <p className="text-lg font-medium">All suggestions reviewed</p>
+            <p className="text-lg font-medium">No suggestions left</p>
             <p className="text-sm text-muted-foreground mt-1 max-w-md">
-              There are no more label suggestions to check right now. Go
-              back to your labels to keep verifying.
+              There are no more label suggestions to check here right now.
+              Go back to your labels to keep verifying.
             </p>
           </CardContent>
         </Card>
@@ -1900,15 +1931,16 @@ export function LabelsTab({
       ) : (
         <div style={{ paddingBottom: selectedIds.size > 0 ? 80 : 0 }}>
           {/* The cap is the sorted list's; an open track is not that list.
-              In the review neither remedy of the plain notice works: the
-              pool keeps verified crops (they vote) and has no filters to
-              narrow, so it only says what was searched. */}
+              In the review, verifying does not shrink the pool (verified
+              crops stay in it, they vote). Narrowing the scope does, and
+              the filter bar is hidden here, so it says to go back. */}
           {isCapped && !openTrack && (resultSort === "suggestions" ? (
             <Callout variant="info" size="compact" className="mb-3">
               Suggestions were found in the newest{" "}
               {loadedCount.toLocaleString()} of{" "}
               {totalMatching.toLocaleString()} {capNoun}, capped to stay
-              responsive.
+              responsive. Go back and pick sites or a date range to check
+              the rest.
             </Callout>
           ) : (
             <Callout
@@ -2002,6 +2034,7 @@ export function LabelsTab({
         onActionComplete={handleActionComplete}
         expandTracks={openTrack === null}
         projectId={projectId}
+        scope={scope}
         labelOptions={labelOptions}
         labelOptionsLoading={labelOptionsLoading}
         // The view owns its API calls and pushes their `before` on the
@@ -2010,8 +2043,8 @@ export function LabelsTab({
         onRelabel={(detectionId, label, category) => {
           applyDetectionAction([detectionId], (d) => ({
             ...d,
-            label,
-            category,
+            label: label ?? category ?? null,
+            ...(category ? { category } : {}),
             // Clear BOTH names so the display falls back to the new
             // label; leaving the old common_name would keep showing the
             // previous label until a refetch fills the canonical names.

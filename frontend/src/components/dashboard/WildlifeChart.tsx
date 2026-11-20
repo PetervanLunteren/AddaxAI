@@ -1,6 +1,6 @@
 /**
  * "Wildlife detected": the project's top ten wildlife taxa as one-colour
- * horizontal bars, per 100 trap nights. The Overview never has a pick, so
+ * horizontal bars, as a rate against trap nights. The Overview never has a pick, so
  * under the dashboard's one rule it shows wildlife.
  *
  * Two ways to count (frequency: independent events; abundance: summed
@@ -57,7 +57,7 @@ const TOP_N = 10;
 
 interface WildlifeChartProps {
   projectId: string;
-  /** Project trap nights, so bars read per 100 nights. */
+  /** Project trap nights, so bars read as a rate. */
   trapNights: number;
 }
 

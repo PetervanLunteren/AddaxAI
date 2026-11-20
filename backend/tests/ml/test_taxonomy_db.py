@@ -152,7 +152,7 @@ def test_builtin_labels_set_both_names(db):
     """Builtin labels carry both names (identical, capitalised category)."""
     from app.ml.taxonomy_db import ensure_builtin_labels
 
-    ensure_builtin_labels(db)
+    ensure_builtin_labels(db, ["animal"])
     animal = (
         db.query(LabelTaxonomy)
         .filter(LabelTaxonomy.name == "animal")

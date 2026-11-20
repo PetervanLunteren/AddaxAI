@@ -50,6 +50,8 @@ import { LabelFilterModal } from "../../../components/verify/LabelFilterModal";
 import { FolderSelector } from "../../../components/analyses/FolderSelector";
 import { ExportScopeSelect } from "../../../components/export/ExportScopeSelect";
 import { DateRangePicker } from "../../../components/ui/date-range-picker";
+import { cn } from "../../../lib/utils";
+import { FRAMES_TABLE_LABEL, framesTableCaption } from "../../../lib/frames-table";
 import { collectIssues } from "./media-options";
 import type { MediaFormHandles } from "./useMediaOptions";
 import type { UseSaveOutputsFormResult } from "./useSaveOutputsForm";
@@ -70,14 +72,21 @@ export function CaptionedCheckbox({
   onChange,
   label,
   caption,
+  disabled = false,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
   label: string;
   caption: string;
+  disabled?: boolean;
 }) {
   return (
-    <label className="flex cursor-pointer items-center justify-between gap-3 py-3 text-sm">
+    <label
+      className={cn(
+        "flex items-center justify-between gap-3 py-3 text-sm",
+        disabled ? "cursor-not-allowed text-muted-foreground" : "cursor-pointer",
+      )}
+    >
       <span>
         {label}
         <span className="mt-0.5 block text-xs text-muted-foreground">
@@ -88,6 +97,7 @@ export function CaptionedCheckbox({
         type="checkbox"
         className="h-4 w-4 shrink-0 accent-primary"
         checked={checked}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
       />
     </label>
@@ -174,6 +184,7 @@ export function OutputFolderField({
           </span>
         </div>
         <FolderSelector
+          variant="destination"
           value={value || null}
           onChange={onChange}
           hideLabel
@@ -199,6 +210,7 @@ export function MediaBody({ form }: { form: MediaFormHandles }) {
     setVisualise,
     anonymise,
     setAnonymise,
+    canBlur,
     showDeploymentPicker,
     dateBounds,
   } = form;
@@ -357,19 +369,21 @@ export function MediaBody({ form }: { form: MediaFormHandles }) {
         )}
       </Block>
 
-      <Block title="Boxes and blur">
+      <Block title={canBlur ? "Boxes and blur" : "Boxes"}>
         <CaptionedCheckbox
           checked={visualise.enabled}
           onChange={(v) => setVisualise({ enabled: v })}
           label="Draw detection boxes"
           caption="Boxes and labels drawn on each image. A video gets a still image with the boxes next to it, the video itself is not changed"
         />
-        <CaptionedCheckbox
-          checked={anonymise.enabled}
-          onChange={(v) => setAnonymise({ enabled: v })}
-          label="Blur people and vehicles"
-          caption="People and vehicles blurred on each image. A video cannot be blurred, so it is saved as a blurred still image only"
-        />
+        {canBlur && (
+          <CaptionedCheckbox
+            checked={anonymise.enabled}
+            onChange={(v) => setAnonymise({ enabled: v })}
+            label="Blur people and vehicles"
+            caption="People and vehicles blurred on each image. A video cannot be blurred, so it is saved as a blurred still image only"
+          />
+        )}
       </Block>
     </div>
   );
@@ -470,7 +484,7 @@ export function ExportBody({
         <ChildRows>
           <SettingRow
             title="Format"
-            caption="CSV also saves every video frame, too many rows for Excel"
+            caption="The same tables, as one workbook or one file each"
           >
             <Select
               value={exportOpts.format}
@@ -492,6 +506,13 @@ export function ExportBody({
               </SelectContent>
             </Select>
           </SettingRow>
+          <CaptionedCheckbox
+            checked={exportOpts.includeFrames}
+            onChange={(v) => setExportOpts({ ...exportOpts, includeFrames: v })}
+            label={FRAMES_TABLE_LABEL}
+            caption={framesTableCaption(exportOpts.format === "xlsx")}
+            disabled={exportOpts.format === "xlsx"}
+          />
           {/* Nested because it governs these tables and not the
               recognition file below, which is unfiltered by design. The
               caption carries the other half: this is the run's own

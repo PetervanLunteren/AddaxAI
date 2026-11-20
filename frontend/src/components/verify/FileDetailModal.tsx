@@ -142,7 +142,7 @@ import {
 } from "../../lib/track-utils";
 import { ClipTimeline } from "./TrackTimeline";
 import { ViewerToolRail } from "./ViewerToolRail";
-import { useFileTriage, useImageAdjust } from "./viewer-tools";
+import { useFileTriage, useHoldToPeek, useImageAdjust } from "./viewer-tools";
 import { labelMajority } from "./label-majority";
 import { LabelPicker, type PinnedOption } from "./LabelPicker";
 import { DetailCard, VerifyDetailShell } from "./VerifyDetailShell";
@@ -352,6 +352,9 @@ export function FileDetailModal({
   }, [file, openTrackId, selectTrack]);
 
   const playable = !!file && isPlayableVideo(file);
+  // Hold I: every stored box of the still. Off while the player is up.
+  const playing = viewMode === "video" && playable;
+  const peek = useHoldToPeek(!!file && !playing);
   // The cover is the stored picture; any other frame is decoded on
   // request, so the canvas asks for it by number only when it differs.
   const frameNumber =
@@ -1132,6 +1135,7 @@ export function FileDetailModal({
           triage={triage}
           downloadLabel={playable ? "Download video" : "Download image"}
           onDownload={handleDownload}
+          peek={{ ...peek, disabled: playing }}
         />
       }
       image={
@@ -1179,7 +1183,8 @@ export function FileDetailModal({
                 onLoadingChange={handleLoading}
                 onScrubFrame={stepFrame}
                 boxesHidden={boxesHidden}
-                defaultCategory={activeLabel?.category ?? "animal"}
+                showAllBoxes={peek.peeking}
+                defaultCategory={activeLabel?.category}
                 defaultLabel={activeLabel?.label ?? undefined}
                 exportFnRef={exportFnRef}
                 imageFilter={imageFilter}

@@ -128,9 +128,10 @@ def build_tag_set(
             species_seen.append(cleaned)
 
     for det in rows[:5]:
-        name = det.label or det.category or "unknown"
-        fallback = name[0].upper() + name[1:] if name else "Unknown"
         pct = int(round(det.confidence * 100))
+        # A box without a species carries its class's names ("Fish"); a
+        # label with no taxonomy row may carry none and reads as itself.
+        fallback = det.label[0].upper() + det.label[1:] if det.label else None
         common = det.common_name or fallback
         scientific = det.scientific_name or fallback
         if common.lower() == scientific.lower():

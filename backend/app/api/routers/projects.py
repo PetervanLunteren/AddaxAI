@@ -14,7 +14,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, text
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -1090,21 +1090,23 @@ def get_label_colors(
 def get_project_categories(
     project_id: str, db: Session = Depends(get_db)
 ) -> list[str]:
-    """The classes this project's detector emits.
+    """The detector classes the label picker offers in this project.
 
-    What the label picker offers beside the species: "animal", "person"
-    and "vehicle" on a camera trap run, "elasmobranch" on a SharkTrack
-    one. The picker used to hold that list as a constant, so on a marine
-    project the only category you could apply was "animal", which
-    overwrote the box's real one.
+    Beside the species the picker offers "animal", "person" and "vehicle"
+    on a camera trap run, "elasmobranch" on a SharkTrack one. It used to
+    hold that list as a constant, so on a marine project the only category
+    you could apply was "animal", which overwrote the box's real one.
 
-    Read from the model's manifest `classes`, which every detector
-    declares, so the list is right before a single frame has been analysed.
-    Deliberately not `class_mapping`: that one is about the ids a detector
-    emits and only some models need it, while this endpoint only ever wants
-    the names. Empty when the model is not installed or declares none; a
-    person who needs a class the detector does not know adds a custom
-    label.
+    Two sources, the detector's first:
+
+    - The manifest `classes` of the project's detector, which every
+      detector declares, so the list is right before a single frame has
+      been analysed. Deliberately not `class_mapping`: that one is about
+      the ids a detector emits and only some models need it.
+    - The classes the project's events already count. A project whose
+      detector was changed, or one opened where its detector is not
+      installed, still holds boxes of the other classes, and a person
+      must be able to set a box back to its own class.
     """
     project = crud_project.get_project(db, project_id)
     if project is None:
@@ -1112,15 +1114,22 @@ def get_project_categories(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project with id '{project_id}' not found",
         )
-    if not project.detection_model_id:
-        return []
     try:
         manifest = ManifestManager().get_model(project.detection_model_id)
+        declared = list(manifest.classes or [])
     except ValueError:
-        # Not installed, or installed without a manifest. The picker just
-        # shows the species and any custom labels.
-        return []
-    return list(manifest.classes or [])
+        # Not installed, or installed without a manifest.
+        declared = []
+    # From the count rows, not the boxes: the same classes, a far smaller
+    # table than a marine project's detections.
+    present = db.scalars(
+        select(EventObservation.category)
+        .join(Event, Event.id == EventObservation.event_id)
+        .join(Deployment, Deployment.id == Event.deployment_id)
+        .where(Deployment.project_id == project_id)
+        .distinct()
+    ).all()
+    return declared + sorted(set(present) - set(declared))
 
 
 @router.get("/{project_id}/label-taxonomy-map")
@@ -1512,7 +1521,7 @@ def delete_custom_label(
     # clear_classification is the one writer for "no species"; unverifying
     # returns the box to the review queue, because its verdict was the very
     # label now being deleted.
-    builtin_ids = ensure_builtin_labels(db)
+    builtin_ids = ensure_builtin_labels(db, {d.category for d in detections})
     for det in detections:
         clear_classification(det, builtin_ids)
         det.verified = False

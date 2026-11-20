@@ -4,6 +4,7 @@
       {
         "model_id": "MD5A-0-0",
         "friendly_name": "MegaDetector v5a",
+        "emoji": "🐾",
         "env": "addaxai-base",
         "model_fname": "md_v5a.0.0.pt",
         "classes": ["animal", "person", "vehicle"],
@@ -21,11 +22,13 @@
           {"url": "https://huggingface.co/Addax-Data-Science/MD5A-0-0/resolve/main/examples/4.jpg", "credit": "Snapshot Serengeti (Swanson et al.), via LILA BC (CDLA-Permissive)"}
         ],
         "min_app_version": "7.0.1",
-        "domain": "camera_trap"
+        "domain": "camera_trap",
+        "primary_class": "animal"
       },
       {
         "model_id": "MD5B-0-0",
         "friendly_name": "MegaDetector v5b",
+        "emoji": "🐾",
         "env": "addaxai-base",
         "model_fname": "md_v5b.0.0.pt",
         "classes": ["animal", "person", "vehicle"],
@@ -43,11 +46,13 @@
           {"url": "https://huggingface.co/Addax-Data-Science/MD5B-0-0/resolve/main/examples/4.jpg", "credit": "Snapshot Serengeti (Swanson et al.), via LILA BC (CDLA-Permissive)"}
         ],
         "min_app_version": "7.0.1",
-        "domain": "camera_trap"
+        "domain": "camera_trap",
+        "primary_class": "animal"
       },
       {
         "model_id": "MD1000-REDWOOD-0-0",
         "friendly_name": "MegaDetector v1000 Redwood",
+        "emoji": "🐾",
         "env": "addaxai-base",
         "model_fname": "md_v1000.0.0-redwood.pt",
         "classes": ["animal", "person", "vehicle"],
@@ -65,11 +70,13 @@
           {"url": "https://huggingface.co/Addax-Data-Science/MD1000-REDWOOD-0-0/resolve/main/examples/4.jpg", "credit": "Snapshot Serengeti (Swanson et al.), via LILA BC (CDLA-Permissive)"}
         ],
         "min_app_version": "7.0.1",
-        "domain": "camera_trap"
+        "domain": "camera_trap",
+        "primary_class": "animal"
       },
       {
         "model_id": "MD1000-SPRUCE-0-0",
         "friendly_name": "MegaDetector v1000 Spruce",
+        "emoji": "🐾",
         "env": "addaxai-base",
         "model_fname": "md_v1000.0.0-spruce.pt",
         "classes": ["animal", "person", "vehicle"],
@@ -87,11 +94,13 @@
           {"url": "https://huggingface.co/Addax-Data-Science/MD1000-SPRUCE-0-0/resolve/main/examples/4.jpg", "credit": "Snapshot Serengeti (Swanson et al.), via LILA BC (CDLA-Permissive)"}
         ],
         "min_app_version": "7.0.1",
-        "domain": "camera_trap"
+        "domain": "camera_trap",
+        "primary_class": "animal"
       },
       {
         "model_id": "MD1000-CEDAR-0-0",
         "friendly_name": "MegaDetector v1000 Cedar",
+        "emoji": "🐾",
         "env": "addaxai-base",
         "model_fname": "md_v1000.0.0-cedar.pt",
         "classes": ["animal", "person", "vehicle"],
@@ -109,11 +118,13 @@
           {"url": "https://huggingface.co/Addax-Data-Science/MD1000-CEDAR-0-0/resolve/main/examples/4.jpg", "credit": "Snapshot Serengeti (Swanson et al.), via LILA BC (CDLA-Permissive)"}
         ],
         "min_app_version": "7.0.1",
-        "domain": "camera_trap"
+        "domain": "camera_trap",
+        "primary_class": "animal"
       },
       {
         "model_id": "MD1000-LARCH-0-0",
         "friendly_name": "MegaDetector v1000 Larch",
+        "emoji": "🐾",
         "env": "ultralytics",
         "model_fname": "md_v1000.0.0-larch.pt",
         "classes": ["animal", "person", "vehicle"],
@@ -131,11 +142,13 @@
           {"url": "https://huggingface.co/Addax-Data-Science/MD1000-LARCH-0-0/resolve/main/examples/4.jpg", "credit": "Snapshot Serengeti (Swanson et al.), via LILA BC (CDLA-Permissive)"}
         ],
         "min_app_version": "7.20.0",
-        "domain": "camera_trap"
+        "domain": "camera_trap",
+        "primary_class": "animal"
       },
       {
         "model_id": "MD1000-SORREL-0-0",
         "friendly_name": "MegaDetector v1000 Sorrel",
+        "emoji": "🐾",
         "env": "ultralytics",
         "model_fname": "md_v1000.0.0-sorrel.pt",
         "classes": ["animal", "person", "vehicle"],
@@ -153,11 +166,13 @@
           {"url": "https://huggingface.co/Addax-Data-Science/MD1000-SORREL-0-0/resolve/main/examples/4.jpg", "credit": "Snapshot Serengeti (Swanson et al.), via LILA BC (CDLA-Permissive)"}
         ],
         "min_app_version": "7.20.0",
-        "domain": "camera_trap"
+        "domain": "camera_trap",
+        "primary_class": "animal"
       },
       {
         "model_id": "SHARKTRACK-1-0",
         "friendly_name": "SharkTrack (sharks and rays)",
+        "emoji": "🦈",
         "env": "ultralytics",
         "model_fname": "sharktrack.pt",
         "classes": ["elasmobranch"],
@@ -170,11 +185,13 @@
         "info_url": "https://www.fvarini.com/sharktrack",
         "release_date": "2024-06",
         "min_app_version": "7.20.0",
-        "domain": "underwater"
+        "domain": "underwater",
+        "primary_class": "elasmobranch"
       },
       {
         "model_id": "CFD-NANO-1-0",
         "friendly_name": "Community Fish Detector nano",
+        "emoji": "🐟",
         "env": "marine",
         "model_fname": "cfd-rf-detr-nano-640-2026.02.02.cp-011.20260706-release.pth",
         "classes": ["fish"],
@@ -192,11 +209,13 @@
           {"url": "https://huggingface.co/Addax-Data-Science/CFD-NANO-1-0/resolve/main/examples/4.jpg", "credit": "MIT Sea Grant River Herring (CDLA-Permissive), Community Fish Detection Dataset via LILA BC"}
         ],
         "min_app_version": "7.20.0",
-        "domain": "underwater"
+        "domain": "underwater",
+        "primary_class": "fish"
       },
       {
         "model_id": "CFD-SMALL-1-0",
         "friendly_name": "Community Fish Detector small",
+        "emoji": "🐟",
         "env": "marine",
         "model_fname": "cfd-rf-detr-small-1024-2026.06.06.cp-016.20260706-release.pth",
         "classes": ["fish"],
@@ -214,11 +233,13 @@
           {"url": "https://huggingface.co/Addax-Data-Science/CFD-SMALL-1-0/resolve/main/examples/4.jpg", "credit": "MIT Sea Grant River Herring (CDLA-Permissive), Community Fish Detection Dataset via LILA BC"}
         ],
         "min_app_version": "7.20.0",
-        "domain": "underwater"
+        "domain": "underwater",
+        "primary_class": "fish"
       },
       {
         "model_id": "CFD-MEDIUM-1-0",
         "friendly_name": "Community Fish Detector medium",
+        "emoji": "🐟",
         "env": "marine",
         "model_fname": "cfd-rf-detr-medium-1024-2026.03.24.cp-011.20260706-release.pth",
         "classes": ["fish"],
@@ -236,7 +257,8 @@
           {"url": "https://huggingface.co/Addax-Data-Science/CFD-MEDIUM-1-0/resolve/main/examples/4.jpg", "credit": "MIT Sea Grant River Herring (CDLA-Permissive), Community Fish Detection Dataset via LILA BC"}
         ],
         "min_app_version": "7.20.0",
-        "domain": "underwater"
+        "domain": "underwater",
+        "primary_class": "fish"
       }
     ],
     "cls": [

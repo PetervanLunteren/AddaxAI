@@ -22,6 +22,7 @@ import { VerificationProgressChart } from "../../components/dashboard/Verificati
 import { WildlifeChart } from "../../components/dashboard/WildlifeChart";
 import { formatCameraDate } from "../../lib/datetime";
 import { shareNote } from "../../lib/share";
+import { capitalize } from "../../lib/utils";
 
 const plural = (n: number, word: string) =>
   `${n.toLocaleString()} ${word}${n === 1 ? "" : "s"}`;
@@ -71,10 +72,11 @@ export default function DashboardOverview() {
               note={
                 categories
                   ? shareNote([
-                      { label: "animals", count: categories.animal_count },
-                      { label: "people", count: categories.person_count },
-                      { label: "vehicles", count: categories.vehicle_count },
-                      { label: "empty", count: categories.empty_count },
+                      // Per detector class, named as the info sheets name it.
+                      ...Object.entries(categories.classes).map(
+                        ([name, count]) => ({ label: capitalize(name), count }),
+                      ),
+                      { label: "Empty", count: categories.empty },
                     ])
                   : undefined
               }

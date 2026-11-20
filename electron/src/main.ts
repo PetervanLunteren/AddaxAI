@@ -1140,6 +1140,15 @@ function sendMenuCommand(id: string): void {
   win?.webContents.send('menu:command', id);
 }
 
+/** View → Rate unit, in menu order: the renderer's RateUnit value and
+ *  its menu label. */
+const RATE_UNIT_ITEMS = [
+  ['night', 'Per trap night'],
+  ['week', 'Per week (7 trap nights)'],
+  ['month', 'Per month (30 trap nights)'],
+  ['hundred', 'Per 100 trap nights'],
+] as const;
+
 /**
  * Build the application menu template. macOS gets the conventional app menu
  * as the first submenu (About / Quit live there); Windows and Linux fold
@@ -1233,6 +1242,19 @@ function buildMenuTemplate(): Electron.MenuItemConstructorOptions[] {
             click: () => sendMenuCommand('species-scientific'),
           },
         ],
+      },
+      {
+        // The ids' suffixes are the renderer's RateUnit values
+        // (frontend/src/lib/trap-night-rate.ts).
+        id: 'rate-unit',
+        label: 'Rate unit',
+        submenu: RATE_UNIT_ITEMS.map(([unit, label]) => ({
+          id: `rate-unit-${unit}`,
+          label,
+          type: 'radio' as const,
+          checked: unit === 'hundred',
+          click: () => sendMenuCommand(`rate-unit-${unit}`),
+        })),
       },
       {
         id: 'theme',
@@ -1566,6 +1588,14 @@ ipcMain.on('menu:data-type', (_event, dataType: string) => {
   const id =
     dataType === 'underwater' ? 'data-type-underwater' : 'data-type-camera-trap';
   const item = Menu.getApplicationMenu()?.getMenuItemById(id);
+  if (item) item.checked = true;
+});
+
+// Keep the View → Rate unit radio in sync with the renderer's stored
+// unit. An unknown value matches no item and leaves the default ticked,
+// which is also what the renderer falls back to.
+ipcMain.on('menu:rate-unit', (_event, unit: string) => {
+  const item = Menu.getApplicationMenu()?.getMenuItemById(`rate-unit-${unit}`);
   if (item) item.checked = true;
 });
 

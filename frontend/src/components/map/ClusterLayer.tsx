@@ -6,22 +6,24 @@
  * zooms in to reveal the individual site markers.
  */
 
+import chroma from "chroma-js";
 import L from "leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
 
 import type { ObservationRateMapFeature } from "../../api/statistics";
-import { getRateColor } from "../../lib/heat-color-scale";
+import { getRateColor, type RateRamp } from "../../lib/heat-color-scale";
 import { SiteMarker } from "./SiteMarker";
 
 interface ClusterLayerProps {
   sites: ObservationRateMapFeature[];
   maxRate: number;
+  ramp: RateRamp;
 }
 
 // @types/leaflet.markercluster isn't installed; type only the bit we use.
 type MarkerCluster = { getAllChildMarkers: () => L.CircleMarker[] };
 
-export function ClusterLayer({ sites, maxRate }: ClusterLayerProps) {
+export function ClusterLayer({ sites, maxRate, ramp }: ClusterLayerProps) {
   // Index by coordinate so the cluster icon can look up member features.
   const coordsToFeature = new Map<string, ObservationRateMapFeature>();
   for (const s of sites) {
@@ -43,15 +45,18 @@ export function ClusterLayer({ sites, maxRate }: ClusterLayerProps) {
     }
 
     const overallRate = totalNights > 0 ? (totalObs / totalNights) * 100 : 0;
-    const color = getRateColor(overallRate, maxRate);
+    const color = getRateColor(overallRate, maxRate, ramp);
     // Clusters made entirely of zero-observation sites render hollow
     // (transparent fill, dashed border, grey text) to stay consistent
     // with the hex + point rendering.
     const isEmpty = totalObs === 0;
 
     const background = isEmpty ? "transparent" : color;
-    const textColor = isEmpty ? "#555555" : "white";
-    const textShadow = isEmpty ? "none" : "0 0 2px rgba(0,0,0,0.5)";
+    // The number must read on either end of a ramp: dark on a light
+    // fill, white on a dark one.
+    const onLight = isEmpty || chroma(color).luminance() > 0.4;
+    const textColor = isEmpty ? "#555555" : onLight ? "#1a1a1a" : "white";
+    const textShadow = onLight ? "none" : "0 0 2px rgba(0,0,0,0.5)";
 
     return L.divIcon({
       html: `<div style="
@@ -85,7 +90,7 @@ export function ClusterLayer({ sites, maxRate }: ClusterLayerProps) {
         <SiteMarker
           key={feature.site_id}
           feature={feature}
-          color={getRateColor(feature.rate_per_100, maxRate)}
+          color={getRateColor(feature.rate_per_100, maxRate, ramp)}
         />
       ))}
     </MarkerClusterGroup>

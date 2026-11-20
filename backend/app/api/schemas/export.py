@@ -143,6 +143,9 @@ class TablesExportRequest(ExportTarget):
     """XLSX: one workbook with five sheets. CSV / TSV: five files."""
 
     format: Literal["xlsx", "csv", "tsv"] = "xlsx"
+    # CSV / TSV also write the Frames table, when the scope holds a video.
+    # Ignored for XLSX, which never carries it (too many rows for a sheet).
+    include_frames: bool
 
 
 class SpatialExportRequest(ExportTarget):

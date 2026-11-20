@@ -21,8 +21,13 @@ import { ExploreFilterBar } from "../../components/dashboard/ExploreFilterBar";
 import { MiniMapCard } from "../../components/dashboard/MiniMapCard";
 import { StatTile } from "../../components/dashboard/StatTile";
 import { Callout } from "../../components/ui/callout";
-import { activityOverlapHref, insightsMapHref } from "../../lib/explore-filters";
+import {
+  activityOverlapHref,
+  insightsMapHref,
+  insightsTrendHref,
+} from "../../lib/explore-filters";
 import { NO_SITE_SENTINEL } from "../../lib/filter-url";
+import { formatRate, rateLabel, rateValue } from "../../lib/trap-night-rate";
 import { useExploreFilters } from "./useExploreFilters";
 
 export default function DashboardExplore() {
@@ -42,9 +47,9 @@ export default function DashboardExplore() {
   // No note without effort: zero trap nights has several causes (no
   // files, no capture dates, a date range with no cameras running), and
   // the Trap nights tile beside it already shows the 0.
-  const perHundred = (n: number) =>
+  const rateNote = (n: number) =>
     trapNights > 0
-      ? `${((n / trapNights) * 100).toLocaleString(undefined, { maximumFractionDigits: 1 })} per 100 trap nights`
+      ? `${formatRate(rateValue(n, trapNights))} ${rateLabel()}`
       : undefined;
   // Sites in view: the picked ones, else all of the project's.
   const sitesInView =
@@ -88,13 +93,13 @@ export default function DashboardExplore() {
               <StatTile
                 label="Events"
                 value={(summary?.events ?? 0).toLocaleString()}
-                note={summary ? perHundred(summary.events) : undefined}
+                note={summary ? rateNote(summary.events) : undefined}
                 loading={isLoading}
               />
               <StatTile
                 label="Observations"
                 value={(summary?.observations ?? 0).toLocaleString()}
-                note={summary ? perHundred(summary.observations) : undefined}
+                note={summary ? rateNote(summary.observations) : undefined}
                 loading={isLoading}
               />
               <StatTile
@@ -112,7 +117,7 @@ export default function DashboardExplore() {
             <DetectionTrendChart
               projectId={id}
               scope={scope}
-              trapNights={trapNights}
+              trendHref={insightsTrendHref(id, scope)}
             />
             <MiniMapCard
               projectId={id}

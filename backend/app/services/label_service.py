@@ -304,10 +304,35 @@ def count_detections_by_label(
 def _build_sort_params(
     project_id: str, body: SortRequest, db: Session
 ) -> dict[str, Any]:
-    filters = _apply_project_threshold(body.filters, project_id, db)
+    # The suggestions review brings its own selection, so only the scope
+    # of the request applies (see `LabelFilters.scope_only`). Enforced
+    # here so the review and the pill always select the same pool.
+    filters = body.filters.scope_only() if body.sort == "suggestions" else body.filters
+    filters = _apply_project_threshold(filters, project_id, db)
     return {
         "filters": _filters_to_dict(filters),
         "sort": body.sort,
+    }
+
+
+def _build_cohort_params(
+    project_id: str,
+    min_count: int,
+    max_cohorts: int,
+    scope: LabelFilters,
+    db: Session,
+) -> dict[str, Any]:
+    """Params for the cohorts badge: the scope plus the project's floor.
+
+    The same filters the suggestions sort gets from `_build_sort_params`,
+    so the pill counts the pool that "Review" searches. The floor keeps
+    below-threshold detections from forming cohorts the grid never shows.
+    """
+    filters = _apply_project_threshold(scope.scope_only(), project_id, db)
+    return {
+        "min_count": min_count,
+        "max_cohorts": max_cohorts,
+        "filters": _filters_to_dict(filters),
     }
 
 
@@ -340,27 +365,14 @@ def stream_search(
 
 
 def stream_cohorts(
-    project_id: str, min_count: int, max_cohorts: int, db: Session
+    project_id: str,
+    min_count: int,
+    max_cohorts: int,
+    scope: LabelFilters,
+    db: Session,
 ) -> Iterator[bytes]:
-    """NDJSON event stream for the cohorts endpoint.
-
-    Applies the project's `(confidence >= threshold OR verified)` floor
-    so the pill counts the same population the suggestions grid will
-    actually load. Without this, below-threshold detections form cohorts
-    that the grid silently filters out, and the pill drifts above what
-    "Review" can ever show.
-
-    Still no user filters (sites / labels / dates): the pill is a global
-    quality signal, independent of the filter bar.
-    """
-    project = db.query(Project).filter(Project.id == project_id).first()
-    params: dict[str, Any] = {
-        "min_count": min_count,
-        "max_cohorts": max_cohorts,
-        "filters": {
-            "project_floor": project.counting_threshold if project else 0.0,
-        },
-    }
+    """NDJSON event stream for the cohorts endpoint."""
+    params = _build_cohort_params(project_id, min_count, max_cohorts, scope, db)
     return stream_labels_subprocess("cohorts", project_id, params)
 
 
@@ -544,16 +556,10 @@ async def stream_cohorts_async(
     project_id: str,
     min_count: int,
     max_cohorts: int,
+    scope: LabelFilters,
     db: Session,
 ) -> AsyncIterator[bytes]:
-    project = db.query(Project).filter(Project.id == project_id).first()
-    params: dict[str, Any] = {
-        "min_count": min_count,
-        "max_cohorts": max_cohorts,
-        "filters": {
-            "project_floor": project.counting_threshold if project else 0.0,
-        },
-    }
+    params = _build_cohort_params(project_id, min_count, max_cohorts, scope, db)
     async for chunk in stream_labels_subprocess_async(
         request, "cohorts", project_id, params
     ):

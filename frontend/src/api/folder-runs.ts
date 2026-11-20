@@ -232,6 +232,8 @@ export interface SaveOutputsRequest {
   anonymise?: boolean;
   recognition_json?: boolean;
   csv?: boolean;
+  /** With `csv`, also write addaxai-frames.csv when the run holds a video. */
+  include_frames?: boolean;
   xlsx?: boolean;
   /** Write the addaxai-run-info.txt run manifest. Omitted by older
    * frontends, where the backend defaults it to on. */

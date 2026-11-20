@@ -149,10 +149,11 @@ def test_build_tree_no_model_no_detections(db):
 
 
 def test_build_tree_detection_only(db):
-    """Detection-only project gets a tree from categories."""
-    from app.ml.taxonomy_db import ensure_builtin_labels
+    """Detection-only project gets a tree from categories, one leaf per
+    class at the root."""
+    from app.ml.taxonomy_db import CLASSIC_DETECTOR_CLASSES, ensure_builtin_labels
 
-    builtin_ids = ensure_builtin_labels(db)
+    builtin_ids = ensure_builtin_labels(db, CLASSIC_DETECTOR_CLASSES)
 
     p = make_project(db, classification_model_id=None)
     s = make_site(db, project_id=p.id)
@@ -176,13 +177,9 @@ def test_build_tree_detection_only(db):
             category=cat,
         )
 
-    # Link detections to builtin taxonomy
-    link_detections_to_taxonomy(p.id, db)
-    db.flush()
-
     result = build_label_filter_tree(p.id, db)
     assert result is not None
-    assert "tree" in result
+    assert {n["name"] for n in result["tree"]} == {"Animal", "Person", "Vehicle"}
 
     # Leaf IDs are taxonomy UUIDs for builtins
     leaf_ids = result["all_leaf_ids"]
@@ -641,10 +638,13 @@ def test_two_rank_less_rows_sharing_a_name_stay_separate(db):
     assert builtin.id in result["all_leaf_ids"]
     assert rollup.id in result["all_leaf_ids"]
 
+    # The builtin row is a detector class, at the root; the model's row
+    # stays in "No taxonomy".
+    roots = {node["id"]: node for node in result["tree"]}
+    assert builtin.id in roots
     leaves = {
-        leaf["id"]: leaf
-        for node in result["tree"]
-        for leaf in node["children"]
+        **roots,
+        **{leaf["id"]: leaf for node in result["tree"] for leaf in node["children"]},
     }
     # Each leaf carries its own count, not the sum of both (which would
     # be 4 on either leaf).

@@ -70,9 +70,9 @@ is represented by an `image` or `video` row.
 
 from __future__ import annotations
 
-from collections import defaultdict
-from datetime import date
-from pathlib import Path
+import os
+from collections import Counter, defaultdict
+from datetime import date, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -98,10 +98,15 @@ def _paired_deployment_ids(db: Session, deployment_ids: list[str]) -> set[str]:
 def _bucket_dates(
     rows: list[tuple[str, date]], *, paired_cameras: bool
 ) -> dict[str, list[date]]:
-    """Capture dates per subfolder, or all in one bucket for paired cameras."""
+    """Capture dates per subfolder, or all in one bucket for paired cameras.
+
+    `os.path.dirname`, not `Path(...).parent`: this runs once per file,
+    and on 480,000 files pathlib took 3.3 s of a 7.5 s request where
+    dirname takes 0.13 s. The keys are only compared with each other.
+    """
     by_folder: dict[str, list[date]] = defaultdict(list)
     for file_path, captured_at in rows:
-        key = "" if paired_cameras else str(Path(file_path).parent)
+        key = "" if paired_cameras else os.path.dirname(file_path)
         by_folder[key].append(captured_at.date())
     return by_folder
 
@@ -148,6 +153,19 @@ def _trap_nights_from_intervals(intervals: list[tuple[date, date]]) -> int:
     return sum((end - start).days + 1 for start, end in intervals)
 
 
+def nights_per_day(intervals: list[tuple[date, date]]) -> Counter[date]:
+    """How many camera sessions ran on each day: the same effort as
+    `_trap_nights_from_intervals`, spread over the calendar. Two parallel
+    cameras on one day are 2 trap nights on 1 active day. The sum of the
+    counts is the trap nights, so effort per period (the trend charts)
+    and effort in total (every other rate) cannot disagree."""
+    nights: Counter[date] = Counter()
+    for start, end in intervals:
+        for offset in range((end - start).days + 1):
+            nights[start + timedelta(days=offset)] += 1
+    return nights
+
+
 def _intervals_from_folder_dates(
     by_folder: dict[str, list[date]],
     clip_start: date | None,
@@ -160,7 +178,7 @@ def _intervals_from_folder_dates(
     for folder, dates in by_folder.items():
         iv = _clip_interval(dates, clip_start, clip_end)
         if iv is not None:
-            by_parent[str(Path(folder).parent)].append(iv)
+            by_parent[os.path.dirname(folder)].append(iv)
     return sorted(
         iv for ivs in by_parent.values() for iv in _chain_rollovers(ivs)
     )
