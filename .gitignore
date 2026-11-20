@@ -101,9 +101,6 @@ alembic/versions/*.pyc
 *.db-wal
 *.db-shm
 
-# stuff for myself
-skills/send-draft-model/
-
 # VERSION is deliberately tracked, do not add it here. backend.spec
 # bundles it into the PyInstaller build and backend/app/__init__.py
 # reads it at runtime. Untagged builds never rewrite it, so a fresh
