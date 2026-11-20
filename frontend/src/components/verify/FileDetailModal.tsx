@@ -96,7 +96,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Ban,
-  Bookmark,
   Check,
   CheckCheck,
   ChevronDown,
@@ -104,7 +103,6 @@ import {
   CircleMinus,
   Loader2,
   Play,
-  Plus,
   SquareDashed,
   Tag,
   Undo2,
@@ -126,14 +124,11 @@ import {
 import { canvasImage, frameImageUrl, warmClipFrames } from "../../lib/clip-frames";
 import { basename } from "../../lib/path-utils";
 import { useLabelOptions, type LabelOption } from "../../hooks/useLabelOptions";
-import {
-  SHORTCUT_SLOTS,
-  shortcutSlotFromKey,
-  useShortcutLabels,
-} from "../../hooks/useShortcutLabels";
+import { shortcutSlotFromKey, useShortcutLabels } from "../../hooks/useShortcutLabels";
 import { Button } from "../ui/button";
 import { Kbd } from "../ui/kbd";
 import { AnnotationCanvas } from "./AnnotationCanvas";
+import { QuickLabelButtons } from "./QuickLabelButtons";
 import { VideoPlayer, isPlayableVideo } from "./VideoPlayer";
 import {
   cardBoxes,
@@ -240,9 +235,6 @@ export function FileDetailModal({
   // and the search opens on every new box instead.
   const [activeLabel, setActiveLabel] = useState<LabelOption | null>(null);
   const [speciesPickerOpen, setSpeciesPickerOpen] = useState(false);
-  // The quick-label slot whose species is being chosen (the chevron
-  // half of a slot's split button, or the "Add a quick label" row).
-  const [editSlot, setEditSlot] = useState<number | null>(null);
 
   // The files this viewer has signed off. The grid deliberately does
   // not refetch while the viewer is open (see `FilesTab`), so `items`
@@ -287,7 +279,7 @@ export function FileDetailModal({
 
   // The number-key slots, the same project-wide ones the Detections grid
   // uses; set or changed from either place.
-  const { shortcutLabels, updateShortcutLabels } = useShortcutLabels(projectId);
+  const { shortcutLabels } = useShortcutLabels(projectId);
   const pinnedOptions = useMemo<PinnedOption[]>(
     () =>
       Object.entries(shortcutLabels).map(([k, option]) => ({
@@ -1102,7 +1094,6 @@ export function FileDetailModal({
   // frame between animals): Enter has nothing to do, so the button is
   // off and shows no key.
   const nothingOnScreen = cards.length > 0 && onScreen.length === 0;
-  const freeSlot = SHORTCUT_SLOTS.find((n) => !shortcutLabels[n]);
 
   return (
     <VerifyDetailShell
@@ -1381,54 +1372,15 @@ export function FileDetailModal({
               </Button>
 
               {/* The saved labels, the same number-key slots as the
-                  Detections grid, as split buttons: the body applies the
-                  slot's label (the key does the same), the chevron
-                  segment opens the label search that changes it. Only
-                  the set slots show, plus one row to fill the next free
-                  slot; changes are saved on the project, so both tabs
-                  see them. */}
-              {SHORTCUT_SLOTS
-                .filter((n) => shortcutLabels[n])
-                .map((n) => (
-                  <div key={n} className="flex w-full">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="min-w-0 flex-1 justify-center rounded-r-none border-r-0"
-                      disabled={noTargets}
-                      onClick={() => applyShortcut(n)}
-                      title={`Relabel ${scope} to ${shortcutLabels[n].displayName} and verify`}
-                    >
-                      <Bookmark className="h-4 w-4 mr-1" />
-                      <span className="truncate">
-                        Set to {shortcutLabels[n].displayName}
-                      </span>
-                      <Kbd>{String(n)}</Kbd>
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-9 shrink-0 rounded-l-none px-0 text-muted-foreground"
-                      onClick={() => setEditSlot(n)}
-                      title={`Choose the label for key ${n}`}
-                    >
-                      <ChevronDown className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                ))}
-              {freeSlot !== undefined && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-center text-muted-foreground"
-                  onClick={() => setEditSlot(freeSlot)}
-                  title={`Save a label on key ${freeSlot}`}
-                >
-                  <Plus className="h-4 w-4 mr-1" />
-                  Add a quick label
-                  <Kbd>{String(freeSlot)}</Kbd>
-                </Button>
-              )}
+                  grids and the Detection viewer. */}
+              <QuickLabelButtons
+                projectId={projectId}
+                labelOptions={labelOptions}
+                labelOptionsLoading={labelOptionsLoading}
+                scope={scope}
+                disabled={noTargets}
+                onApply={(option) => applyLabel(targetIds, option.label, option.category)}
+              />
             </fieldset>
           </DetailCard>
 
@@ -1583,26 +1535,6 @@ export function FileDetailModal({
             projectId={projectId}
           />
 
-          {/* And a third, for the slot being set or changed. */}
-          <LabelPicker
-            headless
-            value={editSlot !== null ? shortcutLabels[editSlot]?.value ?? null : null}
-            displayName={editSlot !== null ? shortcutLabels[editSlot]?.displayName : undefined}
-            onSelect={(option) => {
-              const n = editSlot;
-              setEditSlot(null);
-              if (n !== null) {
-                updateShortcutLabels((prev) => ({ ...prev, [n]: option }));
-              }
-            }}
-            options={labelOptions}
-            isLoading={labelOptionsLoading}
-            forceOpen={editSlot !== null}
-            onOpenChange={(open) => {
-              if (!open) setEditSlot(null);
-            }}
-            projectId={projectId}
-          />
         </>
       }
     />

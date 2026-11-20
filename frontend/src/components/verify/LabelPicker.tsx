@@ -7,7 +7,7 @@
  * slideout for creating a new custom label with optional GBIF lookup.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronsUpDown, Pencil, Plus, Trash2, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -117,6 +117,10 @@ interface LabelPickerProps {
    *  is the trigger and a second "Select label..." button would be
    *  redundant. */
   headless?: boolean;
+  /** A fixed row under the list that clears what the picker is choosing
+   *  for (a quick-label key). The picker knows nothing about what is
+   *  cleared: it shows the row, calls back and closes. */
+  removeAction?: { label: ReactNode; onSelect: () => void };
 }
 
 export function LabelPicker({
@@ -134,6 +138,7 @@ export function LabelPicker({
   triggerIcon: TriggerIcon = ChevronsUpDown,
   triggerTitle,
   headless,
+  removeAction,
 }: LabelPickerProps) {
   // Repaint when the project's colour map lands or changes.
   useSpeciesColorsVersion();
@@ -562,6 +567,26 @@ export function LabelPicker({
                   </div>
                 )}
             </CommandList>
+            {/* Under the list, not in it: at the end of the labels it
+                sat below thousands of pixels of scrolling, and as the
+                first row Enter on a fresh search would remove. A plain
+                button, so the list's keyboard selection never lands
+                on it. */}
+            {removeAction && (
+              <div className="border-t p-1">
+                <button
+                  type="button"
+                  className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                  onClick={() => {
+                    removeAction.onSelect();
+                    handleOpenChange(false);
+                  }}
+                >
+                  <Trash2 className="h-4 w-4 mr-1.5 text-muted-foreground" />
+                  {removeAction.label}
+                </button>
+              </div>
+            )}
           </Command>
         </DialogContent>
       </Dialog>

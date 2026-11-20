@@ -55,6 +55,8 @@ import type { DetectionSummary } from "../../api/types";
 import type { LabelOption } from "../../hooks/useLabelOptions";
 import { AnnotationCanvas } from "./AnnotationCanvas";
 import { LabelPicker } from "./LabelPicker";
+import { QuickLabelButtons } from "./QuickLabelButtons";
+import { shortcutSlotFromKey, useShortcutLabels } from "../../hooks/useShortcutLabels";
 import type { UndoStack } from "./useUndoStack";
 import { ViewerToolRail } from "./ViewerToolRail";
 import { useFileTriage, useImageAdjust } from "./viewer-tools";
@@ -95,8 +97,8 @@ interface DetectionDetailModalProps {
   onNavigate?: (direction: "prev" | "next" | "nextUnverified") => boolean;
   /** Current position, e.g. "3 / 48" */
   position?: string;
-  /** Project ID for fetching nearest neighbors. */
-  projectId?: string;
+  /** The project: its neighbours, settings and quick labels. */
+  projectId: string;
   /** Sites and dates the look-alikes are taken from: the scope the
    *  page works in (`lib/label-scope.ts`), so they are the same crops
    *  that vote on a suggestion. */
@@ -193,6 +195,9 @@ export function DetectionDetailModal({
   // the picker reports its close only after `onSelect` (`LabelPicker`,
   // `handleTaxonomySheetClose`), so the label lands on the drawn box.
   const openCropPicker = useCallback(() => setForceOpenPicker(true), []);
+  // The project's quick labels: the number keys and the side panel's
+  // "Set to" buttons.
+  const { shortcutLabels } = useShortcutLabels(projectId);
 
   // Source-image zoom (scroll wheel) + pan (drag while zoomed). The
   // image-detail modals zoom via a Konva stage, but this modal shows a
@@ -344,8 +349,8 @@ export function DetectionDetailModal({
   // Shared query key with the rest of the app, so usually a cache hit.
   const { data: project } = useQuery({
     queryKey: ["project", projectId],
-    queryFn: () => projectsApi.get(projectId!),
-    enabled: open && !!projectId,
+    queryFn: () => projectsApi.get(projectId),
+    enabled: open,
   });
   const detectionThreshold = project?.counting_threshold ?? 0;
 
@@ -412,7 +417,7 @@ export function DetectionDetailModal({
     // crop before the answer arrives, so the backend stops the search.
     queryFn: ({ signal }) =>
       labelsApi.search(
-        projectId!,
+        projectId,
         {
           anchor_detection_id: detection!.detection_id,
           filters: scope,
@@ -420,7 +425,7 @@ export function DetectionDetailModal({
         },
         signal,
       ),
-    enabled: open && !!detection?.detection_id && !!projectId,
+    enabled: open && !!detection?.detection_id,
   });
 
   // The button's Verify / Unverify toggle. Through the bulk route, the
@@ -564,6 +569,15 @@ export function DetectionDetailModal({
         // canvas is built from.
         e.preventDefault();
         if (fileData) setDrawMode((v) => !v);
+      } else if (shortcutSlotFromKey(e) !== null) {
+        // A quick label, as in the grids and the Files viewer. An
+        // empty slot does nothing.
+        const option = shortcutLabels[shortcutSlotFromKey(e)!];
+        if (!option) return;
+        e.preventDefault();
+        if (!relabelMutation.isPending) {
+          relabelMutation.mutate({ label: option.label, category: option.category });
+        }
       }
     }
 
@@ -578,6 +592,7 @@ export function DetectionDetailModal({
     markFalseMutation,
     markUnknownMutation,
     relabelMutation,
+    shortcutLabels,
     detection,
     onOpenChange,
     fileData,
@@ -913,16 +928,6 @@ export function DetectionDetailModal({
                         />
                       );
                     })()}
-                    <div>
-                      <button
-                        type="button"
-                        onClick={openInFiles}
-                        title="See the whole file with every detection, and verify the file itself"
-                        className="underline underline-offset-2 hover:no-underline"
-                      >
-                        Open in files view
-                      </button>
-                    </div>
                     {detection.similarity != null && (
                       <div>Similarity: {(detection.similarity * 100).toFixed(1)}%</div>
                     )}
@@ -933,6 +938,164 @@ export function DetectionDetailModal({
                   </div>
                 </DetailCard>
               )}
+
+              {/* Everything you can do to this detection, in one card as
+                  in the Files viewer, with its icons and keys, so the two
+                  viewers feel the same. The scope line says what differs:
+                  here the buttons act on the highlighted box only; the
+                  Files viewer acts on every box of the file. */}
+              <DetailCard title="Actions">
+                <p className="mb-2 text-xs text-muted-foreground" data-testid="action-scope">
+                  Acting on the highlighted box only. Open the file in{" "}
+                  <button
+                    type="button"
+                    onClick={openInFiles}
+                    title="See the whole file with every box, and verify the file itself"
+                    className="underline underline-offset-2 hover:no-underline"
+                  >
+                    files view
+                  </button>{" "}
+                  to act on every box.
+                </p>
+                <div className="space-y-1.5">
+                  {/* The one action about the photo rather than this box:
+                      an animal the detector missed gets its box here. First,
+                      so it reads apart from the verdict buttons; Verify
+                      stays last. */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-center"
+                    onClick={() => setDrawMode((v) => !v)}
+                    disabled={!fileData}
+                    title="Drag a box around an animal the AI missed, then name it (D)"
+                  >
+                    <SquareDashed className="h-4 w-4 mr-1" />
+                    {drawMode ? "Stop drawing" : "Draw a box"}
+                    <Kbd>
+                      D
+                    </Kbd>
+                  </Button>
+
+                  {detection.neighbor_top_label &&
+                    detection.neighbor_top_label !== detection.label && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full justify-center"
+                        disabled={relabelMutation.isPending}
+                        onClick={() =>
+                          relabelMutation.mutate({
+                            label: detection.neighbor_top_label!,
+                            category: detection.category,
+                          })
+                        }
+                      >
+                        <Tag className="h-4 w-4 mr-1" />
+                        Accept &ldquo;
+                        {detection.neighbor_top_scientific_name ||
+                          detection.neighbor_top_label}
+                        &rdquo;
+                        <Kbd>
+                          A
+                        </Kbd>
+                      </Button>
+                    )}
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-center"
+                    onClick={openCropPicker}
+                  >
+                    <Tag className="h-4 w-4 mr-1" />
+                    Relabel
+                    <Kbd>
+                      R
+                    </Kbd>
+                  </Button>
+                  {/* Hidden LabelPicker. The Relabel button above is the
+                      visible trigger; this picker's own trigger is taken
+                      out of the flow with absolute+zero-size so it doesn't
+                      steal a `space-y-2` slot. The popup dialog is portaled
+                      by Radix, so the wrapper position doesn't constrain it. */}
+                  <div
+                    aria-hidden="true"
+                    className="absolute h-0 w-0 overflow-hidden pointer-events-none"
+                  >
+                    <LabelPicker
+                      // One picker, two targets: this crop (R, Relabel), or
+                      // the box just drawn, which has no label to show yet.
+                      // Closing it without a choice leaves a drawn box on
+                      // the detector's primary class, as the Files viewer does.
+                      value={drawnId ? null : detection.label}
+                      displayName={drawnId ? null : detection.scientific_name}
+                      onSelect={(option) => {
+                        if (drawnId) {
+                          nameDrawnBox(drawnId, option);
+                          return;
+                        }
+                        relabelMutation.mutate({
+                          label: option.label,
+                          category: option.category,
+                        });
+                      }}
+                      options={labelOptions}
+                      isLoading={labelOptionsLoading}
+                      forceOpen={forceOpenPicker || !!drawnId}
+                      onOpenChange={(open) => {
+                        if (!open) {
+                          setForceOpenPicker(false);
+                          setDrawnId(null);
+                        }
+                      }}
+                      projectId={projectId}
+                    />
+                  </div>
+
+                  {/* The saved labels, the same number-key slots as the
+                      grids and the Files viewer. */}
+                  <QuickLabelButtons
+                    projectId={projectId}
+                    labelOptions={labelOptions}
+                    labelOptionsLoading={labelOptionsLoading}
+                    scope="this detection"
+                    disabled={relabelMutation.isPending}
+                    onApply={(option) =>
+                      relabelMutation.mutate({ label: option.label, category: option.category })
+                    }
+                  />
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-center"
+                    onClick={() => markFalseMutation.mutate()}
+                    disabled={markFalseMutation.isPending}
+                  >
+                    <Ban className="h-4 w-4 mr-1" />
+                    Mark false
+                    <Kbd>
+                      X
+                    </Kbd>
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-center"
+                    onClick={() => markUnknownMutation.mutate()}
+                    disabled={markUnknownMutation.isPending}
+                    title="Mark as an unidentifiable animal and verify"
+                  >
+                    <CircleHelp className="h-4 w-4 mr-1" />
+                    Unknown
+                    <Kbd>
+                      U
+                    </Kbd>
+                  </Button>
+                </div>
+              </DetailCard>
 
               {/* Event context: the event's other frames, so a close-up
                   crop can be read in sequence. Hover-only — nothing is
@@ -1046,7 +1209,15 @@ export function DetectionDetailModal({
                           <div className="relative aspect-[4/3] w-full overflow-hidden rounded">
                             {crop}
                           </div>
-                          <p className="mt-1.5 px-0.5 text-[11px] capitalize text-muted-foreground">
+                          {/* The crop's own label, with the class colour
+                              as the label search shows it: a dot. Under
+                              the picture, not over it, so nothing of a
+                              tight crop is covered. */}
+                          <p className="mt-1.5 flex items-center gap-1.5 px-0.5 text-xs capitalize">
+                            <span
+                              className="h-2 w-2 shrink-0 rounded-full"
+                              style={{ backgroundColor: getDetectionColor(n) }}
+                            />
                             {getDetectionDisplayName(n)}
                           </p>
                         </>
@@ -1065,135 +1236,10 @@ export function DetectionDetailModal({
               })()}
         </>
       }
-      // Mirrors the floating BulkActionBar's vocabulary, icons and
-      // shortcuts so the muscle memory carries over from the grid into
-      // the modal. Each action operates on this single detection.
+      // Verify alone stays pinned, as in the Files viewer: the primary
+      // action in a fixed spot. The rest is the Actions card above.
       actions={
         <>
-              {/* The one action about the photo rather than this box:
-                  an animal the detector missed gets its box here. First,
-                  so it reads apart from the verdict buttons; Verify
-                  stays last. */}
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full justify-center"
-                onClick={() => setDrawMode((v) => !v)}
-                disabled={!fileData}
-                title="Drag a box around an animal the AI missed, then name it (D)"
-              >
-                <SquareDashed className="h-4 w-4 mr-1" />
-                {drawMode ? "Stop drawing" : "Draw a box"}
-                <Kbd>
-                  D
-                </Kbd>
-              </Button>
-
-              {detection.neighbor_top_label &&
-                detection.neighbor_top_label !== detection.label && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full justify-center"
-                    disabled={relabelMutation.isPending}
-                    onClick={() =>
-                      relabelMutation.mutate({
-                        label: detection.neighbor_top_label!,
-                        category: detection.category,
-                      })
-                    }
-                  >
-                    <Tag className="h-4 w-4 mr-1" />
-                    Accept &ldquo;
-                    {detection.neighbor_top_scientific_name ||
-                      detection.neighbor_top_label}
-                    &rdquo;
-                    <Kbd>
-                      A
-                    </Kbd>
-                  </Button>
-                )}
-
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full justify-center"
-                onClick={openCropPicker}
-              >
-                <Tag className="h-4 w-4 mr-1" />
-                Relabel
-                <Kbd>
-                  R
-                </Kbd>
-              </Button>
-              {/* Hidden LabelPicker. The Relabel button above is the
-                  visible trigger; this picker's own trigger is taken
-                  out of the flow with absolute+zero-size so it doesn't
-                  steal a `space-y-2` slot. The popup dialog is portaled
-                  by Radix, so the wrapper position doesn't constrain it. */}
-              <div
-                aria-hidden="true"
-                className="absolute h-0 w-0 overflow-hidden pointer-events-none"
-              >
-                <LabelPicker
-                  // One picker, two targets: this crop (R, Relabel), or
-                  // the box just drawn, which has no label to show yet.
-                  // Closing it without a choice leaves a drawn box on
-                  // the detector's primary class, as the Files viewer does.
-                  value={drawnId ? null : detection.label}
-                  displayName={drawnId ? null : detection.scientific_name}
-                  onSelect={(option) => {
-                    if (drawnId) {
-                      nameDrawnBox(drawnId, option);
-                      return;
-                    }
-                    relabelMutation.mutate({
-                      label: option.label,
-                      category: option.category,
-                    });
-                  }}
-                  options={labelOptions}
-                  isLoading={labelOptionsLoading}
-                  forceOpen={forceOpenPicker || !!drawnId}
-                  onOpenChange={(open) => {
-                    if (!open) {
-                      setForceOpenPicker(false);
-                      setDrawnId(null);
-                    }
-                  }}
-                  projectId={projectId}
-                />
-              </div>
-
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full justify-center"
-                onClick={() => markFalseMutation.mutate()}
-                disabled={markFalseMutation.isPending}
-              >
-                <Ban className="h-4 w-4 mr-1" />
-                Mark false
-                <Kbd>
-                  X
-                </Kbd>
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full justify-center"
-                onClick={() => markUnknownMutation.mutate()}
-                disabled={markUnknownMutation.isPending}
-                title="Mark as an unidentifiable animal and verify"
-              >
-                <CircleHelp className="h-4 w-4 mr-1" />
-                Unknown
-                <Kbd>
-                  U
-                </Kbd>
-              </Button>
-
               <Button
                 className="w-full justify-center"
                 size="sm"

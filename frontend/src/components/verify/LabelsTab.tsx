@@ -1716,7 +1716,6 @@ export function LabelsTab({
           <VerifyGuideLink step="labels" />
           <LabelsKeyboardPopover
             shortcuts={CROPS_SHORTCUTS}
-            footer="After an action the next detection is selected, so you can keep going."
             labelSlots={{
               shortcutLabels,
               onShortcutLabelsChange: updateShortcutLabels,

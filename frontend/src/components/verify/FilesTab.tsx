@@ -888,7 +888,6 @@ export function FilesTab({
           <VerifyGuideLink step="labels" />
           <LabelsKeyboardPopover
             shortcuts={FILES_SHORTCUTS}
-            footer="After verifying, the next file is selected, so you can keep going."
             labelSlots={{
               shortcutLabels,
               onShortcutLabelsChange: updateShortcutLabels,

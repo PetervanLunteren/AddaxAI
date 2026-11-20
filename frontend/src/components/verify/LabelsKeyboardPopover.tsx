@@ -18,8 +18,10 @@ import { Keyboard } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { VERIFY_TOOLBAR_ICON_CLASS } from "./VerifyToolbar";
 import { LabelPicker } from "./LabelPicker";
+import { RemoveQuickLabelText } from "./QuickLabelButtons";
 import type { LabelOption } from "../../hooks/useLabelOptions";
 import { SHORTCUT_SLOTS } from "../../hooks/useShortcutLabels";
+import { withoutSlot } from "../../lib/shortcut-slots";
 import type { Shortcut } from "./shortcuts";
 
 interface LabelSlots {
@@ -34,8 +36,6 @@ interface LabelSlots {
 
 interface LabelsKeyboardPopoverProps {
   shortcuts: readonly Shortcut[];
-  /** Closing line, e.g. what happens to the selection after an action. */
-  footer: string;
   /** The configurable number-key label slots. Omitted by tabs without labels. */
   labelSlots?: LabelSlots;
 }
@@ -59,7 +59,6 @@ export function ShortcutKey({ keys }: { keys: string }) {
 
 export function LabelsKeyboardPopover({
   shortcuts,
-  footer,
   labelSlots,
 }: LabelsKeyboardPopoverProps) {
   return (
@@ -104,6 +103,15 @@ export function LabelsKeyboardPopover({
                         [n]: option,
                       }))
                     }
+                    removeAction={
+                      labelSlots.shortcutLabels[n]
+                        ? {
+                            label: <RemoveQuickLabelText slot={n} />,
+                            onSelect: () =>
+                              labelSlots.onShortcutLabelsChange((prev) => withoutSlot(prev, n)),
+                          }
+                        : undefined
+                    }
                     options={labelSlots.labelOptions}
                     isLoading={labelSlots.labelOptionsLoading}
                     projectId={labelSlots.projectId}
@@ -113,7 +121,6 @@ export function LabelsKeyboardPopover({
             </div>
           )}
         </div>
-        <p className="mt-3 text-[11px] text-muted-foreground">{footer}</p>
       </PopoverContent>
     </Popover>
   );
