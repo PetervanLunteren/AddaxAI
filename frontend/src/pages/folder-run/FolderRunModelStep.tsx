@@ -379,6 +379,7 @@ export function FolderRunModelStep() {
   const classificationModelId = form.watch("classification_model_id");
   const labelCaption = useLabelSelectionCaption(
     classificationModelId && classificationModelId !== "none" ? classificationModelId : "",
+    !!form.watch("taxa_mapping"),
   );
   const embeddingModelId = form.watch("embedding_model_id");
   const excludedClasses = form.watch("excluded_classes") ?? [];

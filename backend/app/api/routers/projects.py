@@ -586,23 +586,6 @@ def update_project(
             f"PATCH project {project_id}: excluded_classes NOT in payload"
         )
 
-    # A project runs a country or a taxa list, never both. Saving a list
-    # clears the country (crud), but a country or exclusions sent to a
-    # project that keeps its list would be cleared without a word, so
-    # they are refused instead.
-    if "taxa_mapping" not in sent and (
-        sent.get("country_code") or sent.get("state_code") or sent.get("excluded_classes")
-    ):
-        db_current = crud_project.get_project(db, project_id)
-        if db_current is not None and db_current.taxa_mapping:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "This project uses a taxa list. Remove it before "
-                    "choosing a country or species."
-                ),
-            )
-
     try:
         db_project = crud_project.update_project(db, project_id, project)
         if db_project is None:

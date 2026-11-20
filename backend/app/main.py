@@ -194,7 +194,7 @@ async def _warm_up_query_caches() -> None:
         # use too.
         "SELECT COUNT(*) FROM event_observations o "
         "JOIN events e ON o.event_id = e.id "
-        "LEFT JOIN label_taxonomy lt ON lt.name = o.label",
+        "LEFT JOIN label_taxonomy lt ON lt.id = o.label_taxonomy_id",
         # Slideouts compute file totals + verified counts per
         # deployment / site. Reads file_type, verified, size_bytes
         # off the files row.

@@ -7,8 +7,8 @@ import pytest
 
 from app.ml.postprocessing import compute_postprocessing_settings_hash
 from app.ml.taxa_mapping import (
-    INPUT_LATIN,
-    USER_TAXON_NAME,
+    LABEL,
+    LATIN,
     TaxaListError,
     load_speciesnet_taxa,
     mapped_labels,
@@ -60,7 +60,7 @@ def test_taxa_are_keyed_the_way_megadetector_keys_them(taxa):
 
 def test_a_good_file_loads_lowercased_with_the_note_columns_dropped(taxa):
     text = _csv(
-        "﻿input_latin,user_taxon_name,input_common,user_alt_name",
+        "﻿input_latin,output_name,input_common,output_alt_name",
         "Aepyceros, Impala ,impala species,aepyceros melampus",
         "",
         "accipitridae,bird of prey,,",
@@ -68,60 +68,112 @@ def test_a_good_file_loads_lowercased_with_the_note_columns_dropped(taxa):
     )
     rows = parse_taxa_list(text, taxa)
     assert rows == [
-        {INPUT_LATIN: "aepyceros", USER_TAXON_NAME: "impala"},
-        {INPUT_LATIN: "accipitridae", USER_TAXON_NAME: "bird of prey"},
-        {INPUT_LATIN: "strigiformes", USER_TAXON_NAME: "bird of prey"},
+        {LATIN: "aepyceros", LABEL: "impala"},
+        {LATIN: "accipitridae", LABEL: "bird of prey"},
+        {LATIN: "strigiformes", LABEL: "bird of prey"},
     ]
     assert mapped_labels(rows) == ["impala", "bird of prey"]
 
 
-def test_a_file_without_the_columns_is_refused(taxa):
-    # The pre-rename names, which the pinned megadetector reads.
-    with pytest.raises(TaxaListError) as e:
-        parse_taxa_list(_csv("latin,common", "aepyceros,impala"), taxa)
-    assert e.value.problems == [
-        f"Missing column: {INPUT_LATIN}",
-        f"Missing column: {USER_TAXON_NAME}",
+def test_the_older_columns_load_as_megadetector_reads_them(taxa):
+    # The label is original_common when it is filled, common otherwise.
+    text = _csv(
+        "latin,common,original_latin,original_common,notes",
+        "aepyceros,impala species,,Impala,",
+        "accipitridae,bird of prey,,,",
+    )
+    assert parse_taxa_list(text, taxa) == [
+        {LATIN: "aepyceros", LABEL: "impala"},
+        {LATIN: "accipitridae", LABEL: "bird of prey"},
     ]
 
 
-def test_every_bad_row_is_named_and_the_file_refused(taxa):
+def test_dans_example_file_loads_as_megadetector_reads_it():
+    """ppp-botha_speciesnet.csv from Dan Morris's taxonomy mapping skill
+    (agentmorris/agentmorrispublic, skills/speciesnet-taxonomy-mapping,
+    commit 23d4015e), unchanged. Here so the rules cannot drift from
+    MegaDetector's without a failing test. Its taxa are taken as known:
+    the check against SpeciesNet has tests of its own above."""
+    from pathlib import Path
+
+    text = (Path(__file__).parent / "fixtures" / "ppp-botha_speciesnet.csv").read_text(
+        encoding="utf-8"
+    )
+    known = {line.split(",")[0]: {} for line in text.splitlines()[1:]}
+    rows = parse_taxa_list(text, known)
+
+    # Human, Vehicle, Blank and the species SpeciesNet lacks have no
+    # Latin name: skipped, not refused.
+    assert len(rows) == 75
+    assert rows[0] == {LATIN: "chiroptera", LABEL: "bat_unspecified"}
+    # Two species onto one label, by original_common.
+    assert {LATIN: "equus quagga", LABEL: "zebra"} in rows
+    assert {LATIN: "equus zebra", LABEL: "zebra"} in rows
+
+
+def test_a_file_without_the_columns_is_refused(taxa):
+    with pytest.raises(TaxaListError) as e:
+        parse_taxa_list(_csv("taxon,name", "aepyceros,impala"), taxa)
+    assert e.value.problems == ["Missing column: input_latin (or latin in the older format)"]
+    with pytest.raises(TaxaListError) as e:
+        parse_taxa_list(_csv("input_latin,input_common", "aepyceros,impala"), taxa)
+    assert e.value.problems == ["Missing column: output_name"]
+    with pytest.raises(TaxaListError) as e:
+        parse_taxa_list(_csv("latin,original_common", "aepyceros,impala"), taxa)
+    assert e.value.problems == ["Missing column: common"]
+
+
+def test_every_bad_row_is_named_by_its_line_and_the_file_refused(taxa):
     text = _csv(
-        "input_latin,user_taxon_name",
+        "input_latin,output_name",
         "aepyceros,impala",
+        ",human",
+        "",
         "panthera leo,lion",
         "aepyceros,antelope",
         "bovidae,",
     )
     with pytest.raises(TaxaListError) as e:
         parse_taxa_list(text, taxa)
+    # The row without a Latin name and the blank line are skipped, and
+    # still counted in the line numbers.
     assert e.value.problems == [
-        "Row 3 (panthera leo): not a SpeciesNet taxon",
-        "Row 4 (aepyceros): this taxon is listed twice",
-        "Row 5 (bovidae): input_latin and user_taxon_name are both required",
+        "Row 5 (panthera leo): not a SpeciesNet taxon",
+        "Row 6 (aepyceros): this taxon is listed twice",
+        "Row 7 (bovidae): needs both a Latin name and a label",
     ]
 
 
 def test_a_label_longer_than_a_custom_label_is_refused(taxa):
     with pytest.raises(TaxaListError) as e:
-        parse_taxa_list(_csv("input_latin,user_taxon_name", "aepyceros," + "a" * 201), taxa)
+        parse_taxa_list(_csv("input_latin,output_name", "aepyceros," + "a" * 201), taxa)
     assert e.value.problems == [
-        "Row 2 (aepyceros): user_taxon_name is longer than 200 characters"
+        "Row 2 (aepyceros): the label is longer than 200 characters"
     ]
 
 
-def test_an_empty_file_is_refused(taxa):
-    with pytest.raises(TaxaListError):
-        parse_taxa_list(_csv("input_latin,user_taxon_name"), taxa)
+def test_a_huge_bad_file_is_refused_with_a_bounded_list(taxa):
+    rows = [f"{'x' * 1000}{i},label" for i in range(150)]
+    with pytest.raises(TaxaListError) as e:
+        parse_taxa_list(_csv("input_latin,output_name", *rows), taxa)
+    assert len(e.value.problems) == 101
+    assert e.value.problems[0] == f"Row 2 ({'x' * 80}): not a SpeciesNet taxon"
+    assert e.value.problems[-1] == "and 50 more"
+
+
+def test_a_file_with_no_latin_names_is_refused(taxa):
+    with pytest.raises(TaxaListError) as e:
+        parse_taxa_list(_csv("input_latin,output_name", ",human"), taxa)
+    assert e.value.problems == ["The file has no rows with a Latin name"]
 
 
 def test_each_label_gets_the_lowest_taxon_its_rows_share(taxa):
     rows = [
-        {INPUT_LATIN: "aepyceros", USER_TAXON_NAME: "impala"},
-        {INPUT_LATIN: "accipitridae", USER_TAXON_NAME: "bird of prey"},
-        {INPUT_LATIN: "strigiformes", USER_TAXON_NAME: "bird of prey"},
-        {INPUT_LATIN: "bovidae", USER_TAXON_NAME: "other"},
-        {INPUT_LATIN: "strigiformes", USER_TAXON_NAME: "other"},
+        {LATIN: "aepyceros", LABEL: "impala"},
+        {LATIN: "accipitridae", LABEL: "bird of prey"},
+        {LATIN: "strigiformes", LABEL: "bird of prey"},
+        {LATIN: "bovidae", LABEL: "other"},
+        {LATIN: "strigiformes", LABEL: "other"},
     ]
     shared = shared_taxa(rows, taxa)
     assert shared["impala"].level == "genus"
@@ -136,7 +188,7 @@ def test_each_label_gets_the_lowest_taxon_its_rows_share(taxa):
 def test_megadetector_gets_the_column_names_it_reads(tmp_path):
     path = tmp_path / "list.csv"
     write_md_taxa_list(
-        [{INPUT_LATIN: "aepyceros", USER_TAXON_NAME: "impala"}], path
+        [{LATIN: "aepyceros", LABEL: "impala"}], path
     )
     assert path.read_text(encoding="utf-8").splitlines() == [
         "latin,common",
@@ -181,8 +233,8 @@ def test_a_project_without_a_list_keeps_its_settings_hash():
 
 
 def test_a_new_list_changes_the_settings_hash():
-    rows = [{INPUT_LATIN: "aepyceros", USER_TAXON_NAME: "impala"}]
-    other = [{INPUT_LATIN: "aepyceros", USER_TAXON_NAME: "antelope"}]
+    rows = [{LATIN: "aepyceros", LABEL: "impala"}]
+    other = [{LATIN: "aepyceros", LABEL: "antelope"}]
     with_list = compute_postprocessing_settings_hash(
         _project(taxa_mapping={"file_name": "a.csv", "rows": rows})
     )
@@ -223,8 +275,8 @@ def test_labels_outside_the_list_get_a_row(db):
     project = SimpleNamespace(
         classification_model_id="SN",
         taxa_mapping={"rows": [
-            {INPUT_LATIN: "aepyceros", USER_TAXON_NAME: "impala"},
-            {INPUT_LATIN: "accipitridae", USER_TAXON_NAME: "bird of prey"},
+            {LATIN: "aepyceros", LABEL: "impala"},
+            {LATIN: "accipitridae", LABEL: "bird of prey"},
         ]},
     )
     add_taxa_list_ancestor_rows(md, project, db)

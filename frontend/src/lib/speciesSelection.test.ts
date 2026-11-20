@@ -25,9 +25,9 @@ describe("mappedLabels", () => {
       mappedLabels({
         file_name: "mara.csv",
         rows: [
-          { input_latin: "accipitridae", user_taxon_name: "bird of prey" },
-          { input_latin: "aepyceros", user_taxon_name: "impala" },
-          { input_latin: "strigiformes", user_taxon_name: "bird of prey" },
+          { latin: "accipitridae", label: "bird of prey" },
+          { latin: "aepyceros", label: "impala" },
+          { latin: "strigiformes", label: "bird of prey" },
         ],
       }),
     ).toEqual(["bird of prey", "impala"]);

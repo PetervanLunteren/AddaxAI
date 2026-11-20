@@ -159,7 +159,7 @@ export function AnalysisSettingsButton({
     queryFn: () => modelsApi.getTaxonomy(classifierId!),
     enabled: hasClassifier,
   });
-  const labelCaption = useLabelSelectionCaption(classifierId ?? "");
+  const labelCaption = useLabelSelectionCaption(classifierId ?? "", !!values.taxa_mapping);
 
   // The threshold is deliberately not a REPROCESS_TRIGGER_FIELD: it needs
   // no reprocess job, because the backend recalculates the materialised

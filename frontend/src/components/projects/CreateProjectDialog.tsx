@@ -215,6 +215,7 @@ export function CreateProjectDialog({
   const hasClassificationModel = !!classificationModelId && classificationModelId !== "none";
   const labelCaption = useLabelSelectionCaption(
     hasClassificationModel ? classificationModelId! : "",
+    !!form.watch("taxa_mapping"),
   );
 
   // Label selection state

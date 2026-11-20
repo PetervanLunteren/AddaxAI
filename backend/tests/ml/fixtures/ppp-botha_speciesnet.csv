@@ -1,0 +1,80 @@
+latin,common,original_latin,original_common,notes
+chiroptera,bat,,Bat_unspecified,
+aves,bird,,Bird_unspecified,
+insecta,insect,,Insect_unspecified,
+reptilia,reptile,,Reptile_unspecified,
+rodentia,rodent,,Rodent_unspecified,
+mammalia,mammal,,Mammal_unspecified,
+,,,Human,non-taxonomic category; left unmapped
+,,,Vehicle,non-taxonomic category; left unmapped
+,,,Blank,non-taxonomic category; left unmapped
+orycteropus,aardvark,,Aardvark,
+proteles,aardwolf,,Aardwolf,
+papio,chacma baboon,,Baboon_chacma,genus Papio = chacma baboon in South Africa
+syncerus,african buffalo,,Buffalo_cape,
+otolemur,thick-tailed greater galago,,Bushbaby_greater,
+galago,galago species,,Bushbaby_lesser,"Southern lesser galago (Galago moholi) is not in the SpeciesNet taxonomy; mapped to genus Galago"
+tragelaphus scriptus,bushbuck,,Bushbuck,
+potamochoerus,bushpig,,Bushpig,
+caracal,caracal,,Caracal,
+civettictis,african civet,,Civet_african,
+felis catus,domestic cat,,Domestic_cat,
+bos,domestic cattle,,Domestic_cattle,
+canis familiaris,domestic dog,,Domestic_dog,
+equus asinus,domestic donkey,,Domestic_donkey,
+capra,domestic goat,,Domestic_goat,
+sus,domestic pig,,Domestic_pig,
+ovis,domestic sheep,,Domestic_sheep,
+sylvicapra,common duiker,,Duiker_grey,
+cephalophus,natal red duiker,,Duiker_red,"Natal red duiker (only Cephalophus in SA); mapped at genus level"
+otocyon,bat-eared fox,,Fox_bat_eared,
+oryx,gemsbok,,Gemsbok,
+genetta,large-spotted genet,,Genet_large_spotted,"Mapped to genus Genetta; small-spotted/common genet (G. genetta) also occurs in SA but isn't separately listed, so all genets fold here"
+giraffidae,giraffe,,Giraffe,
+raphicerus sharpei,sharpe's grysbok,,Grysbok_sharpey's,
+guttera,crested guineafowl,,Guineafowl_crested,"SpeciesNet lists crested guineafowl under genus Guttera (species G. pucherani, labeled 'pintade huppee')"
+numida,helmeted guineafowl,,Guineafowl_helmeted,
+alcelaphus,hartebeest,,Hartebeest_red,"Red hartebeest (A. buselaphus caama); SpeciesNet has species-level 'hartebeest'"
+hippopotamidae,hippopotamus,,Hippopotamus,
+mellivora,honey badger,,Honey badger,
+parahyaena,brown hyaena,,Hyaena_brown,
+crocuta,spotted hyaena,,Hyaena_spotted,
+aepyceros,impala,,Impala,
+canis mesomelas,black-backed jackal,,Jackal_black_backed,
+canis adustus,side-striped jackal,,Jackal_side_striped,
+oreotragus,klipspringer,,Klipspringer,
+otididae,kori bustard,,Kori_bustard,"Mapped to bustard family (Otididae); korhaans/other bustards aren't listed and fold here"
+tragelaphus strepsiceros,greater kudu,,Kudu_greater,
+panthera,leopard,,Leopard,"SURPRISING: lion (Panthera leo) is not on the list but is common in South Africa. Mapping genus Panthera to leopard folds any lion prediction into 'Leopard' - please confirm lions are truly absent from the study area"
+mungos,banded mongoose,,Mongoose_banded,
+helogale,common dwarf mongoose,,Mongoose_dwarf,
+,,,Mongoose_selous,"Selous' mongoose (Paracynictis selousi) not in SpeciesNet; genus Paracynictis absent and family Herpestidae has other listed mongooses, so left unmapped for you to decide"
+herpestes,common slender mongoose,,Mongoose_slender,"Genus Herpestes; Cape grey (H. pulverulentus) and Egyptian (H. ichneumon) mongooses also occur in SA and would fold into slender mongoose"
+atilax,marsh mongoose,,Mongoose_water,"Water mongoose = marsh mongoose (Atilax paludinosus)"
+ichneumia,white-tailed mongoose,,Mongoose_white_tailed,
+cercopithecus,samango monkey,,Monkey_samango,"Samango (Cercopithecus albogularis) is not a distinct SpeciesNet category; mapped to genus Cercopithecus (SpeciesNet's nearest species is C. mitis, 'blue monkey')"
+chlorocebus,vervet monkey,,Monkey_vervet,
+tragelaphus angasii,nyala,,Nyala,
+struthio,common ostrich,,Ostrich,
+aonyx,african clawless otter,,Otter_cape_clawless,"Cape clawless otter (Aonyx capensis) not in SpeciesNet; mapped to genus Aonyx (clawless otters)"
+manidae,ground pangolin,,Pangolin_ground,"Temminck's ground pangolin (Smutsia temminckii) not in SpeciesNet; mapped to the pangolin family (Manidae), the only pangolin in SA"
+hystricidae,cape porcupine,,Porcupine_cape,
+thryonomyidae,greater cane rat,,Rat_Cane,
+redunca,mountain reedbuck,,Reedbuck_mountain,
+ceratotherium,white rhinoceros,,Rhino_white,"Genus Ceratotherium (white rhino only); black rhino (Diceros bicornis) is a different genus and will NOT fold here - it would fall through to Mammal_unspecified"
+hyracoidea,rock hyrax,,Rock_hyrax,"Mapped to order Hyracoidea; tree/bush hyrax would fold into rock hyrax"
+hippotragus,sable antelope,,Sable,"Genus Hippotragus; roan antelope (H. equinus) also occurs in parts of SA and would fold into sable"
+lepus,scrub hare,,Scrub_hare,"Genus Lepus; other hares (e.g. Cape hare, L. capensis) fold into scrub hare"
+leptailurus,serval,,Serval,
+soricidae,shrew,,Shrew,"Family Soricidae (true shrews); elephant shrews/sengis are a different order and won't fold here"
+pedetes,spring hare,,Springhare,
+sciuridae,squirrel,,Squirrel,"Family Sciuridae (tree and ground squirrels)"
+raphicerus campestris,steenbok,,Steenbok,
+testudines,tortoise,,Tortoise,"Mapped to order Testudines; covers all tortoises/terrapins (chelonian predictions in SA generally roll up to this level)"
+phacochoerus,common warthog,,Warthog,
+kobus,waterbuck,,Waterbuck,
+felis silvestris,african wild cat,,Wildcat_african,"Maps both 'wild cat' (F. silvestris) and 'african wild cat' (F. silvestris lybica); domestic cat is kept separate as F. catus"
+connochaetes gnou,black wildebeest,,Wildebeest_black,
+connochaetes taurinus,common wildebeest,,Wildebeest_blue,"SpeciesNet common name for C. taurinus is 'common wildebeest' (= blue wildebeest)"
+equus quagga,plains zebra,,Zebra,"Plains/Burchell's zebra"
+equus zebra,mountain zebra,,Zebra,"Mountain zebra also occurs in parts of SA; included so any zebra prediction maps to 'Zebra' - remove this row if mountain zebra is absent from the site"

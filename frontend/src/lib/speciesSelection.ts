@@ -31,14 +31,14 @@ const CLEARED = {
 export const taxaMappingField = z
   .object({
     file_name: z.string(),
-    rows: z.array(z.object({ input_latin: z.string(), user_taxon_name: z.string() })),
+    rows: z.array(z.object({ latin: z.string(), label: z.string() })),
   })
   .nullable()
   .optional();
 
 /** The labels a taxa list produces, in file order, each once. */
 export function mappedLabels(mapping: TaxaMapping): string[] {
-  return [...new Set(mapping.rows.map((r) => r.user_taxon_name))];
+  return [...new Set(mapping.rows.map((r) => r.label))];
 }
 
 /**

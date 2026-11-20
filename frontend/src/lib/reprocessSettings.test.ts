@@ -6,7 +6,7 @@ import { hasReprocessChanges } from "./reprocessSettings";
 
 const list = (name: string) => ({
   file_name: "mara.csv",
-  rows: [{ input_latin: "aepyceros", user_taxon_name: name }],
+  rows: [{ latin: "aepyceros", label: name }],
 });
 
 describe("hasReprocessChanges", () => {

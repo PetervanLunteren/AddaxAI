@@ -7,12 +7,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.ml.taxa_mapping import RETIRED
 from app.ml.taxonomy_db import (
     batch_resolve_taxonomy_ids,
     populate_taxonomy_from_csv,
     resolve_taxonomy_id,
 )
-from app.models import Detection, EventObservation, File
+from app.models import Detection, Event, EventObservation, File
 from app.models.label_taxonomy import LabelTaxonomy
 from tests.conftest import (
     make_deployment,
@@ -29,9 +30,9 @@ g7;aves;strigiformes;strigidae;bubo;bubo;eurasian eagle-owl
 """
 
 ROWS = [
-    {"input_latin": "aepyceros", "user_taxon_name": "impala"},
-    {"input_latin": "accipitridae", "user_taxon_name": "bird of prey"},
-    {"input_latin": "strigiformes", "user_taxon_name": "bird of prey"},
+    {"latin": "aepyceros", "label": "impala"},
+    {"latin": "accipitridae", "label": "bird of prey"},
+    {"latin": "strigiformes", "label": "bird of prey"},
 ]
 
 
@@ -74,20 +75,20 @@ def test_reading_a_list_returns_its_rows(client, model_id):
         f"/api/ml/models/{model_id}/taxa-list",
         json={
             "file_name": "mara.csv",
-            "text": "input_latin,user_taxon_name\nAepyceros,Impala\n",
+            "text": "input_latin,output_name\nAepyceros,Impala\n",
         },
     )
     assert resp.status_code == 200
     assert resp.json() == {
         "file_name": "mara.csv",
-        "rows": [{"input_latin": "aepyceros", "user_taxon_name": "impala"}],
+        "rows": [{"latin": "aepyceros", "label": "impala"}],
     }
 
 
 def test_a_bad_list_is_refused_with_its_rows(client, model_id):
     resp = client.post(
         f"/api/ml/models/{model_id}/taxa-list",
-        json={"file_name": "x.csv", "text": "input_latin,user_taxon_name\nlynx,lynx\n"},
+        json={"file_name": "x.csv", "text": "input_latin,output_name\nlynx,lynx\n"},
     )
     assert resp.status_code == 422
     assert resp.json()["detail"]["problems"] == ["Row 2 (lynx): not a SpeciesNet taxon"]
@@ -96,7 +97,7 @@ def test_a_bad_list_is_refused_with_its_rows(client, model_id):
 def test_a_model_without_a_taxonomy_file_cannot_take_a_list(client):
     resp = client.post(
         "/api/ml/models/no-such-model/taxa-list",
-        json={"file_name": "x.csv", "text": "input_latin,user_taxon_name\naepyceros,impala\n"},
+        json={"file_name": "x.csv", "text": "input_latin,output_name\naepyceros,impala\n"},
     )
     assert resp.status_code == 422
 
@@ -129,13 +130,18 @@ def test_saving_a_list_clears_the_country_and_gives_each_label_its_row(
     assert rows["bird of prey"].scientific_name == "Aves"
 
 
-def test_a_country_for_a_project_with_a_list_is_refused(client, db, model_id):
+def test_a_country_for_a_project_with_a_list_is_not_kept(client, db, model_id):
     project = make_project(db, classification_model_id=model_id)
     db.commit()
     client.patch(f"/api/projects/{project.id}", json={"taxa_mapping": _mapping()})
 
-    resp = client.patch(f"/api/projects/{project.id}", json={"country_code": "KEN"})
-    assert resp.status_code == 400
+    resp = client.patch(
+        f"/api/projects/{project.id}",
+        json={"country_code": "KEN", "excluded_classes": ["lion"]},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["taxa_mapping"] is not None
+    assert (resp.json()["country_code"], resp.json()["excluded_classes"]) == (None, [])
 
     # Removing the list in the same save is the way to switch.
     resp = client.patch(
@@ -150,7 +156,7 @@ def test_a_country_for_a_project_with_a_list_is_refused(client, db, model_id):
 def test_a_tampered_list_is_refused_on_save(client, db, model_id):
     project = make_project(db, classification_model_id=model_id, country_code="KEN")
     db.commit()
-    bad = [{"input_latin": "panthera leo", "user_taxon_name": "lion"}]
+    bad = [{"latin": "panthera leo", "label": "lion"}]
 
     resp = client.patch(f"/api/projects/{project.id}", json={"taxa_mapping": _mapping(bad)})
     assert resp.status_code == 422
@@ -252,7 +258,7 @@ def test_an_unknown_model_id_is_refused_before_any_path_is_built(client):
             "/api/ml/models/..%5C..%5Cx/taxa-list",
             json={
                 "file_name": "x.csv",
-                "text": "input_latin,user_taxon_name\naepyceros,impala\n",
+                "text": "input_latin,output_name\naepyceros,impala\n",
             },
         )
     assert resp.status_code == 404
@@ -309,6 +315,141 @@ def test_a_list_relinks_its_labels_and_removing_it_gives_them_back(client, db, m
     assert _own_row(db, project, "bird of prey") is None
     assert db.get(Detection, detection.id).label_taxonomy_id == model_row.id
     assert db.get(EventObservation, observation.id).label_taxonomy_id == model_row.id
+
+
+def test_what_a_person_checked_keeps_its_row_through_list_changes(client, db, model_id):
+    """AddaxAI's rule for every reprocess: a verified detection or a
+    confirmed observation stays as it is, taxonomy included."""
+
+    project = make_project(db, classification_model_id=model_id)
+    model_row = _model_row(db, model_id)
+    checked_before = _detection(db, project, label_taxonomy_id=model_row.id, verified=True)
+    db.commit()
+
+    # A list that names its label does not move it.
+    client.patch(f"/api/projects/{project.id}", json={"taxa_mapping": _mapping()})
+    db.expire_all()
+    own = _own_row(db, project)
+    assert db.get(Detection, checked_before.id).label_taxonomy_id == model_row.id
+
+    verified = _detection(db, project, label_taxonomy_id=own.id, verified=True)
+    track_box = _detection(
+        db, project, label_taxonomy_id=own.id, classification_method="track"
+    )
+    unverified = _detection(db, project, label_taxonomy_id=own.id)
+    deployment_id = db.get(File, verified.file_id).deployment_id
+    signed_event = make_event_with_files(
+        db, deployment_id=deployment_id, event_start_local=datetime(2024, 1, 1, 12)
+    )
+    signed_event.confirmed = True
+    open_event = make_event_with_files(
+        db, deployment_id=deployment_id, event_start_local=datetime(2024, 1, 2, 12)
+    )
+
+    def observation(event, **kw):
+        obs = EventObservation(
+            event_id=event.id, label="impala", label_taxonomy_id=own.id,
+            category="animal", max_n=1, **kw,
+        )
+        db.add(obs)
+        return obs
+
+    signed = observation(signed_event)
+    counted = observation(open_event, human_count=3)
+    open_obs = observation(open_event)
+    db.commit()
+    checked = [
+        (Detection, verified.id),
+        (Detection, track_box.id),
+        (EventObservation, signed.id),
+        (EventObservation, counted.id),
+    ]
+
+    resp = client.patch(f"/api/projects/{project.id}", json={"taxa_mapping": None})
+    assert resp.status_code == 200, resp.text
+    db.expire_all()
+    # The row stays for what a person checked, out of the name lookups, so
+    # the rest gets the model's impala back.
+    retired = _own_row(db, project)
+    assert retired.id == own.id
+    assert retired.classification_model_id == RETIRED + own.id
+    assert [db.get(m, i).label_taxonomy_id for m, i in checked] == [own.id] * 4
+    assert db.get(Detection, unverified.id).label_taxonomy_id == model_row.id
+    assert db.get(EventObservation, open_obs.id).label_taxonomy_id == model_row.id
+    assert resolve_taxonomy_id("impala", project.id, db) == model_row.id
+    assert _own_row(db, project, "bird of prey") is None
+
+    # A list that names it again takes the row back.
+    client.patch(f"/api/projects/{project.id}", json={"taxa_mapping": _mapping()})
+    db.expire_all()
+    assert _own_row(db, project).classification_model_id == model_id
+    assert db.get(Detection, unverified.id).label_taxonomy_id == own.id
+
+    # Once nothing checked uses it, a list without the label drops it.
+    db.get(Detection, verified.id).verified = False
+    db.get(Detection, track_box.id).classification_method = None
+    db.get(Event, signed_event.id).confirmed = False
+    db.get(EventObservation, counted.id).human_count = None
+    db.commit()
+    client.patch(f"/api/projects/{project.id}", json={"taxa_mapping": _mapping(ROWS[1:])})
+    db.expire_all()
+    assert _own_row(db, project) is None
+
+
+def test_a_retired_row_nothing_uses_any_more_is_taken_back(client, db, model_id):
+    """The verified box went (relabelled or deleted) while the row was
+    retired: naming the label again revives the row, not a 500."""
+    project = make_project(db, classification_model_id=model_id)
+    db.commit()
+    client.patch(f"/api/projects/{project.id}", json={"taxa_mapping": _mapping()})
+    db.expire_all()
+    own = _own_row(db, project)
+    verified = _detection(db, project, label_taxonomy_id=own.id, verified=True)
+    db.commit()
+    client.patch(f"/api/projects/{project.id}", json={"taxa_mapping": None})
+    db.delete(db.get(Detection, verified.id))
+    db.commit()
+
+    resp = client.patch(f"/api/projects/{project.id}", json={"taxa_mapping": _mapping()})
+    assert resp.status_code == 200, resp.text
+    db.expire_all()
+    assert (_own_row(db, project).id, _own_row(db, project).classification_model_id) == (
+        own.id,
+        model_id,
+    )
+
+
+def test_a_new_model_keeps_its_own_row_next_to_a_retired_one(client, db, model_id):
+    """After a model switch the old model's row of a label is retired for
+    a verified detection and the new model has its own. A later save of
+    the list updates the new model's row and leaves the retired one."""
+    from app.core.config import get_settings
+
+    other_model = f"{model_id}-b"
+    other_dir = get_settings().models_dir / "cls" / other_model
+    other_dir.mkdir(parents=True)
+    (other_dir / "taxonomy_release.1.txt").write_text(TAXONOMY, encoding="utf-8")
+
+    project = make_project(db, classification_model_id=model_id)
+    db.commit()
+    client.patch(f"/api/projects/{project.id}", json={"taxa_mapping": _mapping()})
+    db.expire_all()
+    old_row = _own_row(db, project)
+    _detection(db, project, label_taxonomy_id=old_row.id, verified=True)
+    db.commit()
+
+    client.patch(f"/api/projects/{project.id}", json={"classification_model_id": other_model})
+    resp = client.patch(f"/api/projects/{project.id}", json={"taxa_mapping": _mapping(ROWS[:2])})
+    assert resp.status_code == 200, resp.text
+    db.expire_all()
+    rows = {
+        r.classification_model_id: r.id
+        for r in db.query(LabelTaxonomy).filter(
+            LabelTaxonomy.project_id == project.id, LabelTaxonomy.name == "impala"
+        )
+    }
+    assert rows[RETIRED + old_row.id] == old_row.id
+    assert rows[other_model] != old_row.id
 
 
 def test_resending_a_list_with_a_country_still_drops_the_country(client, db, model_id):

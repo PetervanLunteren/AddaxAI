@@ -31,11 +31,11 @@ It is a trade-off: a broader label tells you less, but it is more likely to be r
 
 ## 4. Your own taxa list (SpeciesNet only)
 
-Instead of a country, you can give SpeciesNet a taxa list: a .csv that maps SpeciesNet's taxa to the labels you use. Pick "Custom taxa list (.csv)" in the country dropdown. It is the file MegaDetector's `restrict_to_taxa_list` reads, and AddaxAI runs it the same way. The file needs two columns: `input_latin`, a SpeciesNet taxon (`aepyceros`, `accipitridae`), and `user_taxon_name`, the label you want for it ("impala", "bird of prey"). Several rows can share a label. Other columns are ignored.
+Instead of a country, you can give SpeciesNet a taxa list: a .csv that maps SpeciesNet's taxa to the labels you use. Pick "Custom taxa list (.csv)" in the country dropdown. It is the file MegaDetector's `restrict_to_taxa_list` reads, and AddaxAI runs it the same way. The file needs two columns: `input_latin`, a SpeciesNet taxon (`aepyceros`, `accipitridae`), and `output_name`, the label you want for it ("impala", "bird of prey"). Files with the older `latin` and `common` columns work too; there the label is `original_common` when it is filled. Several rows can share a label. Rows without a Latin name are skipped, and other columns are ignored.
 
 Each prediction walks up the tree from the species until it reaches a taxon in your list, and gets that row's label. So with `aepyceros` mapped to "impala", every impala prediction reads "impala", and with `accipitridae` and `strigiformes` both mapped to "bird of prey", hawks, eagles and owls all read "bird of prey". A prediction can also stop at a group above your taxa: with only birds of prey in the list, a stork reads "bird". A prediction with nothing from your list above it reads "animal". People are never changed.
 
-A file loads completely or not at all: if a row names a taxon SpeciesNet does not know, or lists one twice, you get the list of bad rows and nothing changes. The list replaces the country and your species selection, so there is no "Edit species" with a list loaded. In the label filter and the exports, a label gets the lowest taxon its rows share: "impala" on the genus is a genus, "bird of prey" is the class Aves.
+A file loads completely or not at all: if a row names a taxon SpeciesNet does not know, has no label, or lists a taxon twice, you get the list of bad rows and nothing changes. The list replaces the country and your species selection, so there is no "Edit species" with a list loaded. In the label filter and the exports, a label gets the lowest taxon its rows share: "impala" on the genus is a genus, "bird of prey" is the class Aves.
 
 ## 5. Labels are smoothed
 

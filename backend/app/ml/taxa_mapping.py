@@ -9,7 +9,10 @@ AddaxAI only reads these files; Dan Morris's taxonomy mapping skill makes
 them.
 
 A file loads completely or is refused with the list of bad rows, the same
-rows `restrict_to_taxa_list` would refuse.
+rows `restrict_to_taxa_list` would refuse. Rows without a Latin name are
+skipped, as MegaDetector skips them: Dan's files keep a row for every
+category of the user's own list, also Human, Blank and species SpeciesNet
+does not know.
 """
 
 import csv
@@ -30,20 +33,41 @@ from app.ml.taxonomic_rollup import (
 
 logger = get_logger(__name__)
 
-# Column names, here and nowhere else. These are the names from Dan's
-# rename in AddaxAI#136. The other two columns of that format,
-# input_common and user_alt_name, are notes for the reader and not used.
-INPUT_LATIN = "input_latin"
-USER_TAXON_NAME = "user_taxon_name"
+# The keys of a stored row (projects.taxa_mapping), AddaxAI's own, so a
+# header rename only touches FORMATS.
+LATIN = "latin"
+LABEL = "label"
+
+# The headers a file can have: its Latin column, then the label columns,
+# the first filled one winning. The last label column is required.
+FORMATS = (
+    # The names agreed in AddaxAI#136 (2026-11-19). input_common and
+    # output_alt_name are notes for the reader and not used.
+    ("input_latin", ("output_name",)),
+    # The files that exist today, as MegaDetector reads them: the label is
+    # original_common when it is filled, common otherwise.
+    ("latin", ("original_common", "common")),
+)
 
 # The names the pinned megadetector (10.0.28) reads, for the file
 # `write_md_taxa_list` hands it. Once the pin moves to the release with
-# the rename, these become INPUT_LATIN and USER_TAXON_NAME.
+# the rename, these become input_latin and output_name.
 MD_LATIN = "latin"
 MD_COMMON = "common"
 
+# The classification_model_id prefix of a retired list row: one a list no
+# longer names but a verified detection or confirmed observation still
+# uses (relink_taxa_list_labels). The row's id follows it.
+RETIRED = "retired-taxa-list:"
+
 # The cap on a custom label's name (LabelName in schemas/project.py).
 MAX_LABEL_LENGTH = 200
+
+# A refusal lists every bad row up to this many, each with at most this
+# much of its Latin name: the form shows them all, and a shared file can
+# be any size.
+MAX_PROBLEMS = 100
+MAX_SHOWN_LATIN = 80
 
 
 class TaxaListError(ValueError):
@@ -100,65 +124,79 @@ def load_speciesnet_taxa(taxonomy_path: str) -> dict[str, dict[str, str]]:
     return taxa
 
 
-def check_rows(rows: list[dict[str, str]], taxa: dict[str, dict[str, str]]) -> None:
+def check_rows(
+    rows: list[dict[str, str]],
+    taxa: dict[str, dict[str, str]],
+    line_numbers: list[int] | None = None,
+) -> None:
     """
     Refuse a taxa list with any row `restrict_to_taxa_list` would refuse,
-    and the rows it would silently drop or skip: an empty field, or a
-    taxon listed twice. Raises TaxaListError naming every bad row.
+    and the rows it would silently drop: a row without a label, or a taxon
+    listed twice. Raises TaxaListError naming every bad row, by the line
+    of the file when `line_numbers` has it (the header is line 1).
     """
     problems: list[str] = []
     seen: set[str] = set()
-    # Numbered as a spreadsheet shows the file: the header is row 1.
-    # ponytail: a blank line in the file shifts the rows below it by one.
-    for n, row in enumerate(rows, start=2):
-        latin = row[INPUT_LATIN]
-        name = row[USER_TAXON_NAME]
-        where = f"Row {n} ({latin or 'empty'})"
-        if not latin or not name:
-            problems.append(f"{where}: {INPUT_LATIN} and {USER_TAXON_NAME} are both required")
-        elif len(name) > MAX_LABEL_LENGTH:
-            problems.append(
-                f"{where}: {USER_TAXON_NAME} is longer than {MAX_LABEL_LENGTH} characters"
-            )
+    for n, row in zip(line_numbers or range(2, len(rows) + 2), rows, strict=True):
+        latin = row[LATIN]
+        label = row[LABEL]
+        where = f"Row {n} ({latin[:MAX_SHOWN_LATIN] or 'empty'})"
+        if not latin or not label:
+            problems.append(f"{where}: needs both a Latin name and a label")
+        elif len(label) > MAX_LABEL_LENGTH:
+            problems.append(f"{where}: the label is longer than {MAX_LABEL_LENGTH} characters")
         elif latin in seen:
             problems.append(f"{where}: this taxon is listed twice")
         elif latin not in taxa:
             problems.append(f"{where}: not a SpeciesNet taxon")
         seen.add(latin)
     if not rows:
-        problems.append("The file has no rows")
+        problems.append("The file has no rows with a Latin name")
+    if len(problems) > MAX_PROBLEMS:
+        problems[MAX_PROBLEMS:] = [f"and {len(problems) - MAX_PROBLEMS} more"]
     if problems:
         raise TaxaListError(problems)
 
 
 def parse_taxa_list(text: str, taxa: dict[str, dict[str, str]]) -> list[dict[str, str]]:
     """
-    Read a taxa list .csv into rows of the two columns AddaxAI uses.
+    Read a taxa list .csv, in either format of FORMATS, into stored rows.
 
     Values are stripped and lowercased, as MegaDetector does, so a row's
-    user_taxon_name is the label that ends up on the detections.
+    label is the label that ends up on the detections. Rows without a
+    Latin name are skipped.
     """
     reader = csv.DictReader(io.StringIO(text.lstrip("﻿")))
     columns = [c.strip() for c in reader.fieldnames or []]
-    missing = [c for c in (INPUT_LATIN, USER_TAXON_NAME) if c not in columns]
-    if missing:
-        raise TaxaListError([f"Missing column: {c}" for c in missing])
+    fmt = next((f for f in FORMATS if f[0] in columns), None)
+    if fmt is None:
+        raise TaxaListError(
+            [f"Missing column: {FORMATS[0][0]} (or {FORMATS[1][0]} in the older format)"]
+        )
+    latin_column, label_columns = fmt
+    if label_columns[-1] not in columns:
+        raise TaxaListError([f"Missing column: {label_columns[-1]}"])
     reader.fieldnames = columns
-    rows = normalize_rows(
-        row
-        for row in reader
-        if any(v.strip() for v in row.values() if isinstance(v, str))
-    )
-    check_rows(rows, taxa)
+
+    rows: list[dict[str, str]] = []
+    line_numbers: list[int] = []
+    for raw in reader:
+        latin = (raw.get(latin_column) or "").strip().lower()
+        if not latin:
+            continue
+        labels = ((raw.get(c) or "").strip() for c in label_columns)
+        rows.append({LATIN: latin, LABEL: next((v for v in labels if v), "").lower()})
+        line_numbers.append(reader.line_num)
+    check_rows(rows, taxa, line_numbers)
     return rows
 
 
 def normalize_rows(rows: Iterable[dict]) -> list[dict[str, str]]:
-    """Keep the two columns AddaxAI uses, stripped and lowercased."""
+    """Keep the two keys of a stored row, stripped and lowercased."""
     return [
         {
-            INPUT_LATIN: (row.get(INPUT_LATIN) or "").strip().lower(),
-            USER_TAXON_NAME: (row.get(USER_TAXON_NAME) or "").strip().lower(),
+            LATIN: (row.get(LATIN) or "").strip().lower(),
+            LABEL: (row.get(LABEL) or "").strip().lower(),
         }
         for row in rows
     ]
@@ -170,12 +208,12 @@ def write_md_taxa_list(rows: list[dict[str, str]], path: Path) -> None:
         writer = csv.writer(f)
         writer.writerow([MD_LATIN, MD_COMMON])
         for row in rows:
-            writer.writerow([row[INPUT_LATIN], row[USER_TAXON_NAME]])
+            writer.writerow([row[LATIN], row[LABEL]])
 
 
 def mapped_labels(rows: list[dict[str, str]]) -> list[str]:
     """The labels a taxa list produces, in file order, each once."""
-    return list(dict.fromkeys(row[USER_TAXON_NAME] for row in rows))
+    return list(dict.fromkeys(row[LABEL] for row in rows))
 
 
 def shared_taxa(
@@ -188,8 +226,8 @@ def shared_taxa(
     """
     chains_by_label: dict[str, list[dict[str, str]]] = {}
     for row in rows:
-        chains_by_label.setdefault(row[USER_TAXON_NAME], []).append(
-            taxa[row[INPUT_LATIN]]
+        chains_by_label.setdefault(row[LABEL], []).append(
+            taxa[row[LATIN]]
         )
 
     result: dict[str, SharedTaxon] = {}
@@ -258,8 +296,14 @@ def relink_taxa_list_labels(db: Session, project, labels: list[str]) -> None:
     winning over SpeciesNet's impala species, and detections linked before
     a list named their label keep the model's row. Linking only touches
     detections without a row, so they are unlinked first.
+
+    A verified detection (or a track box under a verified card) and a
+    confirmed observation (signed off, or with
+    a count a person set) stay as they are, as on every reprocess: they
+    keep their row, and a stale row one of them uses is retired instead of
+    dropped.
     """
-    from sqlalchemy import func, or_, select, update
+    from sqlalchemy import and_, func, or_, select, union, update
 
     from app.ml.taxonomy_db import batch_resolve_taxonomy_ids, link_detections_to_taxonomy
     from app.models import (
@@ -287,16 +331,39 @@ def relink_taxa_list_labels(db: Session, project, labels: list[str]) -> None:
     names = set(labels) | {name for _, name in stale}
     if not names:
         return
+    # Not human-decided (label_exclusion.is_human_decided): a track box
+    # carries the label of a verified card.
+    open_detection = and_(
+        Detection.verified.is_(False),
+        Detection.classification_method.is_distinct_from("track"),
+    )
+    open_observation = and_(
+        EventObservation.human_count.is_(None),
+        EventObservation.event_id.notin_(select(Event.id).where(Event.confirmed.is_(True))),
+    )
     stale_ids = [row_id for row_id, _ in stale]
     if stale_ids:
-        for model in (Detection, EventObservation):
+        for model, is_open in ((Detection, open_detection), (EventObservation, open_observation)):
             db.execute(
                 update(model)
-                .where(model.label_taxonomy_id.in_(stale_ids))
+                .where(model.label_taxonomy_id.in_(stale_ids), is_open)
                 .values(label_taxonomy_id=None)
             )
-        db.query(LabelTaxonomy).filter(LabelTaxonomy.id.in_(stale_ids)).delete(
-            synchronize_session=False
+        in_use = union(
+            select(Detection.label_taxonomy_id).where(Detection.label_taxonomy_id.in_(stale_ids)),
+            select(EventObservation.label_taxonomy_id).where(
+                EventObservation.label_taxonomy_id.in_(stale_ids)
+            ),
+        )
+        stale_rows = db.query(LabelTaxonomy).filter(LabelTaxonomy.id.in_(stale_ids))
+        stale_rows.filter(LabelTaxonomy.id.notin_(in_use)).delete(synchronize_session=False)
+        # A row still in use is retired: out of every name lookup
+        # (model_scope matches the model id), so the model's own row of
+        # the name wins again, and unique per row. A list that names the
+        # label again takes it back (sync_taxa_mapping_rows).
+        stale_rows.update(
+            {LabelTaxonomy.classification_model_id: RETIRED + LabelTaxonomy.id},
+            synchronize_session=False,
         )
     project_files = (
         select(File.id)
@@ -305,7 +372,11 @@ def relink_taxa_list_labels(db: Session, project, labels: list[str]) -> None:
     )
     db.execute(
         update(Detection)
-        .where(Detection.file_id.in_(project_files), func.lower(Detection.label).in_(names))
+        .where(
+            Detection.file_id.in_(project_files),
+            func.lower(Detection.label).in_(names),
+            open_detection,
+        )
         .values(label_taxonomy_id=None)
     )
     db.flush()
@@ -327,6 +398,7 @@ def relink_taxa_list_labels(db: Session, project, labels: list[str]) -> None:
             .where(
                 EventObservation.event_id.in_(project_events),
                 func.lower(EventObservation.label) == name,
+                open_observation,
             )
             .values(label_taxonomy_id=resolved[name][0] if name in resolved else None)
         )
@@ -344,23 +416,32 @@ def sync_taxa_mapping_rows(
     the project, with the ranks of the taxon its rows share. The project's
     row wins over the model's own row of the same name, so a custom
     "impala" on the genus does not read as SpeciesNet's impala species.
+    A retired row of the label is taken back, so what a person verified on
+    it is under the label again.
     """
+    from sqlalchemy import or_
+
     from app.models.label_taxonomy import LabelTaxonomy
 
+    project_rows = db.query(LabelTaxonomy).filter(
+        LabelTaxonomy.project_id == project_id,
+        or_(
+            LabelTaxonomy.classification_model_id == model_id,
+            LabelTaxonomy.classification_model_id.startswith(RETIRED, autoescape=True),
+        ),
+    )
+    # The model's row last, so it wins over a retired row of the name.
     existing = {
         row.name: row
-        for row in db.query(LabelTaxonomy).filter(
-            LabelTaxonomy.classification_model_id == model_id,
-            LabelTaxonomy.project_id == project_id,
-        )
+        for row in sorted(project_rows, key=lambda r: r.classification_model_id == model_id)
     }
     for label, shared in shared_taxa(rows, taxa).items():
         entry = existing.get(label) or LabelTaxonomy(
-            classification_model_id=model_id,
             name=label,
             project_id=project_id,
             is_custom=False,
         )
+        entry.classification_model_id = model_id
         entry.taxon_class = shared.ranks.get("class")
         entry.taxon_order = shared.ranks.get("order")
         entry.taxon_family = shared.ranks.get("family")
@@ -382,6 +463,9 @@ def sync_taxa_mapping_rows(
         )
         if label not in existing:
             db.add(entry)
+    # Written now: relink reads the rows back in SQL (no autoflush), and
+    # a revived row must not look retired there.
+    db.flush()
     logger.info(
         f"Taxa list for project {project_id}: {len(mapped_labels(rows))} labels"
     )

@@ -22,6 +22,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Check, ChevronsUpDown, Loader2, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
+import { Callout } from "../ui/callout";
 import {
   Popover,
   PopoverContent,
@@ -48,9 +49,6 @@ const ALL_LABELS_LABEL = "All labels";
 /** Second entry: load a custom taxa list instead of a country. */
 const TAXA_LIST_LABEL = "Custom taxa list (.csv)";
 
-/** Bad rows shown in the refusal toast; the rest are counted. */
-const MAX_PROBLEMS_SHOWN = 5;
-
 /** Button prompt while no choice has been made yet. */
 const CHOOSE_PROMPT = "Select a country";
 
@@ -61,13 +59,14 @@ const CHOOSE_PROMPT = "Select a country";
  * run) stay in sync, and reusing the cached geofence query means calling this
  * next to the field adds no extra request.
  */
-export function useLabelSelectionCaption(modelId: string): string {
+export function useLabelSelectionCaption(modelId: string, hasTaxaList: boolean): string {
   const { data: geofence } = useQuery({
     queryKey: ["model-geofence", modelId],
     queryFn: () => modelsApi.getModelGeofence(modelId),
     enabled: !!modelId,
     staleTime: Infinity,
   });
+  if (hasTaxaList) return "Your taxa list sets which labels the AI can give.";
   return geofence?.has_geofence && geofence.countries
     ? "Filter species to the country where your cameras are."
     : "Pick which species the AI can identify, to cut false positives.";
@@ -113,6 +112,9 @@ export function LabelSelectionField({
   const [modalOpen, setModalOpen] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
   const [applying, setApplying] = useState(false);
+  // A refused file and every bad row in it, shown until the next pick:
+  // the user fixes those rows in the file, so they need to stay readable.
+  const [refused, setRefused] = useState<{ fileName: string; problems: string[] } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Countries list for the dropdown (only present for geofence models).
@@ -190,6 +192,7 @@ export function LabelSelectionField({
   const applyLocation = useCallback(
     async (country: string | null, state: string | null) => {
       setLocationOpen(false);
+      setRefused(null);
       if (!country || country === ALL_LABELS_CODE) {
         onTaxaMappingChange(null);
         onLocationChange(country, state);
@@ -220,6 +223,7 @@ export function LabelSelectionField({
   };
   const loadTaxaList = async (file: File) => {
     setApplying(true);
+    setRefused(null);
     try {
       const mapping = await modelsApi.readTaxaList(modelId, file.name, await file.text());
       onTaxaMappingChange(mapping);
@@ -231,19 +235,9 @@ export function LabelSelectionField({
         detail && typeof detail === "object" && "problems" in detail
           ? (detail as { problems: string[] }).problems
           : [];
-      const hidden = problems.length - MAX_PROBLEMS_SHOWN;
-      toast.error(`Could not use ${file.name}`, {
-        description:
-          problems.length > 0 ? (
-            <ul>
-              {problems.slice(0, MAX_PROBLEMS_SHOWN).map((p) => (
-                <li key={p}>{p}</li>
-              ))}
-              {hidden > 0 && <li>and {hidden} more</li>}
-            </ul>
-          ) : (
-            "The file could not be read."
-          ),
+      setRefused({
+        fileName: file.name,
+        problems: problems.length > 0 ? problems : ["The file could not be read."],
       });
     } finally {
       setApplying(false);
@@ -401,6 +395,15 @@ export function LabelSelectionField({
               before a country pick would be clobbered by the geofence
               recompute anyway. */}
           {!isPrompt && summary}
+          {refused && (
+            <Callout variant="error" size="compact" title={`Could not use ${refused.fileName}`}>
+              <ul className="max-h-40 overflow-y-auto">
+                {refused.problems.map((p) => (
+                  <li key={p}>{p}</li>
+                ))}
+              </ul>
+            </Callout>
+          )}
           {error && (
             <p className="pl-3 text-xs font-medium text-destructive">
               {error}

@@ -301,6 +301,7 @@ export default function SettingsPage() {
       ?.full_image_cls === true;
   const labelCaption = useLabelSelectionCaption(
     classificationModelId && classificationModelId !== "none" ? classificationModelId : "",
+    !!form.watch("taxa_mapping"),
   );
   const embeddingModelId = form.watch("embedding_model_id");
   const countryCode = form.watch("country_code");

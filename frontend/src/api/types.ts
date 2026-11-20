@@ -30,7 +30,7 @@ export type MediaFilter = "all" | "images" | "videos";
  *  from `modelsApi.readTaxaList` already checked and lowercased. */
 export interface TaxaMapping {
   file_name: string;
-  rows: { input_latin: string; user_taxon_name: string }[];
+  rows: { latin: string; label: string }[];
 }
 
 export interface ProjectCreate {
