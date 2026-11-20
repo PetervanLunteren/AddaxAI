@@ -9,7 +9,7 @@
  * only its body, how to start, and how to describe its result.
  *
  * Mount it only while it is open (ExportPage does), so every opening
- * starts from the defaults.
+ * starts from the defaults, in the folder the last export went to.
  */
 
 import { useEffect, useState, type ReactNode } from "react";
@@ -18,6 +18,7 @@ import { CheckCircle2, FolderOpen } from "lucide-react";
 
 import { deploymentsApi } from "../../api/deployments";
 import type { ExportScope } from "../../api/export";
+import { loadLastExportFolder, saveLastExportFolder } from "../../lib/export-prefs";
 import { useTaskProgress } from "../../hooks/useTaskProgress";
 import { FolderSelector } from "../analyses/FolderSelector";
 import { Button } from "../ui/button";
@@ -125,7 +126,10 @@ export function ExportDialog({
   children,
 }: ExportDialogProps) {
   const [phase, setPhase] = useState<Phase>({ kind: "form", error: null });
-  const [outputDir, setOutputDir] = useState("");
+  // Starts where the last export went (`export-prefs`). A folder that is
+  // gone by now fails Start with the backend's "Choose a folder" message,
+  // and Change is one click away.
+  const [outputDir, setOutputDir] = useState(loadLastExportFolder);
   const [cancelling, setCancelling] = useState(false);
 
   const { data: deployments } = useQuery({
@@ -164,6 +168,7 @@ export function ExportDialog({
 
   const onStart = async () => {
     setPhase({ kind: "running", jobId: null });
+    if (needsFolder) saveLastExportFolder(outputDir);
     try {
       const started = await start(outputDir);
       if ("jobId" in started) setPhase({ kind: "running", jobId: started.jobId });

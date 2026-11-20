@@ -20,12 +20,11 @@ import {
 import { projectsApi } from "../../api/projects";
 import { NO_SITE_SENTINEL } from "../../lib/filter-url";
 import {
+  FRAMES_TABLE_CAPTION,
   FRAMES_TABLE_LABEL,
-  framesTableCaption,
   loadIncludeFrames,
   saveIncludeFrames,
-} from "../../lib/frames-table";
-import { cn } from "../../lib/utils";
+} from "../../lib/export-prefs";
 import { Callout } from "../ui/callout";
 import { CaptionedRadioGroup } from "../ui/captioned-radio-group";
 import { ExportDialog, ExportSection, type ExportResultView } from "./ExportDialog";
@@ -41,7 +40,7 @@ function describeWritten(data: unknown): ExportResultView {
     title: files.length === 1 ? "File written" : `${files.length} files written`,
     folder: output_dir,
     details: (
-      <ul className="space-y-1 font-mono text-xs text-muted-foreground">
+      <ul className="space-y-1 px-3 font-mono text-xs text-muted-foreground">
         {files.map((name) => (
           <li key={name}>{name}</li>
         ))}
@@ -97,7 +96,7 @@ const TABLE_FORMATS = [
   {
     value: "xlsx" as const,
     label: "Excel workbook (XLSX)",
-    caption: "One file with five sheets: Summary, Counts, Detections, Files and Deployments.",
+    caption: "One file with a sheet per table: Summary, Counts, Detections, Files and Deployments.",
   },
   {
     value: "csv" as const,
@@ -115,7 +114,6 @@ export function SpreadsheetExportDialog({ projectId, onClose }: ExportDialogComp
   const [scope, setScope] = useState<ExportScope | undefined>();
   const [format, setFormat] = useState<ObservationFormat>("xlsx");
   const [includeFrames, setIncludeFrames] = useState(loadIncludeFrames);
-  const excel = format === "xlsx";
   return (
     <ExportDialog
       projectId={projectId}
@@ -143,23 +141,21 @@ export function SpreadsheetExportDialog({ projectId, onClose }: ExportDialogComp
           onChange={setFormat}
           options={TABLE_FORMATS}
         />
-        <label
-          className={cn(
-            "flex items-start gap-3 rounded-md border px-3 py-3 text-sm",
-            excel ? "cursor-not-allowed text-muted-foreground" : "cursor-pointer",
-          )}
-        >
+      </ExportSection>
+      {/* What goes in, not which file type, so not under Format. "Contents"
+          is the title the Camtrap DP and bundle dialogs use for this. */}
+      <ExportSection title="Contents">
+        <label className="flex cursor-pointer items-start gap-3 rounded-md border px-3 py-3 text-sm">
           <input
             type="checkbox"
             className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
             checked={includeFrames}
-            disabled={excel}
             onChange={(e) => setIncludeFrames(e.target.checked)}
           />
           <span>
             {FRAMES_TABLE_LABEL}
             <span className="mt-0.5 block text-xs text-muted-foreground">
-              {framesTableCaption(excel)}
+              {FRAMES_TABLE_CAPTION}
             </span>
           </span>
         </label>

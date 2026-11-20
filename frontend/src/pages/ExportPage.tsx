@@ -36,7 +36,7 @@ const EXPORTS: ExportKind[] = [
     id: "spreadsheet",
     title: "Spreadsheet",
     description:
-      "Summary, counts, detections, files and deployments, including species labels and your corrections. For videos, CSV and TSV also save every frame.",
+      "Summary, counts, detections, files and deployments, including species labels and your corrections.",
     Dialog: SpreadsheetExportDialog,
   },
   {

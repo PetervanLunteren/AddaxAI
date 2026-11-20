@@ -343,7 +343,7 @@ def _collect_outputs(client, db, project) -> dict[str, str]:
     write_tables_csv(db, project.id, folder, include_frames=True)
     for path in sorted(folder.iterdir()):
         outputs[f"folder-run-{path.name}"] = _csv_text(path.read_bytes())
-    write_tables_xlsx(db, project.id, folder)
+    write_tables_xlsx(db, project.id, folder, include_frames=False)
     outputs["folder-run-spreadsheet.xlsx.txt"] = _xlsx_text(
         (folder / "addaxai-spreadsheet.xlsx").read_bytes()
     )

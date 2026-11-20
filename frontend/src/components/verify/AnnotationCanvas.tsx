@@ -703,6 +703,13 @@ export function AnnotationCanvas({
       {/* A frame of a clip on its way: say so at once, and why past a
           few seconds. Keyed by the frame, so each wait starts at zero. */}
       {loading && file.file_type === "video" && <FrameWait key={imageUrl} />}
+      {/* Holding I with nothing extra stored: say so, or the hold looks
+          broken. FrameWait's chip, so the two read as one family. */}
+      {showAllBoxes && !loading && storedOnlyBoxes.length === 0 && (
+        <div className="pointer-events-none absolute left-2 top-2 z-10 rounded bg-black/60 px-2 py-1 text-xs text-white">
+          No other boxes on this frame
+        </div>
+      )}
       {/* The frame gate's look (header): while the picture asked for
           is on its way, the old one is dimmed and blurred and takes no
           pointer. The chip above stays crisp. */}

@@ -20,7 +20,7 @@ AddaxAI exports six tables. Which one you want depends on the question you are a
 | Summary | one species | a quick overview of what was found and how much | Both |
 | Counts | one species in one event | ecological analysis. Start here | Both |
 | Detections | one box on a photo, or one animal in a video | model checking, bounding boxes, time on screen | Both |
-| Frames | one box on one video frame | movement, per frame analysis | Both, CSV only, when ticked |
+| Frames | one box on one video frame | movement, per frame analysis | Both, when ticked |
 | Files | one photo or video | one label per file, file lists, finding blanks | Both |
 | Deployments | one camera period | effort, trap nights, locations | Projects |
 
@@ -141,7 +141,7 @@ One thing to know before you read too much into that. `ai_classification_label` 
 
 ## Frames
 
-Every box of every animal in the Detections table, one row per checked video frame. It is by far the largest table, so it is only written when you tick **Include the frames table** next to the format, and only as CSV or TSV: it has too many rows for an Excel sheet. The choice is remembered for the next export. Same columns as the Detections table, without the `track_` span columns and with:
+Every box of every animal in the Detections table, one row per checked video frame. It is by far the largest table, so it is only written when you tick 'Include the frames table' next to the format. Same columns as the Detections table, without the `track_` span columns and with:
 
 | Column | Meaning |
 |---|---|

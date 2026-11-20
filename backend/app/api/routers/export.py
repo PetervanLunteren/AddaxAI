@@ -3,8 +3,8 @@ Export endpoints for project data. Every export writes into a folder and
 answers with what it wrote; nothing is a browser download.
 
 - ``/tables``: Summary, Counts, Detections, Files and Deployments, as one
-  XLSX workbook or five CSV / TSV files. CSV / TSV also write the Frames
-  table when asked and the scope holds a video.
+  XLSX workbook or five CSV / TSV files, plus the Frames table when asked
+  and the scope holds a video.
 - ``/spatial``: GIS layers as GeoPackage, GeoJSON or a Shapefile ZIP.
 - ``/camtrap-dp/prepare``: a job writing a Camera Trap Data Package ZIP.
 - ``/recognition-json/prepare``: a job writing the Timelapse recognition
@@ -148,14 +148,15 @@ async def _write(build_and_write: Callable[[], _T]) -> _T:
         ) from e
 
 
-# The five tables, in the workbook's sheet order, as the kind in their
-# CSV / TSV file names.
+# The tables, in the workbook's sheet order, as the kind in their CSV /
+# TSV file names. Frames comes last and only when asked for.
 _TABLE_FILE_NAMES = {
     "Summary": "summary",
     "Counts": "counts",
     "Detections": "detections",
     "Files": "files",
     "Deployments": "deployments",
+    "Frames": "frames",
 }
 
 
@@ -167,13 +168,14 @@ async def export_tables(
 ) -> WrittenFiles:
     """Summary, Counts, Detections, Files and Deployments.
 
-    XLSX writes one workbook with five sheets, CSV and TSV write five
-    files; either way every table is streamed to disk row by row. CSV and
-    TSV add the Frames table (every box of every track, one row per
-    sampled frame) when ``include_frames`` is on and the scope holds a
-    video. It is opt-in because it is the largest table by far and only
-    per-frame work needs it. It is never a sheet: a marine project
-    outgrows Excel's row limit.
+    XLSX writes one workbook with a sheet per table, CSV and TSV a file
+    per table; either way every table is streamed to disk row by row. The
+    Frames table (every box of every track, one row per sampled frame) is
+    added when ``include_frames`` is on and the scope holds a video. It is
+    opt-in because it is the largest table by far and only per-frame work
+    needs it. A Frames sheet past Excel's row limit fails the export with
+    the guard's message naming CSV as the way out (`XlsxRowLimitError`),
+    so nothing is counted up front.
     """
     project = _resolve_project(project_id, db)
     scope = _scope(db, project, body.deployment_ids)
@@ -181,6 +183,12 @@ async def export_tables(
 
     def build_and_write() -> list[str]:
         sheets = export_crud.build_spreadsheet_sheets(db, project, scope)
+        if body.include_frames and export_crud.scope_has_videos(db, project, scope):
+            sheets.append((
+                "Frames",
+                export_crud.FRAMES_HEADERS,
+                export_crud.iter_frames_rows(db, project, deployment_ids=scope),
+            ))
         if body.format == "xlsx":
             path = export_formats.unique_export_path(
                 folder, export_formats.export_file_name(project.name, "spreadsheet", "xlsx")
@@ -197,17 +205,6 @@ async def export_tables(
                 ),
             )
             export_formats.write_csv(path, headers, rows, delimiter=delimiter)
-            names.append(path.name)
-        if body.include_frames and export_crud.scope_has_videos(db, project, scope):
-            path = export_formats.unique_export_path(
-                folder, export_formats.export_file_name(project.name, "frames", body.format)
-            )
-            export_formats.write_csv(
-                path,
-                export_crud.FRAMES_HEADERS,
-                export_crud.iter_frames_rows(db, project, deployment_ids=scope),
-                delimiter=delimiter,
-            )
             names.append(path.name)
         return names
 

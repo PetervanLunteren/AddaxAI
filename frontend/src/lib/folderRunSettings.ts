@@ -127,7 +127,7 @@ export interface PersistedSaveOutputsSettings {
    * separate CSV / XLSX checkboxes became one row with a picker. */
   spreadsheet?: boolean;
   format?: "csv" | "xlsx";
-  /** Add the frames table to a CSV save. Absent in older objects: off. */
+  /** Add the frames table to the spreadsheet. Absent in older objects: off. */
   includeFrames?: boolean;
   /** Written by versions before that change. Still read so an existing
    * user's choice survives the upgrade; never written any more. */

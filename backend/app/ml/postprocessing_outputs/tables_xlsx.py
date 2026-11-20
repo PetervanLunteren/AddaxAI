@@ -1,14 +1,15 @@
 """Folder-run tabular XLSX output.
 
-One workbook with four sheets, Summary, Counts, Detections and Files: the
-same four tables as the folder-run CSV export, in one file, in the order
+One workbook with four sheets, Summary, Counts, Detections and Files, and
+a fifth, Frames, when asked: the same tables as the folder-run CSV
+export, in one file, in the order
 the projects workbook uses (``export_crud.build_spreadsheet_sheets``). The
 projects-mode Deployments sheet is absent on purpose: a folder run has no
 sites and no real deployment. The sheets wrap the shared ``export_crud``
 builders and are trimmed to the same column set as the folder-run CSVs;
-see ``_table_columns`` for which columns and why. The CSV export's
-fifth table, Frames, is not a sheet: one row per box per sampled frame
-outgrows Excel's row limit on a marine run.
+see ``_table_columns`` for which columns and why. A Frames sheet can
+pass Excel's row limit on a marine run; the workbook is then not written
+and the result says why (see below).
 
 Writes ``<target_dir>/addaxai-spreadsheet.xlsx``.
 """
@@ -51,9 +52,12 @@ def write_tables_xlsx(
     db: Session,
     project_id: str,
     target_dir: Path,
+    *,
+    include_frames: bool,
 ) -> TablesXlsxResult:
-    """Write the four-sheet ``addaxai-spreadsheet.xlsx`` (Summary, Counts,
-    Detections, Files)."""
+    """Write ``addaxai-spreadsheet.xlsx``: Summary, Counts, Detections,
+    Files, and Frames when ``include_frames`` is on and the run holds a
+    video."""
     project = db.get(Project, project_id)
     if project is None:
         raise ValueError(f"Project {project_id!r} not found")
@@ -76,6 +80,13 @@ def write_tables_xlsx(
         ("Detections", *folder_run_table(*export_crud.build_detection_rows(db, project))),
         ("Files", *folder_run_table(*export_crud.build_files_rows(db, project))),
     ]
+    if include_frames and export_crud.scope_has_videos(db, project):
+        sheets.append((
+            "Frames",
+            *folder_run_table(
+                export_crud.FRAMES_HEADERS, export_crud.iter_frames_rows(db, project)
+            ),
+        ))
 
     output_path = target_dir / XLSX_FILENAME
     # A run too big for the XLSX format reports the reason and writes

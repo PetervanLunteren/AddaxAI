@@ -3898,9 +3898,10 @@ def test_frames_export_respects_excluded_classes_and_deployment_scope(client, db
     assert {r[h["classification_label"]] for r in rows} == {"fox"}
 
 
-def test_frames_export_writes_a_tsv_and_never_a_sheet(client, db):
-    """CSV and TSV write the Frames table next to the other five; XLSX
-    leaves it out: a marine project outgrows an Excel sheet."""
+def test_frames_export_writes_a_tsv_file_and_an_xlsx_sheet(client, db):
+    """Asked for, the Frames table is a file next to the other five in
+    CSV and TSV, and the last sheet in XLSX. A Frames sheet past Excel's
+    row limit is refused by the shared guard, like any other sheet."""
     project, _site, deployment = _build_simple_project(db, timezone="UTC")
     _tracked_clip(db, deployment)
     db.commit()
@@ -3916,7 +3917,7 @@ def test_frames_export_writes_a_tsv_and_never_a_sheet(client, db):
     from openpyxl import load_workbook
 
     sheets = load_workbook(io.BytesIO(resp.content), read_only=True).sheetnames
-    assert "Frames" not in sheets and "Detections" in sheets
+    assert sheets[-1] == "Frames" and "Detections" in sheets
 
 
 def test_files_export_lists_every_label_sorted_and_pipe_separated(client, db):
@@ -4010,8 +4011,26 @@ def test_frames_export_is_left_out_when_the_scope_holds_no_video(client, db):
     # Opt-in: off, a video scope gets the five tables and no frames file.
     assert len(written(include_frames=False)) == 5
     assert any(n.startswith("frames-") for n in written(fmt="tsv"))
-    # XLSX never carries it, whatever the flag says.
-    assert len(written(fmt="xlsx")) == 1
+    # XLSX carries it as a sheet when asked, in the one workbook.
+    from openpyxl import load_workbook
+
+    [book] = written(fmt="xlsx")
+    assert book.startswith("spreadsheet-")
+    out = tempfile.mkdtemp()
+    client.post(
+        f"/api/projects/{project.id}/export/tables",
+        json={"output_dir": out, "format": "xlsx", "include_frames": True},
+    )
+    [name] = os.listdir(out)
+    wb = load_workbook(Path(out) / name, read_only=True)
+    assert wb.sheetnames[-1] == "Frames"
+    out = tempfile.mkdtemp()
+    client.post(
+        f"/api/projects/{project.id}/export/tables",
+        json={"output_dir": out, "format": "xlsx", "include_frames": False},
+    )
+    [name] = os.listdir(out)
+    assert "Frames" not in load_workbook(Path(out) / name, read_only=True).sheetnames
     h, rows = _csv(client, project.id, "frames")
     assert next(iter(h)) == "detection_id" and rows == []
 

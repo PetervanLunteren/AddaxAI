@@ -908,12 +908,14 @@ def test_ticking_run_details_still_writes_the_run_info_file(
 
 
 
-def test_the_frames_file_is_written_only_when_asked(
+def test_the_frames_table_is_written_only_when_asked(
     client, db, tmp_path, monkeypatch
 ):
     """The Save step's "Include the frames table", through the endpoint
-    and the worker: a run holding a video writes ``addaxai-frames.csv``
-    only with ``include_frames``."""
+    and the worker, for both formats: a run holding a video writes
+    ``addaxai-frames.csv`` or a Frames sheet only with ``include_frames``."""
+    from openpyxl import load_workbook
+
     source = tmp_path / "src"
     source.mkdir()
     run_id = _create_run(client, str(source))
@@ -921,15 +923,15 @@ def test_the_frames_file_is_written_only_when_asked(
     make_file(db, deployment_id=dep.id, file_type="video", file_format="mp4")
     db.commit()
 
-    def save(include_frames: bool) -> Path:
-        out = tmp_path / f"out-{include_frames}"
+    def save(fmt: str, include_frames: bool) -> Path:
+        out = tmp_path / f"out-{fmt}-{include_frames}"
         out.mkdir()
         resp = client.post(
             f"/api/folder-runs/{run_id}/save-outputs",
             json={
                 "media_threshold": 0.5,
                 "output_dir": str(out),
-                "csv": True,
+                fmt: True,
                 "include_frames": include_frames,
                 "run_readme": False,
             },
@@ -938,10 +940,16 @@ def test_the_frames_file_is_written_only_when_asked(
         _run_save_worker(db, monkeypatch, resp.json()["job_id"])
         return out
 
-    without = save(False)
+    without = save("csv", False)
     assert (without / "addaxai-files.csv").is_file()
     assert not (without / "addaxai-frames.csv").exists()
-    assert (save(True) / "addaxai-frames.csv").is_file()
+    assert (save("csv", True) / "addaxai-frames.csv").is_file()
+
+    def sheets(out: Path) -> list[str]:
+        return load_workbook(out / "addaxai-spreadsheet.xlsx", read_only=True).sheetnames
+
+    assert "Frames" not in sheets(save("xlsx", False))
+    assert sheets(save("xlsx", True))[-1] == "Frames"
 
 def test_save_outputs_job_payload_carries_the_whole_request(
     client, db, tmp_path

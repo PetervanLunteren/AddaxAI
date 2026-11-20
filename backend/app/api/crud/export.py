@@ -1713,9 +1713,8 @@ def build_spreadsheet_sheets(
     """The tables that make up the project Export page's combined
     spreadsheet: Summary, Counts, Detections, Files, and Deployments. The
     folder-run Save step writes its own four-sheet workbook (the same minus
-    Deployments) from the same row builders. The Frames table is never a
-    sheet: a marine project outgrows Excel's row limit, so it is CSV / TSV
-    only (``iter_frames_rows``).
+    Deployments) from the same row builders. The Frames table is not in
+    this list: it is opt-in, and the callers append it (``iter_frames_rows``).
 
     **Sheet order is the docs order, broadest question first.** A
     workbook opens on its first sheet, so that sheet is what a user
@@ -1725,9 +1724,8 @@ def build_spreadsheet_sheets(
     metadata. Summary leads because "which species, and how many" is the
     question the file is opened for; Counts follows as the analysis-ready
     table `docs/docs/reference/exports.md` tells people to start with.
-    Keep the two in step. The CSV / TSV export writes these same five
-    tables as five files, in this order, and the Frames table after them
-    when the scope holds a video.
+    Keep the two in step. The CSV / TSV export writes these same tables
+    as one file each, in this order, the Frames table last when asked.
 
     ``deployment_ids`` narrows every sheet to a subset of the project's
     deployments; None exports everything.

@@ -18,6 +18,7 @@ from tests.conftest import (
     make_detection,
     make_file,
     make_project,
+    make_track,
 )
 
 # XLSX files are ZIP archives. ZIP magic is "PK\x03\x04".
@@ -55,7 +56,7 @@ def test_writes_four_sheet_workbook(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    result = write_tables_xlsx(db, project.id, target)
+    result = write_tables_xlsx(db, project.id, target, include_frames=False)
 
     assert result.output_path.endswith(XLSX_FILENAME)
     output_path = target / XLSX_FILENAME
@@ -111,7 +112,7 @@ def test_files_sheet_keeps_the_species_columns(db, tmp_path):
     )
 
     target = tmp_path / "out"
-    write_tables_xlsx(db, project.id, target)
+    write_tables_xlsx(db, project.id, target, include_frames=False)
 
     wb = load_workbook(target / XLSX_FILENAME)
     rows = list(wb["Files"].values)
@@ -131,4 +132,39 @@ def test_files_sheet_keeps_the_species_columns(db, tmp_path):
 
 def test_unknown_project_raises(db, tmp_path):
     with pytest.raises(ValueError, match="not found"):
-        write_tables_xlsx(db, "no-such-id", tmp_path / "out")
+        write_tables_xlsx(db, "no-such-id", tmp_path / "out", include_frames=False)
+
+
+def test_frames_sheet_is_added_only_when_asked(db, tmp_path):
+    """A clip with one track of three boxes: with ``include_frames`` the
+    workbook gains a Frames sheet of three rows, without it there is none."""
+    from openpyxl import load_workbook
+
+    project = make_project(db, name="xlsx-frames")
+    dep = make_deployment(db, project_id=project.id)
+    clip = make_file(
+        db,
+        deployment_id=dep.id,
+        file_path=_write_placeholder(tmp_path / "src" / "CLIP.mp4"),
+        file_type="video",
+        file_format="mp4",
+        frame_rate=30.0,
+        best_frame_number=0,
+        observation_type="animal",
+    )
+    track = make_track(db, file_id=clip.id, track_key=1, start_frame=0, end_frame=60,
+                       representative_frame_number=30)
+    for frame in (0, 30, 60):
+        make_detection(db, file_id=clip.id, frame_number=frame, track_id=track.id,
+                       category="animal", confidence=0.9, label="dog")
+
+    def sheets(include_frames: bool, name: str) -> dict[str, int]:
+        result = write_tables_xlsx(db, project.id, tmp_path / name,
+                                   include_frames=include_frames)
+        wb = load_workbook(result.output_path)
+        return {ws.title: ws.max_row - 1 for ws in wb.worksheets}
+
+    assert "Frames" not in sheets(False, "off")
+    on = sheets(True, "on")
+    assert list(on) == ["Summary", "Counts", "Detections", "Files", "Frames"]
+    assert on["Frames"] == 3

@@ -215,11 +215,14 @@ export function TrackTimeline({
 
   // Each step halves the span; the window is centred on the playhead and
   // sticks to the clip's ends, so it needs no scroll position of its own.
+  // No zoom without a bar to look at: an empty lane is only a ruler to
+  // click a moment on, and a zoom left over from the last clip would
+  // otherwise keep that ruler zoomed in with no control to undo it.
   const minWindow = MIN_WINDOW_SECONDS * (frameRate || 30);
-  const maxZoomStep = Math.max(
-    0,
-    Math.ceil(Math.log2(Math.max(1, durationFrames / minWindow))),
-  );
+  const maxZoomStep =
+    totalRows === 0
+      ? 0
+      : Math.max(0, Math.ceil(Math.log2(Math.max(1, durationFrames / minWindow))));
   const step = clamp(zoomStep, 0, maxZoomStep);
   const windowFrames = durationFrames / 2 ** step;
   const windowStart = clamp(

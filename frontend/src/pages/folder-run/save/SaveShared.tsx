@@ -50,8 +50,7 @@ import { LabelFilterModal } from "../../../components/verify/LabelFilterModal";
 import { FolderSelector } from "../../../components/analyses/FolderSelector";
 import { ExportScopeSelect } from "../../../components/export/ExportScopeSelect";
 import { DateRangePicker } from "../../../components/ui/date-range-picker";
-import { cn } from "../../../lib/utils";
-import { FRAMES_TABLE_LABEL, framesTableCaption } from "../../../lib/frames-table";
+import { FRAMES_TABLE_CAPTION, FRAMES_TABLE_LABEL } from "../../../lib/export-prefs";
 import { collectIssues } from "./media-options";
 import type { MediaFormHandles } from "./useMediaOptions";
 import type { UseSaveOutputsFormResult } from "./useSaveOutputsForm";
@@ -72,21 +71,14 @@ export function CaptionedCheckbox({
   onChange,
   label,
   caption,
-  disabled = false,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
   label: string;
   caption: string;
-  disabled?: boolean;
 }) {
   return (
-    <label
-      className={cn(
-        "flex items-center justify-between gap-3 py-3 text-sm",
-        disabled ? "cursor-not-allowed text-muted-foreground" : "cursor-pointer",
-      )}
-    >
+    <label className="flex cursor-pointer items-center justify-between gap-3 py-3 text-sm">
       <span>
         {label}
         <span className="mt-0.5 block text-xs text-muted-foreground">
@@ -97,7 +89,6 @@ export function CaptionedCheckbox({
         type="checkbox"
         className="h-4 w-4 shrink-0 accent-primary"
         checked={checked}
-        disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
       />
     </label>
@@ -510,8 +501,7 @@ export function ExportBody({
             checked={exportOpts.includeFrames}
             onChange={(v) => setExportOpts({ ...exportOpts, includeFrames: v })}
             label={FRAMES_TABLE_LABEL}
-            caption={framesTableCaption(exportOpts.format === "xlsx")}
-            disabled={exportOpts.format === "xlsx"}
+            caption={FRAMES_TABLE_CAPTION}
           />
           {/* Nested because it governs these tables and not the
               recognition file below, which is unfiltered by design. The

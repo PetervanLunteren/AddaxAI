@@ -47,8 +47,8 @@ export interface ExportState {
    * not the recognition JSON beside them. */
   spreadsheet: boolean;
   format: SpreadsheetFormat;
-  /** CSV also writes addaxai-frames.csv when the run holds a video.
-   * Off by default, and moot for Excel (see lib/frames-table). */
+  /** Also write the frames table (a CSV file or an Excel sheet) when the
+   * run holds a video. Off by default (see lib/export-prefs). */
   includeFrames: boolean;
   recognitionJson: boolean;
   /** The addaxai-run-info.txt run manifest (models, settings, results).
@@ -311,11 +311,11 @@ export function useSaveOutputsForm({
         exportOpts.enabled &&
         exportOpts.spreadsheet &&
         exportOpts.format === "csv",
-      include_frames: exportOpts.includeFrames,
       xlsx:
         exportOpts.enabled &&
         exportOpts.spreadsheet &&
         exportOpts.format === "xlsx",
+      include_frames: exportOpts.includeFrames,
       recognition_json: exportOpts.enabled && exportOpts.recognitionJson,
       run_readme: exportOpts.enabled && exportOpts.summary,
     };

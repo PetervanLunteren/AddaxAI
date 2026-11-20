@@ -143,8 +143,8 @@ class TablesExportRequest(ExportTarget):
     """XLSX: one workbook with five sheets. CSV / TSV: five files."""
 
     format: Literal["xlsx", "csv", "tsv"] = "xlsx"
-    # CSV / TSV also write the Frames table, when the scope holds a video.
-    # Ignored for XLSX, which never carries it (too many rows for a sheet).
+    # Also write the Frames table (a sheet or a file), when the scope holds
+    # a video. A sheet past Excel's row limit fails with a message.
     include_frames: bool
 
 
