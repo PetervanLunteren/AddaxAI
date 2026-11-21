@@ -58,3 +58,34 @@ def test_console_lines_go_to_stdout_so_electron_does_not_label_them_errors(
         if type(handler) is logging.StreamHandler
     ]
     assert [handler.stream for handler in console_handlers] == [sys.stdout]
+
+
+def test_log_duration_logs_how_long_the_block_took(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from app.core.logging_config import log_duration
+
+    log = logging.getLogger("addaxai.test")
+    with caplog.at_level(logging.INFO, logger="addaxai.test"):
+        with log_duration(log, "Daily backup"):
+            pass
+
+    [record] = caplog.records
+    assert record.getMessage().startswith("Daily backup took ")
+    assert record.getMessage().endswith("s")
+
+
+def test_log_duration_still_logs_when_the_block_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A step that fails after a long time is the one worth seeing."""
+    from app.core.logging_config import log_duration
+
+    log = logging.getLogger("addaxai.test")
+    with caplog.at_level(logging.INFO, logger="addaxai.test"):
+        with pytest.raises(RuntimeError, match="disk full"):
+            with log_duration(log, "Daily backup"):
+                raise RuntimeError("disk full")
+
+    [record] = caplog.records
+    assert record.getMessage().startswith("Daily backup took ")

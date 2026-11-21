@@ -11,6 +11,9 @@ Sets up rotating file logging to ~/AddaxAI/logs/backend.log
 
 import logging
 import sys
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from logging.handlers import RotatingFileHandler
 
 from app.core.config import get_settings
@@ -148,3 +151,18 @@ def get_logger(name: str) -> logging.Logger:
         Logger instance
     """
     return logging.getLogger(f"addaxai.{name}")
+
+
+@contextmanager
+def log_duration(logger: logging.Logger, what: str) -> Iterator[None]:
+    """
+    Log how long the block took, as "<what> took 12.3s".
+
+    Logged in a `finally`, so a step that fails after a long time shows
+    up too. The exception itself still propagates.
+    """
+    started = time.perf_counter()
+    try:
+        yield
+    finally:
+        logger.info(f"{what} took {time.perf_counter() - started:.1f}s")

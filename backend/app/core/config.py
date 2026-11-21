@@ -99,6 +99,15 @@ class Settings(BaseSettings):
         description="Disable automatic model catalog sync on startup"
     )
 
+    # Requests that take at least this long get one line in the log, so a
+    # user's report of a slow page says which request was slow. 0 logs
+    # every request, which is how speed is measured on a seeded database.
+    slow_request_seconds: float = Field(
+        default=1.0,
+        ge=0,
+        description="Log every request that takes at least this many seconds",
+    )
+
     # HuggingFace mirror (mainland China). ADDAXAI_HF_ENDPOINT is the
     # documented name; the ecosystem-standard HF_ENDPOINT still works as
     # a fallback because huggingface_hub honours it natively and early

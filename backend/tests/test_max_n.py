@@ -315,6 +315,38 @@ def test_recalculation_replaces_old_values(db):
     assert obs[0].max_n == 5
 
 
+def test_recalculation_drops_only_this_events_rows_from_the_session(db):
+    """The old rows leave the session, another event's rows stay in it.
+
+    The delete in `calculate_max_n_for_event` synchronizes the session by
+    the ids SQLite returns ("fetch"), not by testing every loaded object.
+    This pins that the result is still right: a stale row left in the
+    session would be read back as a live observation.
+    """
+    from sqlalchemy import inspect
+
+    project = make_project(db, counting_threshold=0.5)
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+    ev, _, _ = _make_event_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
+        {"detections": [("cow", "animal", 0.9)] * 2},
+    ])
+    other, _, _ = _make_event_with_detections(db, dep.id, datetime(2024, 1, 2, 12), [
+        {"detections": [("bear", "animal", 0.9)]},
+    ])
+    [old] = calculate_max_n_for_event(db, ev.id, 0.5)
+    [kept] = calculate_max_n_for_event(db, other.id, 0.5)
+    db.flush()
+
+    [new] = calculate_max_n_for_event(db, ev.id, 0.5)
+    db.flush()
+
+    assert inspect(old).was_deleted
+    assert old not in db
+    assert kept in db and not inspect(kept).was_deleted
+    assert new.id != old.id and new.max_n == 2
+
+
 def test_get_event_ids_for_detections(db):
     """Helper finds event IDs containing the given detection IDs."""
     project = make_project(db, counting_threshold=0.5)

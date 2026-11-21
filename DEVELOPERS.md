@@ -46,7 +46,21 @@ logger.error("API call failed", { endpoint: "/api/projects", error: err.message 
 
 **A native crash in an ML subprocess leaves its Python stack in the log.** Every env-python spawn goes through `clean_python_env()` (`app/utils/subprocess_env.py`), which sets `PYTHONFAULTHANDLER=1` and `PYTHONUNBUFFERED=1`. On an access violation or segfault the child prints `Fatal Python error` plus the stack of every thread to stderr, which the spawn sites merge into the pipe, so the `MegaDetector:` lines name the call that was running (image load, model load, forward pass) instead of only the exit code. That was the whole record of a user's crash on 2026-10-11 (`MegaDetector failed with return code 3221225477`, five runs, nothing else). Unbuffered output keeps the prints from just before the crash from being discarded with the process. One caveat on Windows: the handler also reports first-chance access violations that a library then handles itself, so a `Windows fatal exception` line in a run that went on to succeed is noise. Read it only from a run that died. The diagnostics bundle's `system.json` carries `cpu_name` and `memory_total_bytes` (`app/utils/machine_info.py`) for the same reason: whether the model fits and whether the CPU is too old are the first two questions on such a report.
 
+**Slow requests and startup steps are timed.** A request that takes at least `ADDAXAI_SLOW_REQUEST_SECONDS` (1 s by default) leaves one line, `Slow request: GET /api/projects/<id>/labels/progress 200 4.21s` (`slow_request_middleware` in `app/main.py`). It logs the path, never the query string, because some query strings carry absolute folder paths and the log goes into diagnostics bundles. For a streamed response the time runs to the headers, which is how long the UI waits. Each startup step logs `<step> took 12.3s` (backups, `init_db`, the job reconcile, each background task) and a last `Startup took Xs`. `ANALYZE` logs its own duration inside `refresh_query_statistics`, so it shows up after every job too. All of it goes through `log_duration` in `app/core/logging_config.py`. Set the threshold to 0 to log every request, which is how speed is measured.
+
 **Log retention:** Automatic rotation at 33MB per file, keeps 3 backups (100MB total, ~7 days). The root logger sits at DEBUG for the beta, and that week only holds if the chatty third-party loggers stay pinned in `setup_logging`: SQLAlchemy at WARNING (one line per query stalled the server) and Pillow at INFO (one line per EXIF tag per image was 87% of a tester's log and rolled the file over in a day). Pin a new firehose there rather than lowering the root.
+
+## Numbers from a user's database
+
+When a user reports that the app is slow with a large database, send them `backend/scripts/addaxai-db-stats.py`. It only reads, and writes `addaxai-db-stats.txt` next to itself with numbers only: rows per table, `sqlite_stat1`, files and detections per numbered deployment, confidence buckets, embedding dimensions and the size of every table and index. No paths, no names, no species. On Windows the user runs it with one line:
+
+```
+"%USERPROFILE%\AddaxAI\envs\env-addaxai-base\python.exe" "%USERPROFILE%\Downloads\addaxai-db-stats\addaxai-db-stats.py"
+```
+
+It runs on the `env-addaxai-base` interpreter on purpose. The SQLite inside the packaged backend (3.45.1) is built without `dbstat`, so the table sizes would fail there.
+
+To reproduce such a database locally, `backend/scripts/seed_large_image_database.py` builds about 1M photos in the shape of a real report, and `seed_large_video_project.py` builds a large video project for export tests. Both refuse to write anywhere but a throwaway `ADDAXAI_USER_DATA_DIR` (`scripts/_seed_sandbox.py`). How the speed is measured on the result is in "How we measure" in `future-plans/large-database-speed.md`.
 
 ## Database migrations
 

@@ -16,7 +16,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import get_settings
-from app.core.logging_config import get_logger
+from app.core.logging_config import get_logger, log_duration
 
 logger = get_logger(__name__)
 
@@ -140,7 +140,10 @@ def refresh_query_statistics(conn: Any) -> None:
     `PRAGMA optimize` anywhere: both write the row straight back. See
     `_UNUSABLE_STAT_INDEX` above for what that costs.
     """
-    conn.execute(text("ANALYZE"))
+    # Timed because it runs at every launch and after every job, and its
+    # cost grows with the whole database, not with the change.
+    with log_duration(logger, "ANALYZE"):
+        conn.execute(text("ANALYZE"))
     conn.execute(
         text("DELETE FROM sqlite_stat1 WHERE idx = :idx"),
         {"idx": _UNUSABLE_STAT_INDEX},

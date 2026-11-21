@@ -63,7 +63,44 @@ Phase 0, phase A, phase B and each later feature is a large change. Before any c
 - **Seed script** in `backend/scripts/`, the generated database goes in the scratchpad, never in the repo. Simon's shape: about 1M image files, one huge deployment of about 900K next to a small 27K project and a few normal ones, detections stored down to 0.01, embeddings for the gated ones. Built through the normal models so the schema is always the current one.
 - **Slow-request log.** One middleware that logs every request over 1 s with its path and duration. It stays in the product: it is what makes the next report from a user readable.
 - **Check on SQLite 3.45.** The packaged backend carries 3.45.1 (inside CPython 3.11). The dev venv has 3.53 and the worker env 3.54, and plans differ between them. Timings and `EXPLAIN QUERY PLAN` that decide anything are taken on 3.45.
-- **Simon's real numbers.** A short mail with two read-only commands: his `sqlite_stat1` rows and the size per table (`dbstat`). A few KB of text, no photos or labels. Needed before phase B, useful for the seed script. Draft pending.
+- **Simon's real numbers.** Sent 2026-11-20: `backend/scripts/addaxai-db-stats.py` (see "Numbers from a user's database" in `DEVELOPERS.md`). Waiting for his `addaxai-db-stats.txt`. When it arrives, compare it with the same script's output on the seeded database and correct the seed defaults where they differ. Needed before phase B. Send Elliot the same script.
+
+**Built (2026-11-20):** the seed script (`backend/scripts/seed_large_image_database.py`), the slow-request log plus a duration line for every startup step and every `ANALYZE` (see "Logging & Debugging" in `DEVELOPERS.md`), and the 3.45 runtime described under "How we measure". The baseline is under "Measured facts".
+
+## How we measure
+
+Every phase measures this way, before and after, so the numbers compare.
+
+1. **Runtime: SQLite 3.45.1, the build users have.**
+   - A throwaway venv from a Python 3.11 (`python3.11 -m venv $SCRATCH/venv311`, then `pip install -r backend/requirements.txt`).
+   - A folder `$SCRATCH/sqlite345` with a symlink to the installed app's `Contents/Resources/backend/_internal/python3.11/lib-dynload/_sqlite3.cpython-311-darwin.so`.
+   - `PYTHONPATH=$SCRATCH/sqlite345` puts that module ahead of the venv's own.
+   - Check first: `python -c "import sqlite3; assert sqlite3.sqlite_version == '3.45.1'"`.
+   - The installed app cannot run the seeded database itself once `main` has a newer migration than the release.
+2. **Data.**
+   - Seed once onto the external SSD with the 3.45 venv: `ADDAXAI_USER_DATA_DIR=/Volumes/2TB-SSD/addaxai-speed/golden`, `--classification-model SPECIESNET-v4-0-2-A`, and `--taxonomy-csv` set to that model's `taxonomy.csv`.
+   - For every measurement, check that at least 8 GB is free on the internal disk.
+   - Copy `addaxai.db` into `$SCRATCH/run/`.
+   - Symlink `models`, `envs` and `bin` from `~/AddaxAI` into it. The sort worker needs `env-addaxai-base`, and the setup check must pass.
+   - Delete `$SCRATCH/run/` afterwards, backups included.
+3. **Run.**
+   - Backend, from `backend/`: `ADDAXAI_USER_DATA_DIR=$SCRATCH/run ADDAXAI_API_PORT=8123 ADDAXAI_DISABLE_MODEL_UPDATES=1 ADDAXAI_SLOW_REQUEST_SECONDS=0 PYTHONPATH=$SCRATCH/sqlite345 $SCRATCH/venv311/bin/python -m uvicorn app.main:app --port 8123`.
+   - Front end, from `frontend/` on Node 20: `ADDAXAI_BACKEND_PORT=8123 npm run dev`. The dev backend on 8000 is never touched.
+4. **Pages, in Chrome.** Load each page cold once (the first load after a fresh backend start) and warm once:
+   1. the project list
+   2. the dashboard of "Large"
+   3. the dashboard of "Small"
+   4. the Labels page of "Small" with one species filter
+   5. the deployment info and site info of "Small"
+   6. the similarity sort on that Labels page
+5. **Read off.**
+   - From the log: the startup lines, the background-task lines, and the `Slow request:` lines for each page.
+   - The browser's Performance API is no use here: Vite's dev modules fill its 250-entry buffer before the page asks anything. Read the times from the log.
+   - The sort is a worker process: its request returns at once, so time it from the `Streaming labels subprocess` line to the first crop request.
+   - A species filter goes in the URL as `?lbl_labels=<taxonomy id>`, so it can be reloaded without clicking.
+   - One table per phase, under "Measured facts".
+
+Absolute numbers come from a Mac with an internal NVMe disk, not from a user's laptop. The comparison between phases is what counts.
 
 ## Phase A: stop the work that hurts (release 1)
 
@@ -118,7 +155,7 @@ A folder run is a hidden project with all its data, kept forever, no cap (`route
 | Projects that have been inactive for a while | Listed with size and last use, so the user can delete them here (or archive them, once that exists). Never suggested for deletion on age alone. |
 | Compact (VACUUM) | Required, or nothing above shrinks the file. The live database is never vacuumed today and has `auto_vacuum=NONE`, so every delete leaves free pages in the file and in each backup. Minutes on a 4 GB file, needs up to twice the size in free disk space, runs with the app locked and progress shown. |
 
-Sizes come from `dbstat` and `PRAGMA freelist_count`; check that the packaged SQLite has `dbstat` compiled in. Everything goes through the normal delete code (`purge_deployment_data`), never an ad-hoc script.
+Sizes come from `dbstat` and `PRAGMA freelist_count`. The packaged SQLite (3.45.1, macOS build checked 2026-11-20) has no `dbstat` compiled in, so the backend cannot ask it for sizes. The dialog needs another source, for example the `env-addaxai-base` interpreter (3.54), which has it. Everything goes through the normal delete code (`purge_deployment_data`), never an ad-hoc script.
 
 ### Archive a project
 
@@ -145,9 +182,48 @@ Gaps to close first: the audit log, the deployment queue, job details and a cust
 - No `sqlite_stat4`, so the planner sees averages only.
 - Not measured: any duration, and anything on a real large database.
 
+## Measured facts (2026-11-20, seeded database, SQLite 3.45.1)
+
+**Event generation was quadratic. Fixed the same day.** `generate_events_for_project` holds every file of a deployment in its session. `calculate_max_n_for_event` runs once per event and deleted the event's old observations with an ORM `delete` whose default `synchronize_session="evaluate"` tests the `WHERE` against every object in the session. So one event cost one pass over all files. The fix is `synchronize_session="fetch"`, which expires only the rows SQLite returns as deleted (`crud/event_observation.py`).
+
+| Photos in one deployment | Events | Before | After |
+|---|---|---|---|
+| 9K | 3,044 | 8 s | |
+| 27K | 9,043 | 43 s | 13.6 s |
+| 54K | 17,934 | 168 s | 27.8 s |
+| 900K | 300,408 | about 13 h (extrapolated; the seed was stopped after 2 h) | 23 min (database on a USB SSD) |
+
+At 900K the fixed version waits on the disk, not on Python: the whole deployment is one transaction, it outgrows the 64 MB page cache, and SQLite spills pages to the WAL and reads them back (`pagerStress` in a stack sample, about 75% of the time in `pread`/`pwrite`). A candidate for later, not measured on an internal disk yet.
+
+This runs after every analysis and postprocessing job, so a user with one large deployment and many events paid it every time. Simon's time-lapse folders make a few giant events and escaped most of it; Elliot's 1.2M project probably did not. Tell both when it ships.
+
+**Baseline before phase A (`main` at 567ed76d plus phase 0).** Seeded database of 4.6 GB: 987K photos, 2.8M boxes, 1.48M embeddings, 329K events. It runs from the internal disk of a MacBook. The file had just been copied, so it sat in the OS cache, and a real cold start after a reboot is slower. Times are from the slow-request log at threshold 0.
+
+| What | Cold | Warm |
+|---|---|---|
+| Startup until `/health` answers | 41 s: `ANALYZE` 34 s, daily backup 7 s, migrations and the rest under 1 s | |
+| Project list (`GET /api/projects`) | 7.3 s | 7.3 s |
+| Dashboard "Large", most cards | about 23 s | about 18 to 22 s |
+| Dashboard "Large", Verification card (`/api/events/verification-stats`) | 204 s | 232 s |
+| Dashboard "Small", slowest request | 2.8 s (`verification-stats`) | 3.8 s |
+| Labels "Small": `label-tree` | 64 s | 70 s |
+| Labels "Small": `labels/stats` | 93 s | 105 s |
+| Labels "Small", grid until sorted crops show | about 95 s, because the sort starts only after `labels/stats` returns | |
+| Labels "Small" with one species filter (`?lbl_labels=<taxonomy id>`), sort until first crops | about 7 s | |
+| Deployment info, "Small" / "Large" | 0.6 s / 26.8 s | 0.2 s / 21.2 s |
+| Site info, "Small" / "Large" | 0.1 s / 9.6 s | 0.1 s / 8.3 s |
+
+What it shows:
+
+- **Startup.** It is mostly `ANALYZE`, which makes A3 clearly worth doing.
+- **Requests stuck behind one blocker.** On the "Large" dashboard, five requests finish within 0.1 s of each other (`labels/progress`, `species`, `timeline`, `animal-photos`, `capture-date-coverage` at 23.4 s). Requests that end together like that were not each slow, they waited behind one blocking request. That is A2, and `labels/progress` is one of the `async` endpoints A2 lists.
+- **The Verification card hangs.** This reproduces Simon's report.
+- **The small project is slow because of the big one.** "Small" has 27K photos, but `label-tree` and `labels/stats` take more than a minute. That is the phase B problem, and both endpoints should join B6's list.
+- **Warm loads are no faster.** The cost is query plans and work, not cold caches.
+
 ## Open questions
 
-- How long the full `ANALYZE`, the backup and the first dashboard load take on the synthetic database. This decides A3.
+- How long `ANALYZE`, the backup and the first dashboard load take. Answered 2026-11-20: 34 s, 7 s and 23 s (Verification card 204 s). See the baseline under "Measured facts".
 - Whether Simon's `sqlite_stat1` gives the plans we saw on the backup copy.
 - Whether the partial-index idea for `idx_files_source_video` holds on 3.45, including for the cascade lookup.
 - Whether the three duplicate indexes are really unused by cascades.

@@ -280,8 +280,17 @@ def calculate_max_n_for_event(
     # layer) plus every other human row. Insertion order is the display
     # order (see `_rows_in_stored_order`), so AI rows go first and the human
     # rows follow in the order they had.
+    #
+    # "fetch" is not optional. The default, "evaluate", tests the WHERE in
+    # Python against every object in the session after the delete. Event
+    # generation holds the whole deployment's files in its session and
+    # calls this once per event, which made it files x events: 168 s for
+    # 54K photos, an estimated 13 hours for 900K. "fetch" gets the deleted
+    # ids back from SQLite (RETURNING) and expires only those objects.
     db.execute(
-        delete(EventObservation).where(EventObservation.event_id == event_id)
+        delete(EventObservation)
+        .where(EventObservation.event_id == event_id)
+        .execution_options(synchronize_session="fetch")
     )
 
     consumed: set[int] = set()

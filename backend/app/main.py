@@ -8,9 +8,11 @@ Following DEVELOPERS.md principles:
 """
 
 import asyncio
-from collections.abc import AsyncGenerator
+import time
+from collections.abc import AsyncGenerator, Coroutine
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -43,7 +45,7 @@ from app.api.routers import (
 )
 from app.api.routers.ml_models import refresh_manifest_cache
 from app.core.config import get_settings
-from app.core.logging_config import get_logger, setup_logging
+from app.core.logging_config import get_logger, log_duration, setup_logging
 from app.core.ssl_trust import enable_os_trust_store
 from app.core.startup_error import GENERIC_STARTUP_FAILURE, write_startup_error
 from app.db.base import init_db
@@ -347,6 +349,12 @@ async def _check_deployment_folders_on_startup() -> None:
         logger.error(f"Deployment folder check failed: {e}", exc_info=True)
 
 
+async def _timed(what: str, work: Coroutine[Any, Any, None]) -> None:
+    """Run a startup background task and log how long it took."""
+    with log_duration(logger, what):
+        await work
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
@@ -356,6 +364,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     Crashes if database initialization fails (following "crash early" principle).
     """
     # Startup
+    startup_started = time.perf_counter()
     settings = get_settings()
     logger.info(f"Starting AddaxAI Backend (Environment: {settings.environment})")
     logger.info(f"Database: {settings.database_url}")
@@ -423,7 +432,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         try:
             engine = get_engine()
             if needs_upgrade(engine):
-                pre_upgrade_backup(settings, rev=get_current_revision(engine))
+                with log_duration(logger, "Pre-upgrade backup"):
+                    pre_upgrade_backup(settings, rev=get_current_revision(engine))
         except Exception as e:
             logger.error(f"Pre-upgrade backup failed: {e}", exc_info=True)
 
@@ -435,7 +445,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # A SchemaError already carries wording written for them; anything
     # else gets the generic message and leaves the detail in the log.
     try:
-        init_db()
+        with log_duration(logger, "Database initialization"):
+            init_db()
         logger.info("Database initialized successfully")
     except Exception as e:
         logger.critical(f"Failed to initialize database: {e}", exc_info=True)
@@ -459,7 +470,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         from app.api.crud.job import reconcile_interrupted_jobs
         from app.db.base import get_session_factory
 
-        with get_session_factory()() as db:
+        with log_duration(logger, "Job reconciliation"), get_session_factory()() as db:
             n = reconcile_interrupted_jobs(db)
         if n:
             logger.warning(
@@ -477,16 +488,31 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if live_db.is_file():
         from app.db.backup import ring_buffer_backup
         try:
-            ring_buffer_backup(settings)
+            with log_duration(logger, "Daily backup"):
+                ring_buffer_backup(settings)
         except Exception as e:
             logger.error(f"Daily backup failed: {e}", exc_info=True)
 
     # Start background tasks (non-blocking)
-    sync_task = asyncio.create_task(update_model_catalog(app))
-    thumbnail_task = asyncio.create_task(auto_generate_thumbnails())
-    folder_check_task = asyncio.create_task(_check_deployment_folders_on_startup())
-    warmup_task = asyncio.create_task(_warm_up_query_caches())
-    legacy_frame_cleanup_task = asyncio.create_task(_reclaim_legacy_video_frames())
+    sync_task = asyncio.create_task(
+        _timed("Model catalog update", update_model_catalog(app))
+    )
+    thumbnail_task = asyncio.create_task(
+        _timed("Project thumbnails", auto_generate_thumbnails())
+    )
+    folder_check_task = asyncio.create_task(
+        _timed("Deployment folder check", _check_deployment_folders_on_startup())
+    )
+    warmup_task = asyncio.create_task(
+        _timed("Query cache warm-up", _warm_up_query_caches())
+    )
+    legacy_frame_cleanup_task = asyncio.create_task(
+        _timed("Legacy video frame cleanup", _reclaim_legacy_video_frames())
+    )
+
+    # The background tasks above are not part of this: they run while the
+    # app already serves requests, and each logs its own duration.
+    logger.info(f"Startup took {time.perf_counter() - startup_started:.1f}s")
 
     yield
 
@@ -571,6 +597,26 @@ def create_app() -> FastAPI:
                 status_code=500,
                 content={"detail": "Internal Server Error"},
             )
+
+    # Slow-request log. Registered after the middleware above, so it wraps
+    # it and times the 500s too, and sits inside CORS. It logs the path
+    # only: some query strings carry absolute folder paths, and this log
+    # ends up in diagnostics bundles. For a streamed response (exports) the
+    # time runs to the response headers, which is how long the UI waits
+    # before anything happens. WebSockets do not pass through here.
+    slow_request_seconds = settings.slow_request_seconds
+
+    @app.middleware("http")
+    async def slow_request_middleware(request: Request, call_next):
+        started = time.perf_counter()
+        response = await call_next(request)
+        elapsed = time.perf_counter() - started
+        if elapsed >= slow_request_seconds:
+            logger.warning(
+                f"Slow request: {request.method} {request.url.path} "
+                f"{response.status_code} {elapsed:.2f}s"
+            )
+        return response
 
     # CORS middleware - allow frontend to access API
     # In Electron: frontend and backend both served from the API port (same origin)

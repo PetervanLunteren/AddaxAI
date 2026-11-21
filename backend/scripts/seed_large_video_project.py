@@ -26,14 +26,10 @@ Takes a minute or two and about 1.5 GB of disk at the default size.
 from __future__ import annotations
 
 import argparse
-import os
-import sys
 import uuid
 from datetime import date, datetime, timedelta
-from pathlib import Path
 
-REPO_BACKEND = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO_BACKEND))
+from _seed_sandbox import open_seed_sandbox
 
 INSERT_CHUNK = 50_000
 
@@ -45,22 +41,11 @@ def main() -> int:
     parser.add_argument("--boxes", type=int, default=5, help="boxes per frame")
     args = parser.parse_args()
 
-    data_dir = os.environ.get("ADDAXAI_USER_DATA_DIR")
-    if not data_dir:
-        print("Set ADDAXAI_USER_DATA_DIR to a throwaway folder first.")
-        return 1
-    if Path(data_dir).resolve() == (Path.home() / "AddaxAI").resolve():
-        print("Refusing to seed the real ~/AddaxAI.")
-        return 1
-    Path(data_dir).mkdir(parents=True, exist_ok=True)
+    db = open_seed_sandbox()
 
     from sqlalchemy import insert
 
-    from app.db.base import get_session_factory, init_db
     from app.models import Deployment, Detection, File, Project, Site
-
-    init_db()
-    db = get_session_factory()()
 
     project_id = str(uuid.uuid4())
     site_id = str(uuid.uuid4())
