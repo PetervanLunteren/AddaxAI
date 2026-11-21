@@ -76,21 +76,14 @@ def auto_select_project_thumbnails(
     db: Session,
     thumbnails_dir: Path,
 ) -> None:
-    """Generate thumbnails for projects eligible for auto-selection.
+    """Give every project without a card picture one of its own pictures.
 
-    Picks a random image from the top 10% highest-scoring detections.
-    Re-rolls auto-generated thumbnails on every startup. Skips
-    user-uploaded images (stored in project-images/).
+    Picks a random image from the top 10% highest-scoring detections. A
+    project keeps the picture it has, picked or uploaded. This pass used
+    to re-pick every automatic picture at every launch: a query, an image
+    read and a commit per project, on a large database for each launch.
     """
-    thumbnails_prefix = str(thumbnails_dir)
-    projects = (
-        db.query(Project)
-        .filter(
-            (Project.thumbnail_path.is_(None))
-            | (Project.thumbnail_path.like(f"{thumbnails_prefix}%"))
-        )
-        .all()
-    )
+    projects = db.query(Project).filter(Project.thumbnail_path.is_(None)).all()
 
     if not projects:
         logger.info("No projects need thumbnail generation")
@@ -111,8 +104,7 @@ def ensure_project_thumbnail(db: Session, project: Project) -> None:
     """Give a project without a card picture one of its own pictures.
 
     Called when an analysis finishes. A project that already has one,
-    uploaded or auto-selected, keeps it; the startup pass re-rolls the
-    auto-selected ones.
+    uploaded or auto-selected, keeps it.
     """
     if project.thumbnail_path:
         return

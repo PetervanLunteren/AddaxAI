@@ -138,9 +138,8 @@ def _import(
 
 def _pick_thumbnail(db: Session, settings: Settings, project_id: str) -> None:
     """Give an imported project its card picture now rather than at the
-    next launch. Only that project: the startup pass re-rolls every
-    automatic thumbnail, which an import has no business doing. Nice to
-    have: a failure is logged and the import stands."""
+    next launch. Only that project. Nice to have: a failure is logged and
+    the import stands."""
     try:
         from app.models import Project
         from app.services.thumbnail_service import _auto_select_for_project

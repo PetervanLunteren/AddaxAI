@@ -1,15 +1,20 @@
 """A project's card picture is picked from its own pictures.
 
-At startup for every project, and since 2026-11-04 also when an analysis
-finishes for a project that has none, so a new project's card is not a
-grey placeholder until the next restart.
+When an analysis finishes for a project that has none (since 2026-11-04,
+so a new project's card is not a grey placeholder until the next restart),
+and at startup for every project that still has none. A picture, once
+there, stays.
 """
 
 from pathlib import Path
 
 from PIL import Image
 
-from app.services.thumbnail_service import ensure_project_thumbnail, thumbnails_dir
+from app.services.thumbnail_service import (
+    auto_select_project_thumbnails,
+    ensure_project_thumbnail,
+    thumbnails_dir,
+)
 from tests.conftest import (
     make_deployment,
     make_file,
@@ -90,3 +95,20 @@ def test_a_project_without_detections_stays_without(db):
     ensure_project_thumbnail(db, project)
 
     assert project.thumbnail_path is None
+
+
+def test_startup_gives_a_picture_only_to_projects_without_one(db, tmp_path):
+    """The startup pass used to re-pick every automatic picture at every
+    launch, which on a large database is a query and an image read per
+    project before the cards settle."""
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    picked = _clip_with_a_cover(db, tmp_path / "a")
+    picked.thumbnail_path = str(thumbnails_dir() / "picked-before.jpg")
+    without = _clip_with_a_cover(db, tmp_path / "b")
+    db.commit()
+
+    auto_select_project_thumbnails(db, thumbnails_dir())
+
+    assert picked.thumbnail_path == str(thumbnails_dir() / "picked-before.jpg")
+    assert without.thumbnail_path == str(thumbnails_dir() / f"{without.id}.jpg")
