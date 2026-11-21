@@ -22,6 +22,7 @@ def _make_project_mock(**overrides):
         excluded_classes=[],
         country_code=None,
         state_code=None,
+        taxa_mapping=None,
     )
     defaults.update(overrides)
     return MagicMock(**defaults)

@@ -123,7 +123,11 @@ import {
   LabelSelectionField,
   useLabelSelectionCaption,
 } from "../../components/taxonomy/LabelSelectionField";
-import { clearSpeciesSelection, toApiCountryCode } from "../../lib/speciesSelection";
+import {
+  clearSpeciesSelection,
+  taxaMappingField,
+  toApiCountryCode,
+} from "../../lib/speciesSelection";
 import { ModelSelect } from "../../components/models/ModelSelect";
 import { NoClassifierNotice } from "../../components/models/NoClassifierNotice";
 import {
@@ -165,6 +169,7 @@ const settingsSchema = z.object({
   classification_model_id: z.string().nullable(),
   embedding_model_id: z.string().nullable(),
   excluded_classes: z.array(z.string()),
+  taxa_mapping: taxaMappingField,
   country_code: z.string().nullable(),
   state_code: z.string().nullable(),
   detection_batch_size: z.number().int().min(1).max(256).nullable(),
@@ -266,6 +271,7 @@ export function FolderRunModelStep() {
       classification_model_id: NO_CLASSIFIER,
       embedding_model_id: DEFAULT_EMBEDDING,
       excluded_classes: [],
+      taxa_mapping: null,
       country_code: null,
       state_code: null,
       detection_batch_size: null,
@@ -306,6 +312,7 @@ export function FolderRunModelStep() {
         run.project.classification_model_id ?? NO_CLASSIFIER,
       embedding_model_id: run.project.embedding_model_id ?? NO_EMBEDDING,
       excluded_classes: run.project.excluded_classes ?? [],
+      taxa_mapping: run.project.taxa_mapping ?? null,
       country_code: run.project.country_code,
       state_code: run.project.state_code,
       detection_batch_size: run.project.detection_batch_size ?? null,
@@ -372,6 +379,7 @@ export function FolderRunModelStep() {
   const classificationModelId = form.watch("classification_model_id");
   const labelCaption = useLabelSelectionCaption(
     classificationModelId && classificationModelId !== "none" ? classificationModelId : "",
+    !!form.watch("taxa_mapping"),
   );
   const embeddingModelId = form.watch("embedding_model_id");
   const excludedClasses = form.watch("excluded_classes") ?? [];
@@ -572,6 +580,10 @@ export function FolderRunModelStep() {
           ? null
           : data.embedding_model_id,
       excluded_classes: data.excluded_classes,
+      taxa_mapping:
+        data.classification_model_id === NO_CLASSIFIER
+          ? null
+          : (data.taxa_mapping ?? null),
       // ALL is a form-only sentinel ("user explicitly chose all
       // labels"); the API and DB know only real ISO codes or null.
       country_code: toApiCountryCode(data.country_code),
@@ -800,7 +812,7 @@ export function FolderRunModelStep() {
     // country, or knowingly "All labels". Enforced here rather than in
     // the zod schema because the requirement depends on the selected
     // model's geofence, which lives in a query, not in the form data.
-    if (requiresCountryChoice && data.country_code == null) {
+    if (requiresCountryChoice && data.country_code == null && !data.taxa_mapping) {
       form.setError("country_code", {
         type: "required",
         message: "Choose a country, or pick All labels to run unfiltered.",
@@ -1130,6 +1142,13 @@ export function FolderRunModelStep() {
                               shouldDirty: true,
                             });
                             form.setValue("state_code", state, { shouldDirty: true });
+                          }}
+                          taxaMapping={form.watch("taxa_mapping")}
+                          onTaxaMappingChange={(mapping) => {
+                            form.clearErrors("country_code");
+                            form.setValue("taxa_mapping", mapping, {
+                              shouldDirty: true,
+                            });
                           }}
                           error={
                             form.formState.errors.country_code?.message

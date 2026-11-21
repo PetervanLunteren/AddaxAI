@@ -45,6 +45,7 @@ from app.ml.label_exclusion import (
     threshold_or_verified,
 )
 from app.ml.manifest_manager import ManifestManager
+from app.ml.taxa_mapping import TaxaListError
 from app.models import Deployment, Detection, Event, File, Job, Project
 from app.models.detection_embedding import DetectionEmbedding
 from app.models.event_observation import EventObservation
@@ -56,6 +57,16 @@ ListProjectsMode = Literal["folder_run", "research", "all"]
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/projects", tags=["Projects"])
+
+
+def _refused_taxa_list(db: Session, error: TaxaListError) -> HTTPException:
+    """The 422 for a taxa list the project's model cannot use. Nothing of
+    the request is kept."""
+    db.rollback()
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail={"message": "This taxa list cannot be used", "problems": error.problems},
+    )
 
 # The catalog's `domain` values in the words the refusal uses.
 _DOMAIN_WORDS = {"camera_trap": "a camera trap", "underwater": "an underwater"}
@@ -202,6 +213,8 @@ def create_project(
         db_project = crud_project.create_project(db, project)
         logger.info(f"Created project: {project.name} (ID: {db_project.id})")
         return ProjectResponse.model_validate(db_project)
+    except TaxaListError as e:
+        raise _refused_taxa_list(db, e) from None
     except IntegrityError as e:
         logger.warning(f"Failed to create project '{project.name}': duplicate name")
         raise HTTPException(
@@ -246,6 +259,8 @@ def duplicate_project(
 
     try:
         new_project = crud_project.duplicate_project(db, project_id, params)
+    except TaxaListError as e:
+        raise _refused_taxa_list(db, e) from None
     except IntegrityError as e:
         logger.warning(
             f"Failed to duplicate project: name '{params.name}' already exists"
@@ -602,6 +617,8 @@ def update_project(
 
         logger.info(f"Updated project: {project_id}")
         return ProjectResponse.model_validate(db_project)
+    except TaxaListError as e:
+        raise _refused_taxa_list(db, e) from None
     except IntegrityError as e:
         logger.warning(f"Failed to update project {project_id}: duplicate name")
         raise HTTPException(
@@ -1118,14 +1135,13 @@ def get_label_taxonomy_map(
 
     model_id = project.classification_model_id
 
-    from app.ml.taxonomy_db import custom_scope
+    from app.ml.taxonomy_db import custom_scope, model_scope, project_row_last
 
+    # The project's own rows (a taxa list's labels) last, so they win.
     rows = (
         db.query(LabelTaxonomy)
-        .filter(
-            (LabelTaxonomy.classification_model_id == model_id)
-            | custom_scope()
-        )
+        .filter(model_scope(model_id, project_id) | custom_scope())
+        .order_by(project_row_last())
         .all()
     )
 
@@ -1187,7 +1203,7 @@ def create_custom_label(
     model_id = db_project.classification_model_id
 
     from app.ml.taxonomic_rollup import format_common_name
-    from app.ml.taxonomy_db import BUILTIN_MODEL_ID, custom_scope
+    from app.ml.taxonomy_db import BUILTIN_MODEL_ID, custom_scope, model_scope
 
     # Check if already exists (case-insensitive) in the current model
     # taxonomy, among the global custom labels, or among the builtin
@@ -1204,13 +1220,14 @@ def create_custom_label(
     # not this project. A name the current model already knows is still
     # deduped against here; the same name may coincide with a different
     # model's class in another project, which is accepted (resolve prefers
-    # the model row there).
+    # the model row there). Another project's taxa list rows are not this
+    # project's, so the model arm leaves them out.
     existing = (
         db.query(LabelTaxonomy)
         .filter(
             func.lower(LabelTaxonomy.name) == name.lower(),
             (
-                (LabelTaxonomy.classification_model_id == model_id)
+                model_scope(model_id, project_id)
                 | custom_scope()
                 | (LabelTaxonomy.classification_model_id == BUILTIN_MODEL_ID)
             ),
@@ -1295,7 +1312,7 @@ def update_custom_label(
             # class of this project's model. Without the last two, renaming
             # a custom to "vehicle" made a second identical picker entry
             # beside the builtin one.
-            from app.ml.taxonomy_db import BUILTIN_MODEL_ID
+            from app.ml.taxonomy_db import BUILTIN_MODEL_ID, model_scope
 
             arms = [
                 custom_scope(),
@@ -1303,10 +1320,7 @@ def update_custom_label(
             ]
             db_project = crud_project.get_project(db, project_id)
             if db_project and db_project.classification_model_id:
-                arms.append(
-                    LabelTaxonomy.classification_model_id
-                    == db_project.classification_model_id
-                )
+                arms.append(model_scope(db_project.classification_model_id, project_id))
             collision = (
                 db.query(LabelTaxonomy)
                 .filter(

@@ -52,18 +52,20 @@ def compute_postprocessing_settings_hash(project) -> str:
     Returns:
         64-character hex SHA-256 hash string
     """
-    canonical = json.dumps(
-        {
-            "event_smoothing": project.event_smoothing,
-            "smoothing_strength": project.smoothing_strength,
-            "taxonomic_rollup": project.taxonomic_rollup,
-            "independence_interval": project.independence_interval,
-            "excluded_classes": sorted(project.excluded_classes or []),
-            "country_code": project.country_code,
-            "state_code": project.state_code,
-        },
-        sort_keys=True,
-    )
+    settings = {
+        "event_smoothing": project.event_smoothing,
+        "smoothing_strength": project.smoothing_strength,
+        "taxonomic_rollup": project.taxonomic_rollup,
+        "independence_interval": project.independence_interval,
+        "excluded_classes": sorted(project.excluded_classes or []),
+        "country_code": project.country_code,
+        "state_code": project.state_code,
+    }
+    # Only when set, so a project without a taxa list keeps the hash it
+    # had and is not flagged for reprocessing by this key existing.
+    if project.taxa_mapping:
+        settings["taxa_mapping"] = project.taxa_mapping["rows"]
+    canonical = json.dumps(settings, sort_keys=True)
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
@@ -249,6 +251,149 @@ def _smoothing_timeout_s(image_count: int) -> float:
     return SMOOTHING_TIMEOUT_BASE_S + image_count * SMOOTHING_TIMEOUT_PER_IMAGE_S
 
 
+def _run_ml_script(
+    script_name: str,
+    md_results: dict,
+    options: dict,
+    job_id: str | None,
+) -> dict:
+    """
+    Run one of the scripts next to this file in the ML environment on
+    `md_results` and return the results it writes.
+
+    The scripts take <input_json> <options_json> <output_json>. Raises
+    RuntimeError when the script fails or times out (the timeout scales
+    with the image count, see SMOOTHING_TIMEOUT_BASE_S), and
+    JobCancelledError when the job was cancelled meanwhile.
+    """
+    python_path = _get_ml_python_path()
+    script_path = Path(__file__).parent / script_name
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as opts_f:
+        json.dump(options, opts_f)
+        opts_path = opts_f.name
+
+    # Write the in-memory results to a temp file (don't pass the on-disk raw file)
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", delete=False
+    ) as input_f:
+        json.dump(md_results, input_f)
+        input_path = input_f.name
+
+    output_path = tempfile.mktemp(suffix=".json")
+
+    try:
+        # Popen + wait (instead of subprocess.run) so cancel can kill
+        # the process group mid-run.
+        process = popen_group(
+            [str(python_path), str(script_path), input_path, opts_path, output_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=clean_python_env(),
+        )
+        timeout_s = _smoothing_timeout_s(len(md_results.get("images") or []))
+        with track_subprocess(job_id, process):
+            try:
+                stdout, stderr = process.communicate(timeout=timeout_s)
+            except subprocess.TimeoutExpired as e:
+                process.kill()
+                stdout, stderr = process.communicate()
+                raise RuntimeError(
+                    f"{script_name} timed out after {timeout_s:.0f}s"
+                ) from e
+
+        if job_id and is_cancel_requested(job_id):
+            raise JobCancelledError()
+
+        if process.returncode != 0:
+            error_detail = stderr or stdout or "(no output)"
+            raise RuntimeError(f"{script_name} failed: {error_detail}")
+
+        with open(output_path) as f:
+            return json.load(f)
+
+    finally:
+        Path(input_path).unlink(missing_ok=True)
+        Path(opts_path).unlink(missing_ok=True)
+        Path(output_path).unlink(missing_ok=True)
+
+
+def apply_taxa_mapping(
+    md_results: dict,
+    project,
+    cls_model_dir: Path | None,
+    job_id: str | None,
+) -> dict:
+    """
+    Run the project's taxa list through MegaDetector's
+    `restrict_to_taxa_list`, so labels match Dan Morris's own runs.
+
+    Raises instead of falling back: results without the list would carry
+    SpeciesNet's labels in a project the user set up with their own.
+    """
+    from app.ml.taxa_mapping import find_taxonomy_release_file, write_md_taxa_list
+
+    taxonomy_file = (
+        find_taxonomy_release_file(cls_model_dir) if cls_model_dir else None
+    )
+    if taxonomy_file is None:
+        raise RuntimeError(
+            f"Project {project.id} has a taxa list, but its classification "
+            f"model has no SpeciesNet taxonomy file to apply it with"
+        )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        taxa_list = Path(tmp) / "taxa_list.csv"
+        write_md_taxa_list(project.taxa_mapping["rows"], taxa_list)
+        return _run_ml_script(
+            "taxa_mapping_script.py",
+            md_results,
+            {"taxa_list": str(taxa_list), "taxonomy_file": str(taxonomy_file)},
+            job_id,
+        )
+
+
+def add_taxa_list_ancestor_rows(md_results: dict, project, db: Session) -> None:
+    """
+    Give a label_taxonomy row to every label the taxa list produced that is
+    not one of its own: a prediction can stop at a parent of a listed
+    taxon, so a jabiru under a list with only birds of prey reads
+    SpeciesNet's "bird" (aves). Those names come from SpeciesNet's full
+    taxonomy, which has taxa its label file (our taxonomy.csv) lacks, and
+    a label without a row is missing from the label filter. Written as
+    model rows, like the rollup's, since they are SpeciesNet taxa. They
+    are always a genus or higher: a species only comes out as a list row.
+    """
+    from app.ml.taxa_mapping import mapped_labels
+    from app.ml.taxonomic_rollup import TAXONOMY_LEVELS
+    from app.ml.taxonomy_db import add_rollup_taxonomy_entry
+
+    listed = set(mapped_labels(project.taxa_mapping["rows"]))
+    descriptions = md_results.get("classification_category_descriptions", {})
+    for cid, name in md_results.get("classification_categories", {}).items():
+        if name in listed or cid not in descriptions:
+            continue
+        # Merged categories join their taxa with "|"; outside the list
+        # there is one.
+        tokens = descriptions[cid].split("|")[0].split(";")
+        ranks = {
+            lvl: value
+            for lvl, value in zip(TAXONOMY_LEVELS, tokens[1:6], strict=True)
+            if value
+        }
+        if not ranks:
+            continue  # blank, vehicle, animal
+        level = [lvl for lvl in TAXONOMY_LEVELS if lvl in ranks][-1]
+        if level == "species":
+            continue  # a model class (human), which has its row
+        add_rollup_taxonomy_entry(
+            project.classification_model_id, name, level, ranks, db
+        )
+
+
 def run_postprocessing_for_deployment(
     deployment_id: str,
     json_path: Path,
@@ -380,6 +525,15 @@ def run_postprocessing_for_deployment(
                             f"Failed to persist rollup taxonomy entries: {e}"
                         )
 
+    # --- Taxa list ---
+    # After the rollup, before smoothing, the order Dan Morris runs them
+    # in. A project with a taxa list has no country and no exclusions
+    # (saving the list clears both), so the rollup above only did its
+    # low-confidence pass.
+    if project.taxa_mapping:
+        md_results = apply_taxa_mapping(md_results, project, cls_model_dir, job_id)
+        add_taxa_list_ancestor_rows(md_results, project, db)
+
     # --- Event smoothing (independent of rollup) ---
     # Rollup section above is complete. If smoothing is off, return the
     # (possibly rolled-up) results as-is — no subprocess needed.
@@ -415,55 +569,11 @@ def run_postprocessing_for_deployment(
     }
 
     # Run smoothing as subprocess in the ML environment
-    python_path = _get_ml_python_path()
-    script_path = Path(__file__).parent / "smoothing_script.py"
-
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as opts_f:
-        json.dump(smoothing_options, opts_f)
-        opts_path = opts_f.name
-
-    # Write rollup-modified JSON to a temp file (don't pass the on-disk raw file)
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", delete=False
-    ) as input_f:
-        json.dump(md_results, input_f)
-        input_path = input_f.name
-
-    output_path = tempfile.mktemp(suffix=".json")
-
     try:
         logger.info(f"Running smoothing subprocess for deployment {deployment_id}")
-        # Popen + wait (instead of subprocess.run) so cancel can kill
-        # the process group mid-smoothing.
-        process = popen_group(
-            [str(python_path), str(script_path), input_path, opts_path, output_path],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            env=clean_python_env(),
+        smoothed = _run_ml_script(
+            "smoothing_script.py", md_results, smoothing_options, job_id
         )
-        timeout_s = _smoothing_timeout_s(len(md_results.get("images") or []))
-        with track_subprocess(job_id, process):
-            try:
-                stdout, stderr = process.communicate(timeout=timeout_s)
-            except subprocess.TimeoutExpired as e:
-                process.kill()
-                stdout, stderr = process.communicate()
-                raise RuntimeError(
-                    f"Smoothing script timed out after {timeout_s:.0f}s"
-                ) from e
-
-        if job_id and is_cancel_requested(job_id):
-            raise JobCancelledError()
-
-        if process.returncode != 0:
-            error_detail = stderr or stdout or "(no output)"
-            raise RuntimeError(f"Smoothing script failed: {error_detail}")
-
-        with open(output_path) as f:
-            smoothed = json.load(f)
 
         # The smoother relabels box by box; one animal keeps one species.
         followed = tracks_follow_their_cards(smoothed)
@@ -493,11 +603,6 @@ def run_postprocessing_for_deployment(
                 ),
             })
         return md_results
-
-    finally:
-        Path(input_path).unlink(missing_ok=True)
-        Path(opts_path).unlink(missing_ok=True)
-        Path(output_path).unlink(missing_ok=True)
 
 
 def update_database_from_smoothed_results(
@@ -673,6 +778,9 @@ def update_database_from_smoothed_results(
                             LabelTaxonomy.common_name,
                         )
                         .filter(LabelTaxonomy.name == new_label)
+                        # Not another project's taxa list row; this
+                        # project's own rows are in taxonomy_name_to_id.
+                        .filter(LabelTaxonomy.project_id.is_(None))
                         .first()
                     )
                     if tax_row:

@@ -25,7 +25,7 @@ import { toast } from "sonner";
 
 import { modelsApi } from "../../api/models";
 import { projectsApi } from "../../api/projects";
-import type { ProjectResponse } from "../../api/types";
+import type { ProjectResponse, TaxaMapping } from "../../api/types";
 import { useTaskProgress } from "../../hooks/useTaskProgress";
 import { useReprocessSummary } from "../../hooks/useReprocessSummary";
 import type { SaveMetric } from "../../lib/saveMetrics";
@@ -85,6 +85,7 @@ type FolderRunSettingsValues = AnalysisSettingsValues & {
   country_code: string | null;
   state_code: string | null;
   excluded_classes: string[];
+  taxa_mapping: TaxaMapping | null;
 };
 
 function valuesFromProject(project: ProjectResponse): FolderRunSettingsValues {
@@ -100,6 +101,7 @@ function valuesFromProject(project: ProjectResponse): FolderRunSettingsValues {
     country_code: fromApiCountryCode(project.country_code),
     state_code: project.state_code ?? null,
     excluded_classes: project.excluded_classes,
+    taxa_mapping: project.taxa_mapping ?? null,
   };
 }
 
@@ -157,7 +159,7 @@ export function AnalysisSettingsButton({
     queryFn: () => modelsApi.getTaxonomy(classifierId!),
     enabled: hasClassifier,
   });
-  const labelCaption = useLabelSelectionCaption(classifierId ?? "");
+  const labelCaption = useLabelSelectionCaption(classifierId ?? "", !!values.taxa_mapping);
 
   // The threshold is deliberately not a REPROCESS_TRIGGER_FIELD: it needs
   // no reprocess job, because the backend recalculates the materialised
@@ -376,6 +378,10 @@ export function AnalysisSettingsButton({
                       country_code: country,
                       state_code: state,
                     }))
+                  }
+                  taxaMapping={values.taxa_mapping}
+                  onTaxaMappingChange={(mapping) =>
+                    setValues((v) => ({ ...v, taxa_mapping: mapping }))
                   }
                 />
               </SettingsRow>

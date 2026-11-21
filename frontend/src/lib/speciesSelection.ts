@@ -1,9 +1,10 @@
 /**
  * The species selection a form carries for its classification model: the
- * geofence country and US state, and the excluded label names. The country
+ * geofence country and US state and the excluded label names, or instead
+ * a custom taxa list (`taxa_mapping`). The country
  * is only the preset the list was built from; the user may edit the list
  * after, so nothing re-derives one from the other. They stay matched by one
- * rule instead: a change of classification model clears all three, and the
+ * rule instead: a change of classification model clears all of it, and the
  * user picks the country again (submit already requires that for a
  * geofenced model).
  *
@@ -16,12 +17,29 @@
  */
 
 import type { FieldValues, Path, PathValue, UseFormSetValue } from "react-hook-form";
+import { z } from "zod";
+import type { TaxaMapping } from "../api/types";
 
 const CLEARED = {
   country_code: null,
   state_code: null,
   excluded_classes: [] as string[],
+  taxa_mapping: null,
 };
+
+/** The taxa list field of every form that carries a species selection. */
+export const taxaMappingField = z
+  .object({
+    file_name: z.string(),
+    rows: z.array(z.object({ latin: z.string(), label: z.string() })),
+  })
+  .nullable()
+  .optional();
+
+/** The labels a taxa list produces, in file order, each once. */
+export function mappedLabels(mapping: TaxaMapping): string[] {
+  return [...new Set(mapping.rows.map((r) => r.label))];
+}
 
 /**
  * Clear the species selection via the form's setValue, marked dirty like

@@ -1502,6 +1502,16 @@ When taxonomic rollup is enabled and a detection's top-1 confidence is below thr
 
 `add_rollup_taxonomy_entry(model_id, name, level, taxonomy_lookup, db)` inserts a new `label_taxonomy` row for the rolled-up label so it appears in the tree under the correct branch. Called from `backend/app/ml/postprocessing.py` for each new rolled-up label.
 
+#### 3. Custom taxa list (SpeciesNet)
+
+A project can carry a taxa list (`projects.taxa_mapping`): rows mapping a SpeciesNet taxon (`latin`) to the label the user wants (`label`), read from the file Dan Morris's taxonomy mapping skill makes. Those two keys are AddaxAI's own; only `parse_taxa_list` knows the file's headers (`FORMATS`): `input_latin` / `output_name`, or today's `latin` / `common` / `original_common`, where the label is `original_common` when filled, as in MegaDetector. Rows without a Latin name are skipped, as MegaDetector skips them. The list replaces the country geofence: `update_project` clears `country_code`, `state_code` and `excluded_classes` on every save of a list project, and the form clears them too. Everything lives in `backend/app/ml/taxa_mapping.py`.
+
+- **A file loads whole or not at all.** Rows are checked against the model's `taxonomy_release.*.txt`, and a bad file is refused with every bad row listed, the same rows `restrict_to_taxa_list` would refuse. A model without that file cannot take a list.
+- **Each list label gets a project-scoped `label_taxonomy` row** at the lowest taxon its rows share ("bird of prey" over a family and an order of birds is Aves). The project's row wins over the model's row of the same name, so a custom "impala" on the genus does not read as SpeciesNet's impala species. Changing or removing the list, switching model or deleting the project drops the rows the list no longer has, and the project's detections on those labels are relinked (`relink_taxa_list_labels`). Verified detections and confirmed observations are left as they are, and a dropped row stays while one of them uses it. Readers that look a model row up by name filter `project_id IS NULL`, or one project's list would shadow the model for every other project.
+- **The pipeline order is rollup, list, smoothing**, the order Dan runs them in. The list runs through megadetector's own `restrict_to_taxa_list` (`taxa_mapping_script.py`, ML env), so labels match his runs. If it cannot run, postprocessing fails rather than falling back to SpeciesNet's labels. "human" is protected, so a list without primates does not relabel people.
+- **A prediction can stop above every listed taxon** (a jabiru under a birds-of-prey list reads "bird"). `add_taxa_list_ancestor_rows` gives those labels a model row, like the rollup's, so they show in the label filter.
+- The pinned megadetector (10.0.28) still reads the old `latin` / `common` columns; `write_md_taxa_list` translates. When the pin moves to the release with the rename, drop `MD_LATIN` / `MD_COMMON`.
+
 ### Where population is triggered
 
 Both workers call `populate_taxonomy_from_csv` when a `taxonomy.csv` exists in the model directory:

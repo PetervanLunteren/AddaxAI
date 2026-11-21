@@ -9,7 +9,7 @@ import csv
 from collections.abc import Iterable
 from pathlib import Path
 
-from sqlalchemy import and_, func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.logging_config import get_logger
@@ -56,11 +56,15 @@ def populate_taxonomy_from_csv(
     if not rows:
         return 0
 
-    # Query existing names for this model to skip duplicates
+    # Query existing names for this model to skip duplicates. A project's
+    # taxa list row of the same name is not the model's row.
     existing = {
         r.name
         for r in db.query(LabelTaxonomy.name)
-        .filter(LabelTaxonomy.classification_model_id == model_id)
+        .filter(
+            LabelTaxonomy.classification_model_id == model_id,
+            LabelTaxonomy.project_id.is_(None),
+        )
         .all()
     }
 
@@ -131,10 +135,13 @@ def add_rollup_taxonomy_entry(
     Returns:
         True if inserted, False if skipped.
     """
+    # The model's own rows only: a project's taxa list may have a label of
+    # the same name, and that row is not this rollup taxon.
     exists = (
         db.query(LabelTaxonomy.id)
         .filter(
             LabelTaxonomy.classification_model_id == model_id,
+            LabelTaxonomy.project_id.is_(None),
             LabelTaxonomy.name == name,
         )
         .first()
@@ -223,6 +230,28 @@ def custom_scope():
         LabelTaxonomy.is_custom.is_(True),
         LabelTaxonomy.project_id.is_(None),
     )
+
+
+def model_scope(model_id: str, project_id: str):
+    """The filter clause for a project's model-level rows: the model's own
+    rows plus the ones scoped to this project (a taxa list's labels).
+
+    Where both have a name, the project's row wins. Order a query by
+    `project_row_last()` and let later rows overwrite earlier ones, or
+    take `.first()` under `project_row_last().desc()`.
+    """
+    return and_(
+        LabelTaxonomy.classification_model_id == model_id,
+        or_(
+            LabelTaxonomy.project_id.is_(None),
+            LabelTaxonomy.project_id == project_id,
+        ),
+    )
+
+
+def project_row_last():
+    """Sort key putting a project's own rows after the model's rows."""
+    return LabelTaxonomy.project_id.isnot(None)
 
 
 # The classes every install has a row for from the first launch, so the
@@ -353,7 +382,7 @@ def batch_resolve_taxonomy_ids(
     lookup_names = [name.lower() for name in label_names]
     result: dict[str, tuple[str, str | None, str | None]] = {}
 
-    # 1. Model-level taxonomy
+    # 1. Model-level taxonomy, the project's own rows last so they win
     if model_id:
         model_rows = (
             db.query(
@@ -363,10 +392,10 @@ def batch_resolve_taxonomy_ids(
                 LabelTaxonomy.common_name,
             )
             .filter(
-                LabelTaxonomy.classification_model_id == model_id,
-                LabelTaxonomy.project_id.is_(None),
+                model_scope(model_id, project_id),
                 LabelTaxonomy.name.in_(lookup_names),
             )
+            .order_by(project_row_last())
             .all()
         )
         for tid, name, sci, common in model_rows:
@@ -472,7 +501,8 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
         # Priority: model-level > custom > builtin
         name_to_taxonomy: dict[str, tuple[str, str | None, str | None]] = {}
 
-        # 1. Model-level taxonomy (if model exists)
+        # 1. Model-level taxonomy (if model exists), the project's own
+        # rows last so they win
         if model_id:
             model_rows = (
                 db.query(
@@ -482,10 +512,10 @@ def link_detections_to_taxonomy(project_id: str, db: Session) -> int:
                     LabelTaxonomy.common_name,
                 )
                 .filter(
-                    LabelTaxonomy.classification_model_id == model_id,
-                    LabelTaxonomy.project_id.is_(None),
+                    model_scope(model_id, project_id),
                     LabelTaxonomy.name.in_(lookup_names),
                 )
+                .order_by(project_row_last())
                 .all()
             )
             for tid, name, sci, common in model_rows:
@@ -579,15 +609,15 @@ def resolve_taxonomy_id(label_name: str, project_id: str, db: Session) -> str | 
 
     model_id = project.classification_model_id
 
-    # 1. Model-level taxonomy
+    # 1. Model-level taxonomy, the project's own row first
     if model_id:
         row = (
             db.query(LabelTaxonomy.id)
             .filter(
-                LabelTaxonomy.classification_model_id == model_id,
-                LabelTaxonomy.project_id.is_(None),
+                model_scope(model_id, project_id),
                 LabelTaxonomy.name == label_name,
             )
+            .order_by(project_row_last().desc())
             .first()
         )
         if row:
