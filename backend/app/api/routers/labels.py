@@ -72,7 +72,7 @@ def _set_project_tz(db: Session, project_id: str) -> None:
 
 
 @router.post("/{project_id}/labels/sort")
-async def sort_detections(
+def sort_detections(
     project_id: str,
     body: SortRequest,
     request: Request,
@@ -98,7 +98,7 @@ async def sort_detections(
 
 
 @router.post("/{project_id}/labels/search")
-async def search_similar(
+def search_similar(
     project_id: str,
     body: SearchRequest,
     request: Request,
@@ -118,7 +118,7 @@ async def search_similar(
 
 
 @router.get("/{project_id}/labels/cohorts")
-async def cohorts(
+def cohorts(
     project_id: str,
     request: Request,
     min_count: int = Query(8, ge=1, le=1000),
@@ -210,7 +210,7 @@ def get_unprocessed_count(
     "/{project_id}/labels/files",
     response_model=LabelsFilesResponse,
 )
-async def get_labels_files(
+def get_labels_files(
     project_id: str,
     site_ids: str | None = Query(None, description="Comma-separated site IDs"),
     date_from: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
@@ -248,11 +248,6 @@ async def get_labels_files(
     (`hide`); the floor is the project's counting threshold, always, so
     the two halves partition the project and a transient slider can
     never redefine what "empty" means.
-
-    `async def` because `captured_at_local` is an observational datetime
-    and its serializer reads the project timezone from a ContextVar set
-    here; a sync endpoint would set it in a threadpool where the
-    serializer cannot see it (DEVELOPERS.md "Datetime conventions").
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
@@ -321,7 +316,7 @@ async def get_labels_files(
     "/{project_id}/labels/progress",
     response_model=LabelsProgress,
 )
-async def get_labels_progress(
+def get_labels_progress(
     project_id: str,
     site_ids: str | None = Query(None, description="Comma-separated site IDs"),
     date_from: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
@@ -338,9 +333,6 @@ async def get_labels_progress(
 
     The dashboard reads this same endpoint, so its bar and the page's
     pill can never disagree.
-
-    `async def` for consistency with the other endpoints here; it returns
-    no observational datetimes of its own.
     """
     if not db.query(Project.id).filter(Project.id == project_id).first():
         raise HTTPException(status_code=404, detail="Project not found")

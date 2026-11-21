@@ -12,7 +12,6 @@ The export side sits with the other exports under
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -50,17 +49,12 @@ def preview_package(
 
 
 @router.post("/import", status_code=202)
-async def start_package_import(
+def start_package_import(
     body: PackageImportRequest, db: Session = Depends(get_db)
 ) -> dict[str, str]:
     """Start the import job. Refused while another job runs: the import
-    holds the database's one write lock for its whole duration.
-
-    Async because `register_start` schedules on the running loop; the
-    package read goes to a thread, as the other prepare endpoints do
-    with their filesystem checks.
-    """
-    preview = await asyncio.to_thread(_preview, db, body.path)
+    holds the database's one write lock for its whole duration."""
+    preview = _preview(db, body.path)
     if preview.problems:
         raise HTTPException(status_code=400, detail=" ".join(preview.problems))
     if job_crud.has_active_jobs(db):

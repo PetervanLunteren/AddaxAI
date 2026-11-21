@@ -8,7 +8,6 @@ import io
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse as FastAPIFileResponse
 from fastapi.responses import Response
 from PIL import Image
@@ -68,7 +67,7 @@ def _set_project_tz(db: Session, project_id: str) -> None:
 
 
 @router.get("", response_model=list[FileResponse])
-async def list_files(
+def list_files(
     deployment_id: str | None = Query(None, description="Filter by deployment ID"),
     project_id: str | None = Query(None, description="Filter by project ID"),
     observation_type: str | None = Query(None, description="Filter by observation type"),
@@ -146,7 +145,7 @@ def bulk_verify_files(
 
 
 @router.patch("/{file_id}", response_model=FileResponse)
-async def update_file(
+def update_file(
     file_id: str,
     update: FileUpdate,
     db: Session = Depends(get_db),
@@ -162,7 +161,7 @@ async def update_file(
 
 
 @router.get("/{file_id}", response_model=FileWithDetections)
-async def get_file(
+def get_file(
     file_id: str,
     scope: FileScope = Query(
         "all",
@@ -180,15 +179,12 @@ async def get_file(
     Raises:
         HTTPException: If file not found
     """
-    file = await run_in_threadpool(file_crud.get_file, db, file_id)
+    file = file_crud.get_file(db, file_id)
     if not file:
         raise HTTPException(status_code=404, detail="File not found")
 
     _set_project_tz_for_file(db, file_id)
-    # Built in a worker thread: a tracked video is thousands of boxes in
-    # the "all" scope, and on the event loop that held every other request
-    # meanwhile.
-    return await run_in_threadpool(file_crud.file_payload, db, file, scope)
+    return file_crud.file_payload(db, file, scope)
 
 
 VIDEO_MEDIA_TYPES = {

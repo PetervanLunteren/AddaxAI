@@ -212,7 +212,7 @@ def _model_info(
 
 
 @router.get("/models/{model_id}/status", response_model=ModelStatusResponse)
-async def get_model_status(model_id: str) -> ModelStatusResponse:
+def get_model_status(model_id: str) -> ModelStatusResponse:
     """
     Check if model weights and environment are ready.
 

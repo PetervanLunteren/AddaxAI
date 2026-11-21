@@ -1,11 +1,25 @@
 """Tests for the /api/ml endpoints."""
 
 import json
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from app.ml.schemas.model_manifest import ModelManifest
+
+
+def _set_startup_snapshot(client, snapshot: dict) -> None:
+    """Stand in for the snapshot the startup catalog sync leaves.
+
+    The real sync runs as a startup task and writes its own snapshot when
+    it finishes, so wait for that first, or it overwrites this one.
+    """
+    deadline = time.monotonic() + 10
+    while not hasattr(client.app.state, "model_updates"):
+        assert time.monotonic() < deadline, "the startup catalog sync never finished"
+        time.sleep(0.01)
+    client.app.state.model_updates = snapshot
 
 
 @pytest.fixture(autouse=True)
@@ -344,12 +358,12 @@ def test_update_model_clears_the_startup_snapshot(client, mock_managers):
     """
     _, _, mock_storage = mock_managers
     mock_storage.update_stale_files.return_value = ["inference.py"]
-    client.app.state.model_updates = {
+    _set_startup_snapshot(client, {
         "drifted_models": [
             {"model_id": "test-model", "friendly_name": "T", "emoji": "x"},
             {"model_id": "other-model", "friendly_name": "O", "emoji": "y"},
         ]
-    }
+    })
 
     client.post("/api/ml/models/test-model/update")
 
@@ -389,12 +403,12 @@ def test_updates_recomputes_env_drift(client):
     next launch, so reloading the window told the user to rebuild what
     they had just rebuilt.
     """
-    client.app.state.model_updates = {
+    _set_startup_snapshot(client, {
         "new_models": [],
         "drifted_models": [],
         "drifted_envs": [{"env_name": "addaxai-base"}],
         "checked_at": "2026-08-18T12:00:00+00:00",
-    }
+    })
 
     with patch(
         "app.api.routers.ml_models.find_drifted_envs", return_value=[]
@@ -407,12 +421,12 @@ def test_updates_recomputes_env_drift(client):
 
 def test_updates_reports_an_env_that_drifted_after_startup(client):
     """The other direction: the snapshot is not a ceiling either."""
-    client.app.state.model_updates = {
+    _set_startup_snapshot(client, {
         "new_models": [],
         "drifted_models": [],
         "drifted_envs": [],
         "checked_at": "2026-08-18T12:00:00+00:00",
-    }
+    })
 
     with patch(
         "app.api.routers.ml_models.find_drifted_envs",
@@ -428,12 +442,12 @@ def test_updates_honours_the_disable_switch(client):
     ADDAXAI_DISABLE_MODEL_UPDATES turns off the whole notice, so env
     drift must not sneak past it on its own.
     """
-    client.app.state.model_updates = {
+    _set_startup_snapshot(client, {
         "new_models": [],
         "drifted_envs": [],
         "checked_at": None,
         "disabled": True,
-    }
+    })
 
     with patch(
         "app.api.routers.ml_models.find_drifted_envs",
@@ -457,7 +471,7 @@ def test_updates_does_not_mutate_the_startup_snapshot(client):
         "drifted_envs": [{"env_name": "addaxai-base"}],
         "checked_at": None,
     }
-    client.app.state.model_updates = state
+    _set_startup_snapshot(client, state)
 
     with patch(
         "app.api.routers.ml_models.find_drifted_envs", return_value=[]

@@ -11,6 +11,7 @@ import asyncio
 from collections.abc import Callable
 from typing import Any
 
+import anyio.from_thread
 from fastapi import WebSocket
 
 from app.core.logging_config import get_logger
@@ -92,7 +93,19 @@ class ConnectionManager:
 
         Schedules automatic cleanup after _PENDING_START_TIMEOUT seconds to
         prevent memory leaks if the frontend never connects.
+
+        Endpoints that touch the database are plain `def`, so they call
+        this from a worker thread, where no event loop runs. The work then
+        hops onto the loop, which also keeps the dicts below loop-only.
         """
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            anyio.from_thread.run_sync(self._register_start, task_id, start_fn)
+            return
+        self._register_start(task_id, start_fn)
+
+    def _register_start(self, task_id: str, start_fn: Callable) -> None:
         # Drop any leftover terminal/progress state from a previous run that
         # reused this task_id. Model preparation keys on model_id, so the
         # same task_id recurs across runs; without this, a fresh prepare's

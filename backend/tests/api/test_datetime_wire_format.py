@@ -1,11 +1,12 @@
 """
 End-to-end wire-format tests for observational datetime serialization.
 
-Guards against the subtle bug where a ContextVar set inside a sync
-FastAPI endpoint (running in a threadpool) isn't visible to FastAPI's
-response serialization stage (running in the event loop task). These
-tests hit the real endpoint via TestClient and assert that the JSON
-wire format carries the project's tz offset.
+Guards against the subtle bug where the project timezone set inside a
+plain `def` endpoint (running in a worker thread) isn't visible to
+FastAPI's response serialization stage (running on the event loop). The
+per-request holder in `app.utils.datetime_serialization` is what makes it
+visible. These tests hit the real endpoint via TestClient and assert that
+the JSON wire format carries the project's tz offset.
 """
 
 from datetime import datetime
@@ -46,9 +47,9 @@ def test_get_event_serializes_captured_at_local_with_amsterdam_winter_offset(cli
     assert data["event_start_local"] == "2013-01-26T08:25:00+01:00"
     assert data["event_end_local"] == "2013-01-26T08:25:00+01:00"
 
-    # Nested files also carry the offset. Without the async fix, these
-    # serialize with "+00:00" because the sync endpoint's ContextVar
-    # change is lost before FastAPI runs jsonable_encoder.
+    # Nested files also carry the offset. Without the per-request holder
+    # these serialize with "+00:00": the timezone set in the endpoint's
+    # thread would be lost before the serializer runs on the loop.
     assert len(data["files"]) == 1
     assert data["files"][0]["captured_at_local"] == "2013-01-26T08:25:00+01:00"
 
@@ -73,7 +74,7 @@ def test_get_event_serializes_amsterdam_summer_offset(client, db):
 
 
 def test_list_events_serializes_with_project_offset(client, db):
-    """The /api/events list endpoint also needs the async fix.
+    """The /api/events list endpoint carries the offset too.
 
     Note: we attach a high-confidence detection because list_events
     applies the project's detection threshold via an EXISTS subquery
@@ -100,7 +101,7 @@ def test_list_events_serializes_with_project_offset(client, db):
 
 
 def test_get_file_serializes_with_project_offset(client, db):
-    """The /api/files/{id} endpoint also needs the async fix."""
+    """The /api/files/{id} endpoint carries the offset too."""
     project = make_project(db, timezone="Europe/Amsterdam")
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
@@ -146,3 +147,25 @@ def test_fixed_offset_zone_has_no_dst_jump(client, db):
     assert resp_s.status_code == 200
     assert resp_w.json()["event_start_local"] == "2024-01-15T10:00:00+03:00"
     assert resp_s.json()["event_start_local"] == "2024-07-15T10:00:00+03:00"
+
+
+def test_labels_files_serializes_with_project_offset(client, db):
+    """The Files tab of the Labels page shows capture times too."""
+    project = make_project(db, timezone="Europe/Amsterdam")
+    site = make_site(db, project_id=project.id)
+    dep = make_deployment(db, site_id=site.id)
+    make_file(
+        db,
+        deployment_id=dep.id,
+        captured_at_local=datetime(2013, 7, 26, 8, 25, 0),
+    )
+    db.flush()
+
+    resp = client.get(
+        f"/api/projects/{project.id}/labels/files",
+        params={"verification": "all", "empty": "show_only"},
+    )
+    assert resp.status_code == 200, resp.text
+    items = resp.json()["items"]
+    assert len(items) == 1
+    assert items[0]["captured_at_local"] == "2013-07-26T08:25:00+02:00"

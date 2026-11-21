@@ -203,7 +203,7 @@ def list_sites_with_stats(
 
 
 @router.get("/{site_id}/info", response_model=SiteInfoResponse)
-async def site_info(
+def site_info(
     site_id: str, db: Session = Depends(get_db)
 ) -> SiteInfoResponse:
     """
@@ -214,9 +214,6 @@ async def site_info(
     detection-category breakdown, top species, trap nights, rate, and
     the first and last capture timestamps. Returns 404 if the site
     does not exist.
-
-    `async def` so the project-timezone ContextVar reaches the
-    response serializer.
     """
     info = crud_site.get_site_info(db, site_id)
     if info is None:

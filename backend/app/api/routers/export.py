@@ -24,7 +24,6 @@ See ``app/api/crud/export.py`` for the data layer and
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Callable
 from pathlib import Path
 from typing import TypeVar
@@ -98,11 +97,10 @@ def _scope(
     return export_crud.resolve_scope_deployment_ids(db, project, None, deployment_ids)
 
 
-async def _output_dir(path: str) -> Path:
-    """The picked folder, which must exist. Checked off the loop: a
-    network drive that is asleep answers a stat in seconds."""
+def _output_dir(path: str) -> Path:
+    """The picked folder, which must exist."""
     folder = Path(path)
-    if not await asyncio.to_thread(folder.is_dir):
+    if not folder.is_dir():
         raise HTTPException(
             status_code=400, detail="Choose a folder to save the export in"
         )
@@ -134,13 +132,11 @@ def _require_a_site(
 _T = TypeVar("_T")
 
 
-async def _write(build_and_write: Callable[[], _T]) -> _T:
-    """Build an export and write it, off the event loop: a large project
-    must not freeze every other request, and the thread inherits the
-    project timezone. A folder the user cannot write to is a 400 that
-    says why, not a bare 500."""
+def _write(build_and_write: Callable[[], _T]) -> _T:
+    """Build an export and write it. A folder the user cannot write to is
+    a 400 that says why, not a bare 500."""
     try:
-        return await asyncio.to_thread(build_and_write)
+        return build_and_write()
     except OSError as e:
         raise HTTPException(
             status_code=400,
@@ -161,7 +157,7 @@ _TABLE_FILE_NAMES = {
 
 
 @router.post("/tables", response_model=WrittenFiles)
-async def export_tables(
+def export_tables(
     project_id: str,
     body: TablesExportRequest,
     db: Session = Depends(get_db),
@@ -179,7 +175,7 @@ async def export_tables(
     """
     project = _resolve_project(project_id, db)
     scope = _scope(db, project, body.deployment_ids)
-    folder = await _output_dir(body.output_dir)
+    folder = _output_dir(body.output_dir)
 
     def build_and_write() -> list[str]:
         sheets = export_crud.build_spreadsheet_sheets(db, project, scope)
@@ -209,7 +205,7 @@ async def export_tables(
         return names
 
     try:
-        files = await _write(build_and_write)
+        files = _write(build_and_write)
     except export_formats.XlsxRowLimitError as e:
         # The message names the table, its size and the CSV way out.
         raise HTTPException(status_code=422, detail=str(e)) from e
@@ -224,7 +220,7 @@ _SPATIAL_WRITERS = {
 
 
 @router.post("/spatial", response_model=WrittenFiles)
-async def export_spatial(
+def export_spatial(
     project_id: str,
     body: SpatialExportRequest,
     db: Session = Depends(get_db),
@@ -234,7 +230,7 @@ async def export_spatial(
     project = _resolve_project(project_id, db)
     scope = _scope(db, project, body.deployment_ids)
     _require_a_site(db, project, scope, "A spatial export")
-    folder = await _output_dir(body.output_dir)
+    folder = _output_dir(body.output_dir)
     extension, serialize = _SPATIAL_WRITERS[body.format]
 
     def build_and_write() -> str:
@@ -245,12 +241,12 @@ async def export_spatial(
         path.write_bytes(serialize(layers))
         return path.name
 
-    name = await _write(build_and_write)
+    name = _write(build_and_write)
     return WrittenFiles(output_dir=str(folder), files=[name])
 
 
 @router.post("/camtrap-dp/prepare", status_code=202)
-async def prepare_camtrap_dp(
+def prepare_camtrap_dp(
     project_id: str,
     body: CamtrapExportRequest,
     db: Session = Depends(get_db),
@@ -260,7 +256,7 @@ async def prepare_camtrap_dp(
     """
     project = _resolve_project(project_id, db)
     scope = _scope(db, project, body.deployment_ids)
-    folder = await _output_dir(body.output_dir)
+    folder = _output_dir(body.output_dir)
 
     _require_a_site(db, project, scope, "Camtrap DP")
 
@@ -286,7 +282,7 @@ async def prepare_camtrap_dp(
 
 
 @router.post("/recognition-json/prepare", status_code=202)
-async def prepare_recognition_json(
+def prepare_recognition_json(
     project_id: str,
     site_ids: str | None = Query(None),
     deployment_ids: str | None = Query(None),
@@ -385,7 +381,7 @@ def preview_media_export(
 
 
 @router.post("/media/prepare", status_code=202)
-async def prepare_media_export(
+def prepare_media_export(
     project_id: str,
     body: MediaExportRequest,
     db: Session = Depends(get_db),
@@ -401,7 +397,7 @@ async def prepare_media_export(
     project = _resolve_project(project_id, db)
     scope = _media_scope(db, project, body)
 
-    output_root = await _output_dir(body.output_dir)
+    output_root = _output_dir(body.output_dir)
 
     job = job_crud.create_job(
         db,
@@ -486,7 +482,7 @@ def package_size(
 
 
 @router.post("/package/prepare", status_code=202)
-async def prepare_package_export(
+def prepare_package_export(
     project_id: str,
     body: PackageExportRequest,
     db: Session = Depends(get_db),
@@ -499,14 +495,14 @@ async def prepare_package_export(
             status_code=400, detail="Only projects can be exported as a bundle"
         )
     scope = _package_scope(db, project, body.deployment_ids)
-    output_dir = await _output_dir(body.output_dir)
+    output_dir = _output_dir(body.output_dir)
     folders = [
         f for f in db.execute(
             select(Deployment.folder_path).where(Deployment.id.in_(scope))
         ).scalars() if f
     ]
     try:
-        await asyncio.to_thread(package_destination, output_dir, project.name, folders)
+        package_destination(output_dir, project.name, folders)
     except PackageError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 

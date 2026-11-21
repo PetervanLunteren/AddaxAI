@@ -51,6 +51,7 @@ from app.core.startup_error import GENERIC_STARTUP_FAILURE, write_startup_error
 from app.db.base import init_db
 from app.db.migrations import SchemaError
 from app.ml.catalog_updater import ModelCatalogUpdater
+from app.utils.datetime_serialization import start_request_timezone
 
 # Initialize logging first, before anything else
 setup_logging()
@@ -617,6 +618,15 @@ def create_app() -> FastAPI:
                 f"{response.status_code} {elapsed:.2f}s"
             )
         return response
+
+    # Every request gets its own project timezone holder, set here on the
+    # event loop so a plain `def` endpoint's worker thread and the response
+    # serializer share it (see `start_request_timezone`). Registered last
+    # of the HTTP middlewares, so it is the outermost of them.
+    @app.middleware("http")
+    async def request_timezone_middleware(request: Request, call_next):
+        start_request_timezone()
+        return await call_next(request)
 
     # CORS middleware - allow frontend to access API
     # In Electron: frontend and backend both served from the API port (same origin)

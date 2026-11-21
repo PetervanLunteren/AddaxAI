@@ -9,6 +9,7 @@ Following DEVELOPERS.md principles:
 import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi.concurrency import run_in_threadpool
 
 from app.api.crud import deployment_queue as queue_crud
 from app.api.crud import job as job_crud
@@ -56,61 +57,9 @@ async def job_progress_websocket(websocket: WebSocket, job_id: str):
         )
     else:
         try:
-            db = next(get_db())
-            try:
-                job = job_crud.get_job(db, job_id)
-                if job and job.status == "completed":
-                    await websocket.send_json(
-                        {
-                            "type": "complete",
-                            "job_id": job_id,
-                            "success": True,
-                            "message": "Job completed (reconnected after restart)",
-                            "data": {},
-                        }
-                    )
-                elif job and job.status == "failed":
-                    await websocket.send_json(
-                        {
-                            "type": "error",
-                            "job_id": job_id,
-                            "message": "Job failed (reconnected after restart)",
-                        }
-                    )
-                elif job and job.status == "running":
-                    # Job is "running" but no buffer exists — the worker
-                    # died (e.g. backend was killed). Mark it failed in the
-                    # DB and notify the client.
-                    job_crud.update_job_status(db, job_id, "failed")
-                    logger.warning(
-                        f"Job {job_id} was stuck in 'running' after restart, marked as failed"
-                    )
-
-                    # Also mark any associated queue entries as failed
-                    payload = job.payload or {}
-                    error_msg = "Interrupted by server restart"
-                    queue_entry_ids = payload.get("queue_entry_ids", [])
-                    if not queue_entry_ids and payload.get("queue_entry_id"):
-                        queue_entry_ids = [payload["queue_entry_id"]]
-                    for entry_id in queue_entry_ids:
-                        entry = queue_crud.get_queue_entry(db, entry_id)
-                        if entry and entry.status == "processing":
-                            queue_crud.update_queue_status(
-                                db, entry_id, status="failed", error=error_msg
-                            )
-                            logger.warning(
-                                f"Queue entry {entry_id} marked as failed (server restart)"
-                            )
-
-                    await websocket.send_json(
-                        {
-                            "type": "error",
-                            "job_id": job_id,
-                            "message": "Job was interrupted by server restart",
-                        }
-                    )
-            finally:
-                db.close()
+            message = await run_in_threadpool(_settle_job_after_restart, job_id)
+            if message is not None:
+                await websocket.send_json(message)
         except Exception as e:
             logger.warning(f"Failed to check job status for {job_id}: {e}")
 
@@ -138,3 +87,54 @@ async def job_progress_websocket(websocket: WebSocket, job_id: str):
     except Exception as e:
         logger.error(f"WebSocket error for job {job_id}: {e}")
         await ws_manager.disconnect(websocket, job_id)
+
+
+def _settle_job_after_restart(job_id: str) -> dict | None:
+    """The message for a client that reconnects to a job this process has
+    no state for, or None. A job still marked running had its worker die
+    with the previous process, so it and its queue entries are marked
+    failed here. Database work, so the WebSocket runs it in a thread."""
+    db = next(get_db())
+    try:
+        job = job_crud.get_job(db, job_id)
+        if job and job.status == "completed":
+            return {
+                "type": "complete",
+                "job_id": job_id,
+                "success": True,
+                "message": "Job completed (reconnected after restart)",
+                "data": {},
+            }
+        if job and job.status == "failed":
+            return {
+                "type": "error",
+                "job_id": job_id,
+                "message": "Job failed (reconnected after restart)",
+            }
+        if job and job.status == "running":
+            job_crud.update_job_status(db, job_id, "failed")
+            logger.warning(
+                f"Job {job_id} was stuck in 'running' after restart, marked as failed"
+            )
+            payload = job.payload or {}
+            error_msg = "Interrupted by server restart"
+            queue_entry_ids = payload.get("queue_entry_ids", [])
+            if not queue_entry_ids and payload.get("queue_entry_id"):
+                queue_entry_ids = [payload["queue_entry_id"]]
+            for entry_id in queue_entry_ids:
+                entry = queue_crud.get_queue_entry(db, entry_id)
+                if entry and entry.status == "processing":
+                    queue_crud.update_queue_status(
+                        db, entry_id, status="failed", error=error_msg
+                    )
+                    logger.warning(
+                        f"Queue entry {entry_id} marked as failed (server restart)"
+                    )
+            return {
+                "type": "error",
+                "job_id": job_id,
+                "message": "Job was interrupted by server restart",
+            }
+        return None
+    finally:
+        db.close()

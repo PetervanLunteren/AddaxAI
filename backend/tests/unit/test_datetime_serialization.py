@@ -19,6 +19,7 @@ import pytest
 from app.utils.datetime_serialization import (
     serialize_local_datetime,
     set_active_project_timezone,
+    start_request_timezone,
     to_local_iso_with_offset,
 )
 
@@ -81,3 +82,46 @@ def test_default_active_tz_is_utc():
         serialize_local_datetime(datetime(2026, 3, 21, 0, 0, 0))
         == "2026-03-21T00:00:00+00:00"
     )
+
+
+def test_a_timezone_set_in_a_worker_thread_reaches_the_caller():
+    """A plain `def` endpoint runs in a worker thread with a copy of the
+    request's context, and its response is serialized on the event loop.
+    The timezone set in the thread must be the one the serializer reads,
+    or every capture time silently goes out as UTC."""
+    import contextvars
+    import threading
+
+    def run_in_copied_context() -> None:
+        ctx = contextvars.copy_context()
+        worker = threading.Thread(
+            target=ctx.run, args=(set_active_project_timezone, "Etc/GMT-3")
+        )
+        worker.start()
+        worker.join()
+
+    def request() -> str:
+        start_request_timezone()
+        run_in_copied_context()
+        return serialize_local_datetime(datetime(2026, 6, 15, 7, 30, 0))
+
+    assert contextvars.copy_context().run(request) == "2026-06-15T07:30:00+03:00"
+
+
+def test_a_new_request_starts_at_utc():
+    """Each request gets its own timezone, so one project's zone never
+    leaks into the next request."""
+    import contextvars
+
+    ctx = contextvars.copy_context()
+
+    def first() -> None:
+        start_request_timezone()
+        set_active_project_timezone("Etc/GMT-3")
+
+    def second() -> str:
+        start_request_timezone()
+        return serialize_local_datetime(datetime(2026, 6, 15, 7, 30, 0))
+
+    ctx.run(first)
+    assert ctx.run(second) == "2026-06-15T07:30:00+00:00"

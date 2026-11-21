@@ -16,25 +16,57 @@ from contextvars import ContextVar
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+
+class _ActiveTimezone:
+    """The project timezone of one request, filled in by the endpoint."""
+
+    def __init__(self) -> None:
+        self.name = "UTC"
+
+
 # Per-request active project timezone used by Pydantic field serializers
-# when rendering observational datetimes. Routers set this at the top of
-# the endpoint via `set_active_project_timezone(tz)` after they know
-# which project the response belongs to. Defaults to "UTC" so any code
-# path that forgets to set it produces a predictable, valid ISO string
-# rather than a crash.
-_active_project_timezone: ContextVar[str] = ContextVar(
-    "active_project_timezone", default="UTC"
+# when rendering observational datetimes. Endpoints set it with
+# `set_active_project_timezone(tz)` once they know the project. Reads
+# "UTC" when nothing set it, so a forgotten call gives a predictable,
+# valid ISO string rather than a crash.
+#
+# The ContextVar holds an object rather than the name itself. FastAPI
+# runs a plain `def` endpoint in a worker thread with a copy of the
+# request's context, and serializes the response on the event loop. A
+# name set in the thread stays in the copy; a field written on the shared
+# object is seen by the serializer. `start_request_timezone` gives every
+# request its own object, so nothing carries over between requests.
+_active_project_timezone: ContextVar[_ActiveTimezone | None] = ContextVar(
+    "active_project_timezone", default=None
 )
 
 
+def start_request_timezone() -> None:
+    """Give the current request its own timezone, "UTC" until set.
+
+    Called by a middleware before every request, on the event loop, so
+    the endpoint's thread and the serializer share the object.
+    """
+    _active_project_timezone.set(_ActiveTimezone())
+
+
 def set_active_project_timezone(tz_name: str) -> None:
-    """Set the active project timezone for the current request context."""
-    _active_project_timezone.set(tz_name)
+    """Set the active project timezone for the current request.
+
+    Outside a request (a worker, a test) there is no object yet, and this
+    makes one for the current context.
+    """
+    active = _active_project_timezone.get()
+    if active is None:
+        active = _ActiveTimezone()
+        _active_project_timezone.set(active)
+    active.name = tz_name
 
 
 def get_active_project_timezone() -> str:
-    """Return the active project timezone for the current request context."""
-    return _active_project_timezone.get()
+    """Return the active project timezone for the current request."""
+    active = _active_project_timezone.get()
+    return active.name if active is not None else "UTC"
 
 
 def to_local_iso_with_offset(dt: datetime, tz_name: str | None = None) -> str:
@@ -61,7 +93,7 @@ def to_local_iso_with_offset(dt: datetime, tz_name: str | None = None) -> str:
         raise ValueError(
             f"to_local_iso_with_offset expects a naive datetime, got tzinfo={dt.tzinfo!r}"
         )
-    tz = tz_name if tz_name is not None else _active_project_timezone.get()
+    tz = tz_name if tz_name is not None else get_active_project_timezone()
     aware = dt.replace(tzinfo=ZoneInfo(tz))
     return aware.isoformat(timespec="seconds")
 

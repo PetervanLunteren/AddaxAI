@@ -412,7 +412,8 @@ class ModelCatalogUpdater:
         }
 
         try:
-            catalog = self.fetch_catalog()
+            # A network call: off the event loop, which serves the app meanwhile.
+            catalog = await asyncio.to_thread(self.fetch_catalog)
             if catalog is None:
                 result["error"] = "Failed to fetch catalog"
                 return result

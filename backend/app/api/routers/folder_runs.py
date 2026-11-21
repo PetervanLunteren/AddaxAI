@@ -899,7 +899,7 @@ def rerun_folder_run(
 
 
 @router.post("/{run_id}/save-outputs", response_model=SaveOutputsResponse)
-async def save_outputs(
+def save_outputs(
     run_id: str,
     payload: SaveOutputsRequest,
     db: Session = Depends(get_db),

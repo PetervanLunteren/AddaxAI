@@ -987,7 +987,7 @@ def get_regroup_preview(
     "/{project_id}/reprocess",
     status_code=status.HTTP_202_ACCEPTED,
 )
-async def reprocess_classifications(
+def reprocess_classifications(
     project_id: str,
     db: Session = Depends(get_db),
 ) -> dict:
@@ -1565,7 +1565,7 @@ class ReEmbedRequest(BaseModel):
     "/{project_id}/re-embed",
     status_code=status.HTTP_202_ACCEPTED,
 )
-async def re_embed_detections(
+def re_embed_detections(
     project_id: str,
     payload: ReEmbedRequest | None = None,
     db: Session = Depends(get_db),

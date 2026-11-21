@@ -10,7 +10,6 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -154,18 +153,11 @@ def generate_events(
 
 
 @router.get("/filter-options", response_model=EventFilterOptions)
-async def get_filter_options(
+def get_filter_options(
     project_id: str = Query(..., description="Project ID"),
     db: Session = Depends(get_db),
 ):
-    """Get available filter options (distinct labels, date range) for a project.
-
-    `async def` so the active project timezone ContextVar set below is
-    visible to the response field serializer (see DEVELOPERS.md
-    "Datetime conventions"). Sync endpoints run in a threadpool and
-    their ContextVar changes don't propagate to FastAPI's serialization
-    stage, which runs in the event loop task.
-    """
+    """Get available filter options (distinct labels, date range) for a project."""
     _set_project_tz(db, project_id)
     return event_crud.get_filter_options(db, project_id)
 
@@ -225,7 +217,7 @@ def get_label_tree(
 
 
 @router.get("", response_model=list[EventSummary])
-async def list_events(
+def list_events(
     project_id: str = Query(..., description="Project ID"),
     site_ids: str | None = Query(None, description="Comma-separated site IDs"),
     date_from: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
@@ -245,10 +237,7 @@ async def list_events(
     limit: int = Query(50, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
-    """List event summaries for a project with optional filters.
-
-    See note on `get_filter_options` for why this is `async def`.
-    """
+    """List event summaries for a project with optional filters."""
     _set_project_tz(db, project_id)
     filters = _parse_filter_params(
         site_ids, date_from, date_to, labels, verification,
@@ -259,9 +248,7 @@ async def list_events(
         sort=sort, seed=seed,
     )
     _apply_project_threshold(filters, project_id, db)
-    # The page's boxes load in a worker thread (see `get_event`).
-    return await run_in_threadpool(
-        event_crud.get_events_by_project,
+    return event_crud.get_events_by_project(
         db, project_id, skip=skip, limit=limit, **filters,
     )
 
@@ -343,19 +330,12 @@ def get_verification_stats(
 
 
 @router.get("/{event_id}", response_model=EventWithFiles)
-async def get_event(
+def get_event(
     event_id: str,
     db: Session = Depends(get_db),
 ):
-    """Get event with all files and detections.
-
-    The load runs in a worker thread: an hour of tracked video is
-    thousands of boxes, and done on the event loop it held every other
-    request, `/health` included, until it finished. The route itself
-    stays async because the timezone context it sets below has to be set
-    on the loop's context for the serializer to see it.
-    """
-    event = await run_in_threadpool(event_crud.get_event_with_files, db, event_id)
+    """Get event with all files and detections."""
+    event = event_crud.get_event_with_files(db, event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
@@ -395,14 +375,12 @@ async def get_event(
     # The light shape per file: the cover's boxes, the cards and the
     # MaxN per species. Enough for the landing pick, the filmstrip and
     # the first still; the modal fetches the full file it focuses on.
-    files = await run_in_threadpool(
-        lambda: [
-            file_crud.file_payload(
-                db, f, "cards", camera=_camera_name(f.file_path, event.deployment)
-            )
-            for f in sorted_files
-        ]
-    )
+    files = [
+        file_crud.file_payload(
+            db, f, "cards", camera=_camera_name(f.file_path, event.deployment)
+        )
+        for f in sorted_files
+    ]
 
     return EventWithFiles(
         id=event.id,
@@ -556,7 +534,7 @@ class EventNotesRequest(BaseModel):
 
 
 @router.patch("/{event_id}/confirm", response_model=EventWithFiles)
-async def confirm_event(
+def confirm_event(
     event_id: str,
     body: EventConfirmRequest,
     db: Session = Depends(get_db),
@@ -565,11 +543,11 @@ async def confirm_event(
     event = event_obs_crud.set_event_confirmed(db, event_id, body.confirmed)
     if event is None:
         raise HTTPException(status_code=404, detail="Event not found")
-    return await get_event(event_id, db)
+    return get_event(event_id, db)
 
 
 @router.patch("/{event_id}/notes", response_model=EventWithFiles)
-async def set_event_notes(
+def set_event_notes(
     event_id: str,
     body: EventNotesRequest,
     db: Session = Depends(get_db),
@@ -578,11 +556,11 @@ async def set_event_notes(
     event = event_obs_crud.set_event_notes(db, event_id, body.notes)
     if event is None:
         raise HTTPException(status_code=404, detail="Event not found")
-    return await get_event(event_id, db)
+    return get_event(event_id, db)
 
 
 @router.post("/{event_id}/observations", response_model=EventWithFiles)
-async def add_event_observation(
+def add_event_observation(
     event_id: str,
     body: AddSpeciesRequest,
     db: Session = Depends(get_db),
@@ -600,11 +578,11 @@ async def add_event_observation(
             label=body.label,
             label_taxonomy_id=body.label_taxonomy_id,
         )
-    return await get_event(event_id, db)
+    return get_event(event_id, db)
 
 
 @router.put("/{event_id}/observations", response_model=EventWithFiles)
-async def set_human_observations(
+def set_human_observations(
     event_id: str,
     body: SetHumanObservationsRequest,
     db: Session = Depends(get_db),
@@ -617,14 +595,14 @@ async def set_human_observations(
         )
     if event is None:
         raise HTTPException(status_code=404, detail="Event not found")
-    return await get_event(event_id, db)
+    return get_event(event_id, db)
 
 
 @router.patch(
     "/{event_id}/observations/{observation_id}",
     response_model=EventWithFiles,
 )
-async def set_observation_count(
+def set_observation_count(
     event_id: str,
     observation_id: str,
     body: SetCountRequest,
@@ -636,14 +614,14 @@ async def set_observation_count(
     )
     if obs is None:
         raise HTTPException(status_code=404, detail="Observation not found")
-    return await get_event(event_id, db)
+    return get_event(event_id, db)
 
 
 @router.patch(
     "/{event_id}/observations/{observation_id}/relabel",
     response_model=EventWithFiles,
 )
-async def relabel_event_observation(
+def relabel_event_observation(
     event_id: str,
     observation_id: str,
     body: RelabelObservationRequest,
@@ -662,14 +640,14 @@ async def relabel_event_observation(
         )
     if obs is None:
         raise HTTPException(status_code=404, detail="Observation not found")
-    return await get_event(event_id, db)
+    return get_event(event_id, db)
 
 
 @router.patch(
     "/{event_id}/observations/{observation_id}/attributes",
     response_model=EventWithFiles,
 )
-async def set_observation_attributes(
+def set_observation_attributes(
     event_id: str,
     observation_id: str,
     body: SetObservationAttributesRequest,
@@ -682,14 +660,14 @@ async def set_observation_attributes(
     )
     if obs is None:
         raise HTTPException(status_code=404, detail="Observation not found")
-    return await get_event(event_id, db)
+    return get_event(event_id, db)
 
 
 @router.post(
     "/{event_id}/observations/{observation_id}/split",
     response_model=EventWithFiles,
 )
-async def split_event_observation(
+def split_event_observation(
     event_id: str,
     observation_id: str,
     db: Session = Depends(get_db),
@@ -699,14 +677,14 @@ async def split_event_observation(
     obs = event_obs_crud.split_observation(db, observation_id, event_id=event_id)
     if obs is None:
         raise HTTPException(status_code=404, detail="Observation not found")
-    return await get_event(event_id, db)
+    return get_event(event_id, db)
 
 
 @router.delete(
     "/{event_id}/observations/{observation_id}",
     response_model=EventWithFiles,
 )
-async def delete_event_observation(
+def delete_event_observation(
     event_id: str,
     observation_id: str,
     db: Session = Depends(get_db),
@@ -716,16 +694,16 @@ async def delete_event_observation(
     result = event_obs_crud.delete_event_observation(db, observation_id, event_id=event_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Observation not found")
-    return await get_event(event_id, db)
+    return get_event(event_id, db)
 
 
 @router.post("/{event_id}/observations/reset", response_model=EventWithFiles)
-async def reset_event_counts(event_id: str, db: Session = Depends(get_db)):
+def reset_event_counts(event_id: str, db: Session = Depends(get_db)):
     """Drop every human count edit on the event, back to the AI proposal."""
     event = event_obs_crud.reset_event_to_ai(db, event_id)
     if event is None:
         raise HTTPException(status_code=404, detail="Event not found")
-    return await get_event(event_id, db)
+    return get_event(event_id, db)
 
 
 @router.get("/{event_id}/adjacent", response_model=AdjacentEventsResponse)

@@ -246,7 +246,7 @@ def delete_queue_entry(entry_id: str, db: Session = Depends(get_db)) -> None:
 
 
 @router.post("/process", status_code=status.HTTP_202_ACCEPTED)
-async def process_queue(
+def process_queue(
     request: ProcessQueueRequest, db: Session = Depends(get_db)
 ) -> dict[str, str | int | list[str]]:
     """

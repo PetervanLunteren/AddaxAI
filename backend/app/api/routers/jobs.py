@@ -128,7 +128,7 @@ def delete_job(job_id: str, db: Session = Depends(get_db)) -> None:
 
 
 @router.post("/run-queue", response_model=RunQueueResponse)
-async def run_queue(
+def run_queue(
     background_tasks: BackgroundTasks,
     project_id: str | None = Query(None, description="Filter by project_id"),
     db: Session = Depends(get_db),

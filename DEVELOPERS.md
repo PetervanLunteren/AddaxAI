@@ -292,6 +292,15 @@ Pre-init backups in lifespan are best-effort. If `~/AddaxAI/` is read-only or th
 
 **Statistics are per connection, so every `ANALYZE` replaces the pool.** SQLite reads `sqlite_stat1` once per connection and never again. Measured on 3.45.1: a pooled connection keeps planning with the statistics it started with, and the connection that ran the `ANALYZE` keeps the deleted `idx_files_source_video` row in memory (see "Never run a bare `ANALYZE`"), so a project delete on it would be the full-scan cascade again. `refresh_query_statistics` therefore disposes the engine: idle connections close at once, busy ones when their session ends. The dev SQLite plans the same either way, so `tests/db/test_engine.py` pins the mechanism, not a plan.
 
+## Endpoints and the event loop
+
+**An endpoint that touches the database is a plain `def`.** FastAPI runs a `def` endpoint in a worker thread and an `async def` endpoint on the event loop. A query in an `async def` endpoint stops every other request, `/health` included, until it returns. On the seeded 1M-photo database five dashboard cards finished in the same 0.1 s because they had all waited behind one `async` endpoint. There are no exceptions to this rule, because the two reasons to be async are gone:
+
+- The project timezone works from a thread (see "Datetime conventions").
+- `ws_manager.register_start` hops onto the loop by itself when called from a worker thread (`anyio.from_thread.run_sync`).
+
+A streaming endpoint is a `def` too: it does its queries and returns a `StreamingResponse` over an async generator, which Starlette runs on the loop. The generator itself must not query (`stream_sort_async` and friends in `services/label_service.py` build their parameters before they return the stream). `tests/api/test_no_db_on_event_loop.py` fails when an `async def` route takes a session from `get_db`.
+
 ## Removing the legacy AddaxAI install
 
 AddaxAI 7 installs to different locations than AddaxAI 6, so upgrading leaves two full apps on the machine, the old one holding 10 to 30 GB of conda envs and model weights. The app finds the old install and offers to delete it.
@@ -843,9 +852,9 @@ There are two kinds of datetimes in this codebase and they must never be mixed i
 | Observational | `*_local` (or `*_date_local`) | `DateTime` / `Date` | EXIF / exiftool / event clustering | camera local, naive |
 | Audit | `*_utc` | `DateTime(timezone=True)` | `datetime.now(UTC)` | UTC, tz-aware |
 
-**Wire format.** Observational datetimes are serialized to the frontend as ISO 8601 with the UTC offset that applies to the project's timezone on *that file's local date* (so DST is resolved per-file). The field serializer lives in `backend/app/api/schemas/file.py` and `backend/app/api/schemas/event.py`; it reads the active project timezone from a `ContextVar` set at the top of each endpoint. The helper `app.utils.datetime_serialization.to_local_iso_with_offset` does the actual formatting. Audit datetimes serialize naturally because they're already tz-aware.
+**Wire format.** Observational datetimes are serialized to the frontend as ISO 8601 with the UTC offset that applies to the project's timezone on *that file's local date* (so DST is resolved per-file). The field serializers live in `backend/app/api/schemas/file.py`, `event.py` and `label.py`; they read the active project timezone, which the endpoint sets with `set_active_project_timezone(tz)` once it knows the project. The helper `app.utils.datetime_serialization.to_local_iso_with_offset` does the actual formatting. Audit datetimes serialize naturally because they're already tz-aware.
 
-**Endpoints that return observational datetimes must be `async def`.** The `ContextVar` is set inside the endpoint body; for sync endpoints FastAPI runs the body in a threadpool, and the ContextVar set there is invisible to the response serialization stage that runs in the event loop task. `async def` keeps the body and serialization in the same task context. Pinned by tests in `backend/tests/api/test_datetime_wire_format.py`.
+**The timezone is a per-request object, so endpoints stay plain `def`.** FastAPI runs a `def` endpoint in a worker thread with a copy of the request's context, and serializes the response on the event loop. A value set with `ContextVar.set` in the thread stays in the copy, so the serializer used to see UTC, and these endpoints had to be `async def`, which put their queries on the event loop (see "Endpoints and the event loop"). Now a middleware (`start_request_timezone`) puts a fresh holder object in the `ContextVar` before every request, and `set_active_project_timezone` writes into that object. The thread's copy points at the same object, so the serializer sees the zone. Outside a request (the Camtrap worker, a unit test) the setter makes its own holder. Pinned by `backend/tests/api/test_datetime_wire_format.py` and `tests/unit/test_datetime_serialization.py`.
 
 **Frontend rendering.** The UI must always show the camera's wall-clock time, not the viewer's browser-local time. `new Date(iso).toLocaleString(...)` parses the ISO string to an absolute UTC moment and then converts to the *viewer's* timezone, which silently shows wrong hours for any user not in the project's tz. Use `formatCameraDate` / `formatCameraTime` / `formatCameraDateTime` from `frontend/src/lib/datetime.ts` instead. They strip the offset and render the local components verbatim (locale-aware via `Intl.DateTimeFormat` with `timeZone: "UTC"` after the strip).
 

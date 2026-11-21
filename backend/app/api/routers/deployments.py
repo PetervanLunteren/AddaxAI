@@ -7,7 +7,6 @@ Following DEVELOPERS.md principles:
 - Crash on unexpected errors (let FastAPI handle them)
 """
 
-import asyncio
 import difflib
 import io
 import subprocess
@@ -309,7 +308,7 @@ def get_bulk_stats(
 
 
 @router.post("/check-all", response_model=dict[str, int])
-async def check_all_folders(
+def check_all_folders(
     project_id: str, db: Session = Depends(get_db)
 ) -> dict[str, int]:
     """
@@ -318,16 +317,8 @@ async def check_all_folders(
     The Deployments page calls this when it opens, so the page that
     recovers a missing folder always reads the disk rather than whatever
     the last startup sweep or failed image happened to record.
-
-    `async def` plus `to_thread` because this is a `stat()` per sampled
-    file across every deployment: on a slow or disconnected drive it must
-    not hold the event loop. The session crosses into the thread, which is
-    safe only because the endpoint awaits immediately and touches `db`
-    nowhere else.
     """
-    return await asyncio.to_thread(
-        crud_deployment.check_all_deployment_folders, db, project_id
-    )
+    return crud_deployment.check_all_deployment_folders(db, project_id)
 
 
 @router.post("/bulk-relink", response_model=BulkRelinkResponse)
@@ -915,7 +906,7 @@ def split_deployment(
 
 
 @router.get("/{deployment_id}/info", response_model=DeploymentInfoResponse)
-async def deployment_info(
+def deployment_info(
     deployment_id: str, db: Session = Depends(get_db)
 ) -> DeploymentInfoResponse:
     """
@@ -926,9 +917,6 @@ async def deployment_info(
     classification confidence (respecting the project's detection
     threshold with the verified override), and the first and last
     capture timestamps. Returns 404 if the deployment does not exist.
-
-    `async def` so the project-timezone ContextVar set by the
-    datetime-offset middleware reaches the response serializer.
     """
     info = crud_deployment.get_deployment_info(db, deployment_id)
     if info is None:

@@ -531,27 +531,24 @@ async def stream_labels_subprocess_async(
         yield (json.dumps({"type": "error", "message": msg}) + "\n").encode("utf-8")
 
 
-async def stream_sort_async(
+# The three below are plain functions on purpose: the database work that
+# builds the parameters runs when they are called, in the endpoint's worker
+# thread, and only the returned stream runs on the event loop.
+def stream_sort_async(
     request: Request, project_id: str, body: SortRequest, db: Session
 ) -> AsyncIterator[bytes]:
     params = _build_sort_params(project_id, body, db)
-    async for chunk in stream_labels_subprocess_async(
-        request, "sort", project_id, params
-    ):
-        yield chunk
+    return stream_labels_subprocess_async(request, "sort", project_id, params)
 
 
-async def stream_search_async(
+def stream_search_async(
     request: Request, project_id: str, body: SearchRequest, db: Session
 ) -> AsyncIterator[bytes]:
     params = _build_search_params(project_id, body, db)
-    async for chunk in stream_labels_subprocess_async(
-        request, "search", project_id, params
-    ):
-        yield chunk
+    return stream_labels_subprocess_async(request, "search", project_id, params)
 
 
-async def stream_cohorts_async(
+def stream_cohorts_async(
     request: Request,
     project_id: str,
     min_count: int,
@@ -560,7 +557,4 @@ async def stream_cohorts_async(
     db: Session,
 ) -> AsyncIterator[bytes]:
     params = _build_cohort_params(project_id, min_count, max_cohorts, scope, db)
-    async for chunk in stream_labels_subprocess_async(
-        request, "cohorts", project_id, params
-    ):
-        yield chunk
+    return stream_labels_subprocess_async(request, "cohorts", project_id, params)
