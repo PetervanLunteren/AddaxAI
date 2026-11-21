@@ -13,6 +13,7 @@ from app.core.config import Settings
 from app.db.backup import (
     BACKUP_KEEP,
     DAILY_BACKUP_KEEP,
+    PARTIAL_SUFFIX,
     RESTORE_MARKER_FILENAME,
     BackupInvalidError,
     _classify,
@@ -27,6 +28,7 @@ from app.db.backup import (
     manual_backup_filename,
     manual_snapshot,
     pre_upgrade_backup,
+    remove_partial_snapshots,
     restore_db,
     ring_buffer_backup,
     schedule_restore,
@@ -87,6 +89,60 @@ def test_snapshot_db_produces_valid_file(tmp_path: Path) -> None:
     with sqlite3.connect(str(dst)) as conn:
         rows = conn.execute("SELECT x FROM t").fetchall()
     assert rows == [(1,)]
+
+
+def test_a_snapshot_appears_under_its_name_only_when_complete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The daily backup runs while the app is in use, so the user can quit
+    halfway. A half copy under the final name would be offered for restore
+    and count as one of the five kept."""
+    src = tmp_path / "src.db"
+    _make_sqlite(src)
+    dst = tmp_path / "out" / "snap.db"
+
+    real_connect = sqlite3.connect
+
+    class CopyDiesHalfway:
+        def __init__(self, conn: sqlite3.Connection) -> None:
+            self._conn = conn
+
+        def backup(self, *args, **kwargs) -> None:
+            raise sqlite3.OperationalError("disk I/O error")
+
+        def close(self) -> None:
+            self._conn.close()
+
+    def connect(path, *args, **kwargs):
+        conn = real_connect(path, *args, **kwargs)
+        return CopyDiesHalfway(conn) if path == str(src) else conn
+
+    monkeypatch.setattr("app.db.backup.sqlite3.connect", connect)
+    with pytest.raises(sqlite3.OperationalError):
+        snapshot_db(src, dst)
+    assert not dst.exists()
+
+
+def test_a_finished_snapshot_leaves_no_partial_file(tmp_path: Path) -> None:
+    src = tmp_path / "src.db"
+    _make_sqlite(src)
+    dst = tmp_path / "out" / "snap.db"
+    snapshot_db(src, dst)
+    assert sorted(p.name for p in dst.parent.iterdir()) == ["snap.db"]
+
+
+def test_startup_removes_unfinished_snapshots(tmp_settings: Settings) -> None:
+    backups = tmp_settings.user_data_dir / "backups"
+    backups.mkdir()
+    leftover = backups / f"addaxai-2026-11-21T120000Z.db{PARTIAL_SUFFIX}"
+    leftover.write_bytes(b"half a database")
+    kept = backups / "addaxai-2026-11-20T120000Z.db"
+    _make_sqlite(kept)
+
+    remove_partial_snapshots(tmp_settings)
+
+    assert not leftover.exists()
+    assert kept.exists()
 
 
 def test_snapshot_db_missing_source(tmp_path: Path) -> None:

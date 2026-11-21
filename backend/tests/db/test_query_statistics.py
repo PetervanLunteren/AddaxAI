@@ -82,7 +82,8 @@ def test_refresh_keeps_every_other_statistic(engine):
 
 
 def test_init_db_leaves_no_statistic_for_the_self_referencing_fk(engine):
-    """The startup path, end to end: every launch re-analyses."""
+    """The startup path, end to end: every launch drops the row, also
+    when it skips the full ANALYZE."""
     init_db()
 
     with engine.connect() as conn:
@@ -161,3 +162,40 @@ def test_nothing_runs_a_bare_analyze(engine):
         "call refresh_query_statistics() instead of ANALYZE:\n"
         + "\n".join(offenders)
     )
+
+
+def _analyze_count(caplog) -> int:
+    return sum(1 for r in caplog.records if r.getMessage().startswith("ANALYZE took"))
+
+
+def test_a_relaunch_without_a_migration_keeps_the_statistics(
+    isolated_db_settings, caplog
+):
+    """ANALYZE reads the whole database (34 s on a 4.6 GB one) and used to
+    hold up every launch. The statistics live in the file and every job
+    refreshes them, so a launch with nothing to migrate leaves them."""
+    init_db()
+    caplog.clear()
+    with caplog.at_level("INFO", logger="addaxai.app.db.base"):
+        init_db()
+    assert _analyze_count(caplog) == 0
+
+
+def test_a_migration_refreshes_the_statistics(isolated_db_settings, caplog):
+    """A migration can add or change indexes, so its statistics are new."""
+    with caplog.at_level("INFO", logger="addaxai.app.db.base"):
+        init_db()
+    assert _analyze_count(caplog) == 1
+
+
+def test_a_database_without_statistics_gets_them(engine, caplog):
+    init_db()
+    with engine.connect() as conn:
+        conn.execute(text("DELETE FROM sqlite_stat1"))
+        conn.commit()
+    caplog.clear()
+    with caplog.at_level("INFO", logger="addaxai.app.db.base"):
+        init_db()
+    assert _analyze_count(caplog) == 1
+    with engine.connect() as conn:
+        assert _stat_indexes(conn)

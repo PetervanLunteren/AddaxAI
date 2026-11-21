@@ -210,6 +210,8 @@ Three things this must keep doing, all pinned in `tests/api/test_delete_cascade.
 
 Call `refresh_query_statistics()` from `db/base.py` instead. It runs `ANALYZE` and then deletes one row from `sqlite_stat1`, the one for `idx_files_source_video`. Without that deletion a project delete does not finish.
 
+**When it runs.** After every analysis, embedding, postprocessing and package import job, and at launch only when a migration ran or `sqlite_stat1` is empty. `ANALYZE` reads the whole database: 34 s on a 4.6 GB one, which used to hold up every launch for statistics that had not changed. A launch without one still deletes the `idx_files_source_video` row, which is free and catches one an older version left behind. When a job dies before its closing `ANALYZE`, the statistics stay as they were until the next job finishes. That gives a slower plan at worst, never a wrong result.
+
 `files.source_video_id` is the schema's only self-referencing foreign key: a frame row points at the video it was extracted from, `ON DELETE CASCADE`. So SQLite consults `idx_files_source_video` once for every `files` row it deletes. `ANALYZE` writes a statistic for that index like every other, and because the column is NULL on every file that is not a video frame, the statistic reads `"382293 382293"`: any value matches the whole table. SQLite 3.45 believes it and stops using the index. The per-row cascade lookup becomes `Rewind`, a full scan of all 380,000 index entries, once per deleted row.
 
 That is what the VDBE program shows, on the same database, for `DELETE FROM files WHERE id = ?`:
@@ -255,13 +257,15 @@ Four kinds of snapshot:
 
 | Kind | When | Filename pattern | Retention |
 |---|---|---|---|
-| Daily rolling | App startup, throttled to one per UTC date | `addaxai-<utc-iso>.db` | Keep 5 newest |
+| Daily rolling | App startup, in the background, throttled to one per UTC date | `addaxai-<utc-iso>.db` | Keep 5 newest |
 | Pre-upgrade | Startup, only when alembic detects a pending upgrade | `addaxai-pre-upgrade-<rev>-<utc-iso>.db` | Keep 5 newest, one per revision |
 | Pre-restore | Right before a restore swaps a backup in | `addaxai-pre-restore-<utc-iso>.db` | Keep 5 newest |
 | Manual | User clicks "Back up database", or the app is about to wipe the DB | `addaxai-manual-<utc-iso>[-<note>].db` | Never auto-pruned |
 | Manual to chosen folder | User clicks "Back up database" → "Save to chosen folder…" | `addaxai-manual-<utc-iso>[-<note>].db` in user-picked dir | Untouched by the app |
 
 **The optional note lives in the filename.** The backup dialog offers a short note ("before the big run"), slugged to lowercase `[a-z0-9-]` and capped at 40 chars by `_slugify_note` in `backup.py`; the restore picker parses it back out of `_MANUAL_RE` and shows it on the card. No sidecar files and no registry, so the note travels with the file and there is no state to fall out of sync. Consequence: app versions from before the note feature do not match the noted filename and will not list such a backup in their restore picker (it stays restorable via "Restore from a file"). The frontend input mirrors the slug rule (`normalizeNote` in `BackupNowDialog.tsx`) so the field shows exactly what the filename gets.
+
+**The daily snapshot runs in the background, and a snapshot is never half there.** It used to run before `/health` answered, 7 s on a 4.6 GB database at the first launch of every day. Now it is a startup background task: the online backup API copies while the app reads and writes. Because the user can quit in the middle of it, `snapshot_db` writes every snapshot under its final name plus `.partial` and renames it when the copy is complete. A leftover `.partial` is deleted at the next startup, before anything is served, so it never removes a copy that is still being written. The cost, accepted: on a hard disk the copy competes with image reading for a minute or more, and the WAL cannot be checkpointed while it runs.
 
 **One pre-upgrade snapshot per revision.** A second copy of the same unmigrated DB is worth nothing and costs a full DB copy, so `pre_upgrade_backup` returns `None` when it already has one for that revision. Without that, repeated launches at the same revision push the real pre-upgrade snapshot out of the ring buffer with identical duplicates, which is exactly the snapshot that matters on the day a migration eats data. Two real ways that happens: a `uvicorn --reload` storm in dev (one observed run left 805 MB of five identical copies), and a user clicking Retry on the startup error page.
 
@@ -277,7 +281,7 @@ Four kinds of snapshot:
 |---|---|
 | `backend/app/db/backup.py` | Snapshot / validate / ring-buffer logic, restore-marker helpers |
 | `backend/app/api/routers/backup.py` | `/api/backup/{dir,list,snapshot,restore}` endpoints |
-| `backend/app/main.py` lifespan | Consumes the restore marker, takes daily + pre-upgrade snapshots before `init_db()` |
+| `backend/app/main.py` lifespan | Consumes the restore marker, takes the pre-upgrade snapshot before `init_db()`, starts the daily one in the background |
 | `backend/app/core/startup_error.py` | Writes the refusal the Electron error page reads |
 | `frontend/src/components/diagnostics/BackupNowDialog.tsx` | Manual backup UI (ring buffer or chosen folder) |
 | `frontend/src/components/diagnostics/RestoreBackupDialog.tsx` | Restore UI with type-`RESTORE`-to-confirm gate |

@@ -53,6 +53,8 @@ logger = get_logger(__name__)
 BACKUP_KEEP = 5
 DAILY_BACKUP_KEEP = BACKUP_KEEP
 ROLLING_MARKER_FILENAME = ".last-rolling-utc-date"
+# A snapshot is written under its final name plus this, then renamed.
+PARTIAL_SUFFIX = ".partial"
 RESTORE_MARKER_FILENAME = ".restore-on-next-launch"
 
 _TS = r"\d{4}-\d{2}-\d{2}T\d{6}Z"
@@ -97,15 +99,35 @@ def snapshot_db(src: Path, dst: Path) -> None:
         raise FileNotFoundError(f"Source DB not found: {src}")
     dst.parent.mkdir(parents=True, exist_ok=True)
 
+    # Written under a temporary name and renamed when complete. The daily
+    # backup runs while the app is in use, so the user can quit halfway
+    # through a copy; a half-written file under the final name would be
+    # listed for restore and count as one of the five kept.
+    partial = dst.with_name(dst.name + PARTIAL_SUFFIX)
     src_conn = sqlite3.connect(str(src))
     try:
-        dst_conn = sqlite3.connect(str(dst))
+        dst_conn = sqlite3.connect(str(partial))
         try:
             src_conn.backup(dst_conn)
         finally:
             dst_conn.close()
     finally:
         src_conn.close()
+    os.replace(partial, dst)
+
+
+def remove_partial_snapshots(settings: Settings) -> None:
+    """Delete snapshots a previous process left half-written.
+
+    Called at startup, before any snapshot of this process begins, so it
+    never removes a copy that is still being written.
+    """
+    for leftover in _backups_dir(settings).glob(f"*{PARTIAL_SUFFIX}"):
+        try:
+            leftover.unlink()
+            logger.info(f"Removed unfinished backup {leftover.name}")
+        except OSError as e:
+            logger.warning(f"Could not remove unfinished backup {leftover.name}: {e}")
 
 
 def validate_backup(path: Path) -> None:

@@ -350,6 +350,31 @@ async def _check_deployment_folders_on_startup() -> None:
         logger.error(f"Deployment folder check failed: {e}", exc_info=True)
 
 
+async def _daily_backup() -> None:
+    """
+    Daily rolling backup, best-effort, while the app already serves.
+
+    It used to run before `/health` answered: 7 s on a 4.6 GB database,
+    every first launch of the day. The online backup API copies while the
+    app reads and writes, and the snapshot is written under a temporary
+    name, so quitting halfway leaves no half file in the ring buffer (the
+    next launch removes it before serving, and tries again). Throttled to one per UTC day,
+    so rapid restarts do not clobber the ring buffer.
+    """
+    from app.db.backup import live_db_path, ring_buffer_backup
+
+    settings = get_settings()
+
+    def _run() -> None:
+        if live_db_path(settings).is_file():
+            ring_buffer_backup(settings)
+
+    try:
+        await asyncio.to_thread(_run)
+    except Exception as e:
+        logger.error(f"Daily backup failed: {e}", exc_info=True)
+
+
 async def _timed(what: str, work: Coroutine[Any, Any, None]) -> None:
     """Run a startup background task and log how long it took."""
     with log_duration(logger, what):
@@ -481,20 +506,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.error(f"Job reconciliation failed: {e}", exc_info=True)
 
-    # Daily rolling backup (best-effort). Runs AFTER init_db so a fresh
-    # install also produces a snapshot on first launch — at this point
-    # the DB exists either way (init_db creates it on fresh installs and
-    # opens it on subsequent launches). Throttled to one per UTC day, so
-    # rapid restarts do not clobber the ring buffer.
-    if live_db.is_file():
-        from app.db.backup import ring_buffer_backup
-        try:
-            with log_duration(logger, "Daily backup"):
-                ring_buffer_backup(settings)
-        except Exception as e:
-            logger.error(f"Daily backup failed: {e}", exc_info=True)
+    # Half-written snapshots from a process that quit mid-copy. Before
+    # serving, so no snapshot of this process can be running yet.
+    try:
+        from app.db.backup import remove_partial_snapshots
+
+        remove_partial_snapshots(settings)
+    except Exception as e:
+        logger.error(f"Removing unfinished backups failed: {e}", exc_info=True)
 
     # Start background tasks (non-blocking)
+    backup_task = asyncio.create_task(_timed("Daily backup", _daily_backup()))
     sync_task = asyncio.create_task(
         _timed("Model catalog update", update_model_catalog(app))
     )
@@ -528,6 +550,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown: cancel background tasks if still running
     for task in (
+        backup_task,
         sync_task,
         thumbnail_task,
         folder_check_task,

@@ -59,7 +59,7 @@ def set_sqlite_pragma(dbapi_conn: Any, connection_record: Any) -> None:
     SQLite 3.45 it was a no-op every time. On 3.50 and later it does run,
     and then it rewrites the one statistic `refresh_query_statistics` exists
     to delete, undoing that fix on the very next connection. Statistics are
-    refreshed at startup and after every analysis, embedding and
+    refreshed after every migration and after every analysis, embedding and
     postprocessing job, which covers every bulk change to the data.
     """
     cursor = dbapi_conn.cursor()
@@ -165,10 +165,16 @@ def refresh_query_statistics(conn: Any) -> None:
     `PRAGMA optimize` anywhere: both write the row straight back. See
     `_UNUSABLE_STAT_INDEX` above for what that costs.
     """
-    # Timed because it runs at every launch and after every job, and its
+    # Timed because it runs after every migration and every job, and its
     # cost grows with the whole database, not with the change.
     with log_duration(logger, "ANALYZE"):
         conn.execute(text("ANALYZE"))
+    _drop_unusable_statistic(conn)
+
+
+def _drop_unusable_statistic(conn: Any) -> None:
+    """Delete the `_UNUSABLE_STAT_INDEX` row, and start every later session
+    on a connection that has not read it."""
     conn.execute(
         text("DELETE FROM sqlite_stat1 WHERE idx = :idx"),
         {"idx": _UNUSABLE_STAT_INDEX},
@@ -226,7 +232,10 @@ def init_db() -> None:
        install that builds the whole schema from base.
     3. `schema_problems` checks the result against the models. Anything
        missing means the stamp lied, so we stop rather than guess.
-    4. Seed builtin labels and refresh planner statistics.
+    4. Seed builtin labels, and refresh planner statistics when a
+       migration ran or there are none. Otherwise the statistics from the
+       last job still hold: `ANALYZE` reads the whole database (34 s on a
+       4.6 GB one) and used to run before every launch could serve.
 
     Raises `SchemaError` (message written for the end user) when the
     database cannot be used, and `RuntimeError` for anything else.
@@ -238,6 +247,7 @@ def init_db() -> None:
         SchemaError,
         ensure_upgradable,
         get_head_revision,
+        needs_upgrade,
         schema_mismatch_message,
         schema_problems,
         upgrade_to_head,
@@ -252,6 +262,7 @@ def init_db() -> None:
         get_head_revision()
 
         ensure_upgradable(engine)
+        migrating = needs_upgrade(engine)
 
         logger.info("Running alembic upgrade head")
         upgrade_to_head()
@@ -266,8 +277,14 @@ def init_db() -> None:
 
         _seed_builtin_labels()
         with engine.connect() as conn:
-            refresh_query_statistics(conn)
-            conn.commit()
+            if migrating or not _has_query_statistics(conn):
+                refresh_query_statistics(conn)
+                conn.commit()
+            else:
+                # Cheap, and catches a row an older version left behind.
+                _drop_unusable_statistic(conn)
+                conn.commit()
+                logger.info("Query statistics kept, no migration ran")
         logger.info("Database initialized")
     except SchemaError:
         # Already carries a message written for the user. Wrapping it
@@ -276,6 +293,16 @@ def init_db() -> None:
     except Exception as e:
         logger.critical(f"Failed to initialize database: {e}", exc_info=True)
         raise RuntimeError(f"Failed to initialize database: {e}") from e
+
+
+def _has_query_statistics(conn: Any) -> bool:
+    """True when `ANALYZE` has written statistics to this database."""
+    has_table = conn.execute(
+        text("SELECT 1 FROM sqlite_master WHERE name = 'sqlite_stat1'")
+    ).first()
+    if has_table is None:
+        return False
+    return conn.execute(text("SELECT 1 FROM sqlite_stat1 LIMIT 1")).first() is not None
 
 
 def _seed_builtin_labels() -> None:
