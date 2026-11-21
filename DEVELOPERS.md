@@ -286,6 +286,12 @@ Four kinds of snapshot:
 
 Pre-init backups in lifespan are best-effort. If `~/AddaxAI/` is read-only or the disk is full, the failed snapshot is logged at error level and startup continues, so the user can at least open the app to see the diagnostic banner and react.
 
+## Database connections
+
+**One engine per process.** `get_engine()` builds the engine once and keeps it (`db/base.py`), so connections are pooled. It used to build one per call, which meant a new SQLite connection for every request: pragmas set again, the schema parsed again, an empty 64 MB page cache each time. The pool has no cap (`max_overflow=-1`): the default of 15 made the 16th concurrent session wait 30 s and then fail. When the configured database URL changes, which only the tests do, the engine is rebuilt.
+
+**Statistics are per connection, so every `ANALYZE` replaces the pool.** SQLite reads `sqlite_stat1` once per connection and never again. Measured on 3.45.1: a pooled connection keeps planning with the statistics it started with, and the connection that ran the `ANALYZE` keeps the deleted `idx_files_source_video` row in memory (see "Never run a bare `ANALYZE`"), so a project delete on it would be the full-scan cascade again. `refresh_query_statistics` therefore disposes the engine: idle connections close at once, busy ones when their session ends. The dev SQLite plans the same either way, so `tests/db/test_engine.py` pins the mechanism, not a plan.
+
 ## Removing the legacy AddaxAI install
 
 AddaxAI 7 installs to different locations than AddaxAI 6, so upgrading leaves two full apps on the machine, the old one holding 10 to 30 GB of conda envs and model weights. The app finds the old install and offers to delete it.

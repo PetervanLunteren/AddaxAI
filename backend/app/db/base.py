@@ -8,6 +8,7 @@ Following DEVELOPERS.md principles:
 """
 
 import hashlib
+import threading
 from collections.abc import Generator
 from typing import Any
 
@@ -70,37 +71,61 @@ def set_sqlite_pragma(dbapi_conn: Any, connection_record: Any) -> None:
     dbapi_conn.create_function("seeded_hash", 2, _seeded_hash, deterministic=True)
 
 
+# One engine and one session factory per process, so connections are
+# pooled. A new engine per request meant a new SQLite connection per
+# request: the pragmas set again, the schema parsed again and an empty
+# 64 MB page cache every time. Rebuilt only when the database URL changes,
+# which in the app never happens and in the tests happens per test
+# (`tests/db/conftest.py` points the settings at a fresh directory).
+_engine: Engine | None = None
+_session_factory: sessionmaker[Session] | None = None
+_engine_lock = threading.Lock()
+
+
 def get_engine() -> Engine:
     """
-    Create database engine.
+    Return the process-wide database engine, built on first use.
 
     Crashes if database URL is invalid or database cannot be accessed.
     """
+    global _engine, _session_factory
     settings = get_settings()
-
-    engine = create_engine(
-        settings.database_url,
-        echo=settings.sql_echo,  # Verbose per-query logging; off by default
-        future=True,  # Use SQLAlchemy 2.0 style
-        # SQLite allows one writer at a time. Python's sqlite3 default gives
-        # up after 5s, which turns any slow write (a large delete, a bulk
-        # ingest) into "database is locked" errors on every other request
-        # that happens to write during it. Wait instead of failing.
-        connect_args={"timeout": 30},
-    )
-
-    return engine
+    with _engine_lock:
+        if _engine is not None and str(_engine.url) == settings.database_url:
+            return _engine
+        if _engine is not None:
+            _engine.dispose()
+        _engine = create_engine(
+            settings.database_url,
+            echo=settings.sql_echo,  # Verbose per-query logging; off by default
+            future=True,  # Use SQLAlchemy 2.0 style
+            # SQLite allows one writer at a time. Python's sqlite3 default
+            # gives up after 5s, which turns any slow write (a large
+            # delete, a bulk ingest) into "database is locked" errors on
+            # every other request that happens to write during it. Wait
+            # instead of failing.
+            connect_args={"timeout": 30},
+            # No cap on open connections. Five stay pooled; beyond that a
+            # session gets its own connection, closed when it ends. The
+            # default cap of 15 made the 16th concurrent session wait 30 s
+            # and fail, and slow requests a user has navigated away from
+            # keep holding theirs.
+            max_overflow=-1,
+        )
+        _session_factory = sessionmaker(
+            autocommit=False,
+            autoflush=False,
+            bind=_engine,
+            class_=Session,
+        )
+        return _engine
 
 
 def get_session_factory() -> sessionmaker[Session]:
-    """Create session factory for database operations."""
-    engine = get_engine()
-    return sessionmaker(
-        autocommit=False,
-        autoflush=False,
-        bind=engine,
-        class_=Session,
-    )
+    """Return the session factory bound to the process-wide engine."""
+    get_engine()
+    assert _session_factory is not None
+    return _session_factory
 
 
 # The one index whose ANALYZE statistic has to be thrown away again.
@@ -148,6 +173,22 @@ def refresh_query_statistics(conn: Any) -> None:
         text("DELETE FROM sqlite_stat1 WHERE idx = :idx"),
         {"idx": _UNUSABLE_STAT_INDEX},
     )
+    _replace_pooled_connections()
+
+
+def _replace_pooled_connections() -> None:
+    """Make every later session start on a new connection.
+
+    SQLite reads the statistics once per connection, when it first loads
+    the schema, and never again. Measured on 3.45.1: another connection
+    keeps planning with the old statistics after an ANALYZE, and the
+    connection that ran the ANALYZE keeps the deleted
+    `_UNUSABLE_STAT_INDEX` row in memory, so a project delete on it would
+    be the full-scan cascade again. Disposing the engine closes the idle
+    connections now and each busy one when its session ends.
+    """
+    if _engine is not None:
+        _engine.dispose()
 
 
 def get_db() -> Generator[Session, None, None]:
