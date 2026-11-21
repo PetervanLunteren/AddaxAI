@@ -118,6 +118,16 @@ Ordered by expected gain. Decisions already taken are marked **Decided**.
 5. **Card pictures only when missing. Decided.** `auto_generate_thumbnails` (`main.py:63-88`) re-picks a picture for every project at every launch, with a query per project, an image read and a commit. A project gets a picture once and keeps it.
 6. **Legacy video-frame cleanup runs once.** `_reclaim_legacy_video_frames` (`main.py:225-316`) loads every video row at every launch through a full table scan. Detailed plan decides between a done-marker and removing it.
 
+**Built (2026-11-21):** all six, plus a seventh found while planning. Decisions taken in the detailed plan:
+
+- **A2 has no exceptions.** Every endpoint that takes a database session is a plain `def`. The project timezone no longer forces `async def`: a middleware puts a fresh holder object in the ContextVar per request and the endpoint's thread writes into it (`start_request_timezone`). `ws_manager.register_start` hops onto the loop by itself. `tests/api/test_no_db_on_event_loop.py` fails on any new `async def` endpoint with a session. See "Endpoints and the event loop" in `DEVELOPERS.md`.
+- **A3 ANALYZE:** skipped at launch unless a migration ran or `sqlite_stat1` is empty. The bad `idx_files_source_video` row is still deleted at every launch. Snapshots are written under a `.partial` name and renamed when complete, because the daily one now runs while the app is in use.
+- **A6:** removed, not marked done.
+- **A7, jobs do not freeze the app:** jobs run on the same event loop as the requests. Event generation and the closing `ANALYZE` in the analysis, embedding and postprocessing workers now run in a thread.
+- **Found while measuring A1:** SQLite reads the statistics once per connection. With a pool, a connection would keep old statistics forever, and the one that ran `ANALYZE` keeps the deleted `idx_files_source_video` row in memory (the 6.5-hour project delete). `refresh_query_statistics` now replaces every pooled connection.
+
+The numbers are under "Measured facts (2026-11-21, after phase A)".
+
 ## Phase B: queries that start from the project (release 2)
 
 **Decided scope: project-first plans, worker cache, duplicate indexes.** Keyset paging and counter tables wait until a measurement asks for them.
@@ -221,13 +231,38 @@ What it shows:
 - **The small project is slow because of the big one.** "Small" has 27K photos, but `label-tree` and `labels/stats` take more than a minute. That is the phase B problem, and both endpoints should join B6's list.
 - **Warm loads are no faster.** The cost is query plans and work, not cold caches.
 
+## Measured facts (2026-11-21, after phase A)
+
+Same seeded database, runtime and pages as the baseline. The baseline-code column was measured the same day with the same procedure, for the rows where it was taken, because the machine was not in the same state as the day before.
+
+| What | Baseline (11-20) | Baseline code (11-21) | Phase A |
+|---|---|---|---|
+| Startup until `/health` answers | 41 s | 43 s | 0.2 s (no migration, so no `ANALYZE`; backup 25 s in the background) |
+| Project list (`GET /api/projects`) | 7.3 s | 6.7 s | 4.5 s |
+| Dashboard "Large", cards | about 23 s, five ending together | 27.9 s, five ending together | each on its own: species 1.4 s, date coverage 2.0 s, timeline 4.5 s, overview 11 s, animal photos 16 s, `labels/progress` 23 s |
+| Dashboard "Large", Verification card | 204 s | 177 s | 125 s, see below |
+| Dashboard "Small", slowest request | 2.8 s | | 2.3 s |
+| Labels "Small": `label-tree` / `labels/stats` | 64 s / 93 s | | 24 s / 34 s |
+| Labels "Small", sort starts after | about 95 s | | 33 s |
+| Deployment info, "Small" / "Large" (cold) | 0.6 s / 26.8 s | | 0.3 s / 23.5 s |
+| Site info, "Small" / "Large" (cold) | 0.1 s / 9.6 s | | 0.05 s / 10.0 s |
+| Longest `/health` wait during a reprocess of "Small" (55 s job, 26 s of it `ANALYZE`) | | 45 s; the job WebSocket dropped on a missed keepalive | 0.76 s |
+
+What it shows:
+
+- **Startup and jobs are fixed.** Startup was `ANALYZE` and the backup; neither waits for `/health` now. A job no longer stops the app.
+- **Nothing waits behind anything else.** The dashboard cards now finish in their own time. What is left slow is slow on its own: `labels/progress`, `verification-stats`, `label-tree`, `labels/stats` and the info sheets of "Large". Those are phase B.
+- **One engine (A1) buys little by itself.** Project list 6.7 to 5.3 s, "Large" info sheets about a third faster. A controlled check (the same query alternating a brand-new and a pooled connection) shows no penalty either way.
+- **The Verification card is disk-bound and its time is noise.** The same request took 106, 125, 177, 346, 454 and 473 s across runs, and 669 s alone on a brand-new connection outside the app. That last run spent 16% of its time on CPU, mostly in system calls. It depends on what the OS happens to cache, not on the code around it. Its three `count(DISTINCT …)` queries likely spill temporary B-trees to disk. Phase B looks at the query.
+- **The card-picture pass still runs while a project has none.** On the seed no photo exists, so every launch spends 19 s in the background trying again. With real photos a project gets its picture once.
+
 ## Open questions
 
 - How long `ANALYZE`, the backup and the first dashboard load take. Answered 2026-11-20: 34 s, 7 s and 23 s (Verification card 204 s). See the baseline under "Measured facts".
 - Whether Simon's `sqlite_stat1` gives the plans we saw on the backup copy.
 - Whether the partial-index idea for `idx_files_source_video` holds on 3.45, including for the cascade lookup.
 - Whether the three duplicate indexes are really unused by cascades.
-- What module-level engine needs from the test setup and from the Electron e2e sandbox.
+- What module-level engine needs from the test setup and from the Electron e2e sandbox. Answered 2026-11-21: the engine is rebuilt when the database URL changes, which is what `tests/db/conftest.py` needs. The e2e suite starts its own backend process, so it is unaffected.
 
 ## Sources
 

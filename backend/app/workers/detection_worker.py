@@ -1119,7 +1119,11 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 # generated here, the counts and MaxN of a finished analysis
                 # never depend on it. Project-wide and idempotent, so a batch
                 # of several folders regenerates on each, which is cheap.
-                event_count = event_crud.generate_events_for_project(db, project_id)
+                # In a thread: the job runs on the event loop that serves the
+                # app, and on a 900K-photo deployment this takes minutes.
+                event_count = await asyncio.to_thread(
+                    event_crud.generate_events_for_project, db, project_id
+                )
                 db.commit()
                 logger.info(f"Batch job {job_id}: {event_count} events after {deployment.id}")
 
@@ -1339,8 +1343,11 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
 
         # Events were generated per deployment, before its embedding phase.
 
-        # Refresh SQLite query planner statistics after bulk inserts
-        refresh_query_statistics(db)
+        # Refresh SQLite query planner statistics after bulk inserts.
+        # In a thread: jobs run on the event loop that serves the app, and
+        # this reads the whole database (34 s on a 4.6 GB one). On the loop
+        # it froze every request, /health included, at the end of each job.
+        await asyncio.to_thread(refresh_query_statistics, db)
         db.commit()
 
         # A first run gives a new project its card picture. Cosmetic, so

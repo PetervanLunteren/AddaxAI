@@ -363,11 +363,15 @@ async def process_postprocessing_job(job_id: str) -> None:
             if n_skipped:
                 message += f", {n_skipped} skipped"
 
-        # Auto-regenerate events (independence_interval may have changed)
-        event_count = event_crud.generate_events_for_project(db, project_id)
+        # Auto-regenerate events (independence_interval may have changed).
+        # In a thread, like the statistics refresh below: the job runs on the event
+        # loop that serves the app, and both take minutes on a large project.
+        event_count = await asyncio.to_thread(
+            event_crud.generate_events_for_project, db, project_id
+        )
         logger.info(f"Postprocessing job {job_id}: Regenerated {event_count} events")
 
-        refresh_query_statistics(db)
+        await asyncio.to_thread(refresh_query_statistics, db)
         db.commit()
 
         job_crud.update_job_status(db, job_id, "completed")

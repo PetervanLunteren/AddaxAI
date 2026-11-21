@@ -207,3 +207,40 @@ def test_deployment_without_a_folder_is_skipped_not_fatal(
     assert sent["success"] is True
     assert list(sent["data"]["skipped"]) == ["no_folder"]
     assert sent["data"]["skipped"]["no_folder"]["count"] == 1
+
+
+def test_the_slow_steps_run_off_the_event_loop(db, tmp_path, monkeypatch):
+    """Jobs run on the event loop that serves the app. Regenerating events
+    and ANALYZE take minutes on a large project, and on the loop they froze
+    every request, /health included, at the end of each job."""
+    import app.workers.postprocessing_worker as worker
+
+    on_loop: dict[str, bool] = {}
+
+    def recording(name, real):
+        def wrapped(*args, **kwargs):
+            try:
+                asyncio.get_running_loop()
+                on_loop[name] = True
+            except RuntimeError:
+                on_loop[name] = False
+            return real(*args, **kwargs)
+
+        return wrapped
+
+    monkeypatch.setattr(
+        worker.event_crud,
+        "generate_events_for_project",
+        recording("events", worker.event_crud.generate_events_for_project),
+    )
+    monkeypatch.setattr(
+        worker,
+        "refresh_query_statistics",
+        recording("analyze", worker.refresh_query_statistics),
+    )
+    project_id, folder = _seed(db, tmp_path)
+    _write_results_json(folder, project_id)
+
+    _run_job(db, monkeypatch, project_id)
+
+    assert on_loop == {"events": False, "analyze": False}

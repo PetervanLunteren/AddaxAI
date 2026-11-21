@@ -235,7 +235,10 @@ async def process_re_embedding_job(job_id: str) -> None:
         if total_errors:
             message += f" ({total_errors} errors)"
 
-        refresh_query_statistics(db)
+        # In a thread: jobs run on the event loop that serves the app, and
+        # this reads the whole database (34 s on a 4.6 GB one). On the loop
+        # it froze every request, /health included, at the end of each job.
+        await asyncio.to_thread(refresh_query_statistics, db)
         db.commit()
 
         job_crud.update_job_status(db, job_id, "completed")
