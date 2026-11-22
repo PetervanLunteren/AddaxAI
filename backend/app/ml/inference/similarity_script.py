@@ -133,15 +133,17 @@ _DETECTION_COLUMNS = """
 # Images are never gated. This mirrors `on_embeddable_surface` in
 # routers/labels.py, `build_embedding_input`, the annotated exports and
 # `shouldDrawBbox` on the frontend.
-_COMMON_JOINS = """
-JOIN files f ON f.id = d.file_id
-JOIN deployments dep ON dep.id = f.deployment_id
-LEFT JOIN sites s ON s.id = dep.site_id
+_SCOPE = """
 WHERE dep.project_id = ?
   AND (f.file_type != 'video'
        OR EXISTS (SELECT 1 FROM tracks t
                   WHERE t.id = d.track_id
                     AND t.representative_frame_number = d.frame_number))"""
+
+_COMMON_JOINS = f"""
+JOIN files f ON f.id = d.file_id
+JOIN deployments dep ON dep.id = f.deployment_id
+LEFT JOIN sites s ON s.id = dep.site_id{_SCOPE}"""
 
 # Similarity / suggestions path: needs the embedding vector, so the base
 # table is detection_embeddings (only embedded detections appear).
@@ -168,10 +170,20 @@ FROM detections d
 # label is what ticking that label alone would show. Run by the backend
 # (``label_service.count_detections_by_label``), not by this script; the
 # caller appends the GROUP BY after ``_build_query``'s AND clauses.
+#
+# The join order is fixed with CROSS JOIN, project first, which SQLite
+# documents for exactly this. Left to itself, SQLite 3.45 walked every box
+# of the whole database in label order to save the GROUP BY sort, once a
+# Verified filter was set: 29 s for a 27K-photo project next to a 900K one.
+# Project first is safe here because this count never carries a label
+# filter. The grid's own queries do, and there the right start depends on
+# how many boxes the label has, so they keep SQLite's choice.
 COUNT_BY_LABEL_SQL = f"""
 SELECT d.label_taxonomy_id AS label_taxonomy_id, COUNT(*) AS n
-FROM detections d
-{_COMMON_JOINS}
+FROM deployments dep
+CROSS JOIN files f ON f.deployment_id = dep.id
+CROSS JOIN detections d ON d.file_id = f.id
+LEFT JOIN sites s ON s.id = dep.site_id{_SCOPE}
 """
 
 # Which filtered detections have an embedding — ids only, no vectors. Used
