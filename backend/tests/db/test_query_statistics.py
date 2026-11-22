@@ -1,10 +1,11 @@
 """Tests for `refresh_query_statistics`.
 
 `ANALYZE` writes one row into `sqlite_stat1` per index, whether anything
-uses it or not. One of those rows must not survive: the one for
+uses it or not. Two of those rows must not survive: the ones for
 `idx_files_source_video`, the index behind the schema's only
-self-referencing foreign key. See the comment on `_UNUSABLE_STAT_INDEX`
-in `app/db/base.py` for what it costs.
+self-referencing foreign key, and `idx_detections_track`, which the
+verify lookup needs. Both columns are NULL on almost every row. See the
+comment on `_UNUSABLE_STAT_INDEXES` in `app/db/base.py` for what they cost.
 
 **These assertions are about the row, not about the query plan.** A test
 that asserted the plan would pass on the development and CI SQLite
@@ -20,7 +21,7 @@ from pathlib import Path
 
 from sqlalchemy import text
 
-from app.db.base import _UNUSABLE_STAT_INDEX, init_db, refresh_query_statistics
+from app.db.base import _UNUSABLE_STAT_INDEXES, init_db, refresh_query_statistics
 
 from .conftest import insert_row, seed_deployment
 
@@ -32,10 +33,10 @@ def _stat_indexes(conn) -> set[str]:
 
 
 def _seed_files(conn, count: int) -> None:
-    """`count` files under one deployment, none of them a video frame."""
+    """`count` image files under one deployment, one untracked box each."""
     _, deployment_id = seed_deployment(conn)
     for i in range(count):
-        insert_row(
+        file_id = insert_row(
             conn,
             "files",
             deployment_id=deployment_id,
@@ -43,6 +44,11 @@ def _seed_files(conn, count: int) -> None:
             file_type="image",
             source_video_id=None,
         )
+        insert_row(conn, "detections", file_id=file_id, track_id=None)
+
+
+def _unusable_left(conn) -> set[str]:
+    return _stat_indexes(conn) & set(_UNUSABLE_STAT_INDEXES)
 
 
 def test_refresh_drops_the_statistic_for_the_self_referencing_fk(engine):
@@ -55,14 +61,14 @@ def test_refresh_drops_the_statistic_for_the_self_referencing_fk(engine):
 
         conn.execute(text("ANALYZE"))
         conn.commit()
-        assert _UNUSABLE_STAT_INDEX in _stat_indexes(conn), (
-            "bare ANALYZE should write the row this test is about; if it no "
+        assert _unusable_left(conn) == set(_UNUSABLE_STAT_INDEXES), (
+            "bare ANALYZE should write the rows this test is about; if it no "
             "longer does, the test is passing vacuously"
         )
 
         refresh_query_statistics(conn)
         conn.commit()
-        assert _UNUSABLE_STAT_INDEX not in _stat_indexes(conn)
+        assert _unusable_left(conn) == set()
 
 
 def test_refresh_keeps_every_other_statistic(engine):
@@ -78,7 +84,7 @@ def test_refresh_keeps_every_other_statistic(engine):
 
         kept = _stat_indexes(conn)
         assert "idx_files_deployment_path" in kept
-        assert _UNUSABLE_STAT_INDEX not in kept
+        assert kept.isdisjoint(_UNUSABLE_STAT_INDEXES)
 
 
 def test_init_db_leaves_no_statistic_for_the_self_referencing_fk(engine):
@@ -96,7 +102,7 @@ def test_init_db_leaves_no_statistic_for_the_self_referencing_fk(engine):
     init_db()
 
     with engine.connect() as conn:
-        assert _UNUSABLE_STAT_INDEX not in _stat_indexes(conn)
+        assert _unusable_left(conn) == set()
 
 
 def test_a_fresh_connection_does_not_put_the_statistic_back(
@@ -130,7 +136,7 @@ def test_a_fresh_connection_does_not_put_the_statistic_back(
     checker = create_engine(isolated_db_settings.database_url, future=True)
     try:
         with checker.connect() as conn:
-            assert _UNUSABLE_STAT_INDEX not in _stat_indexes(conn)
+            assert _unusable_left(conn) == set()
     finally:
         checker.dispose()
 

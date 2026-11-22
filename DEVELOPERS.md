@@ -208,7 +208,7 @@ Three things this must keep doing, all pinned in `tests/api/test_delete_cascade.
 
 ### Never run a bare `ANALYZE`
 
-Call `refresh_query_statistics()` from `db/base.py` instead. It runs `ANALYZE` and then deletes one row from `sqlite_stat1`, the one for `idx_files_source_video`. Without that deletion a project delete does not finish.
+Call `refresh_query_statistics()` from `db/base.py` instead. It runs `ANALYZE` and then deletes two rows from `sqlite_stat1`, the ones for `idx_files_source_video` and `idx_detections_track`. Without the first a project delete does not finish; without the second every verify scans every box (below).
 
 **When it runs.** After every analysis, embedding, postprocessing and package import job, and at launch only when a migration ran or `sqlite_stat1` is empty. `ANALYZE` reads the whole database: 34 s on a 4.6 GB one, which used to hold up every launch for statistics that had not changed. A launch without one still deletes the `idx_files_source_video` row, which is free and catches one an older version left behind. When a job dies before its closing `ANALYZE`, the statistics stay as they were until the next job finishes. That gives a slower plan at worst, never a wrong result.
 
@@ -244,6 +244,8 @@ Three things have to line up and all three are true in a shipped build, so remov
 **Why the version alone is not the fix.** The packaged build carries whatever SQLite its frozen Python was built with, `_sqlite3.cpython-311-darwin.so` from Python 3.11.9 is 3.45.1, and that differs per platform and per build. Bumping it is worth doing but it does nothing for anyone already installed, and it is not something a test can hold in place. Dropping the row is correct on every version.
 
 **`PRAGMA optimize` puts the row back, so there is none.** `set_sqlite_pragma` used to run one at connect. It analyses only tables the connection has already queried and ran before that connection's first statement, so it did nothing at all on 3.45 and rewrote this row on 3.50 and later, undoing the deletion on the very next connection. Measured on a 1 GB database: after startup the row was already back, because the first request opened a new connection. That was harmless in practice, since the versions that act on it are the versions without the planner bug, but it made the fix depend on a coincidence rather than on the code, and a future bundle could land on the wrong side of it. It is gone. Do not add one back, anywhere.
+
+**`idx_detections_track` has the same shape.** `track_id` is NULL on every box that is not from a video, so its row reads `"<n> <n>"` as well. Every verify looks its boxes up with `id IN (...) OR track_id IN (...)`, so that a verdict reaches every box of a track, and 3.45 answered that with `SCAN detections` while the row was present: 2.2 s per statement on a 2.5M-box project, two statements per verify. Without the row it is `MULTI-INDEX OR`, two seeks. Found on 2026-11-22 with the phase B tracer (`future-plans/large-database-speed.md`).
 
 `test_a_fresh_connection_does_not_put_the_statistic_back` is the guard, and it builds its own engine on purpose: the pooled engine the other tests share never re-fires the `connect` event, so it cannot see this.
 

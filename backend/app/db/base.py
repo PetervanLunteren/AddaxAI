@@ -128,7 +128,7 @@ def get_session_factory() -> sessionmaker[Session]:
     return _session_factory
 
 
-# The one index whose ANALYZE statistic has to be thrown away again.
+# The indexes whose ANALYZE statistic has to be thrown away again.
 #
 # `files.source_video_id` is the only self-referencing foreign key in the
 # schema (frame rows point at the video they came from) and it declares
@@ -151,19 +151,26 @@ def get_session_factory() -> sessionmaker[Session]:
 # it. A query that did search by it is *helped*: with the row present the
 # planner answers `SCAN files`, without it `SEARCH files USING INDEX
 # idx_files_source_video`.
-_UNUSABLE_STAT_INDEX = "idx_files_source_video"
+#
+# `detections.track_id` has the same shape: NULL on every box that is not
+# from a video, so its row reads "<n> <n>" too, and 3.45 answers the
+# verify lookup (`id IN (...) OR track_id IN (...)`, which reaches every
+# box of a track) with `SCAN detections`. That was 2.2 s per statement on
+# a 2.5M-box project, twice per verify. Without the row it is two index
+# seeks.
+_UNUSABLE_STAT_INDEXES = ("idx_files_source_video", "idx_detections_track")
 
 
 def refresh_query_statistics(conn: Any) -> None:
     """
-    Re-run ANALYZE, then drop the one statistic that must not exist.
+    Re-run ANALYZE, then drop the statistics that must not exist.
 
     Accepts a `Connection` or a `Session`. The caller commits, because
     every call site is already inside a transaction it owns.
 
     Never call bare `ANALYZE` instead of this, and never add a
-    `PRAGMA optimize` anywhere: both write the row straight back. See
-    `_UNUSABLE_STAT_INDEX` above for what that costs.
+    `PRAGMA optimize` anywhere: both write the rows straight back. See
+    `_UNUSABLE_STAT_INDEXES` above for what that costs.
     """
     # Timed because it runs after every migration and every job, and its
     # cost grows with the whole database, not with the change.
@@ -173,12 +180,10 @@ def refresh_query_statistics(conn: Any) -> None:
 
 
 def _drop_unusable_statistic(conn: Any) -> None:
-    """Delete the `_UNUSABLE_STAT_INDEX` row, and start every later session
-    on a connection that has not read it."""
-    conn.execute(
-        text("DELETE FROM sqlite_stat1 WHERE idx = :idx"),
-        {"idx": _UNUSABLE_STAT_INDEX},
-    )
+    """Delete the `_UNUSABLE_STAT_INDEXES` rows, and start every later
+    session on a connection that has not read them."""
+    for idx in _UNUSABLE_STAT_INDEXES:
+        conn.execute(text("DELETE FROM sqlite_stat1 WHERE idx = :idx"), {"idx": idx})
     _replace_pooled_connections()
 
 
@@ -189,7 +194,7 @@ def _replace_pooled_connections() -> None:
     the schema, and never again. Measured on 3.45.1: another connection
     keeps planning with the old statistics after an ANALYZE, and the
     connection that ran the ANALYZE keeps the deleted
-    `_UNUSABLE_STAT_INDEX` row in memory, so a project delete on it would
+    `idx_files_source_video` row in memory, so a project delete on it would
     be the full-scan cascade again. Disposing the engine closes the idle
     connections now and each busy one when its session ends.
     """
