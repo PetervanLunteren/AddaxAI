@@ -12,7 +12,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, select
+from sqlalchemy import case, false, func, select
 from sqlalchemy.orm import Session
 
 from app.api.crud import file as file_crud
@@ -397,16 +397,6 @@ def get_label_stats(
     )
     above_gate_or_verified = threshold_or_verified(gate)
 
-    total = (
-        db.query(func.count(Detection.id))
-        .join(File, File.id == Detection.file_id)
-        .join(Deployment, Deployment.id == File.deployment_id)
-        .filter(Deployment.project_id == project_id)
-        .filter(embeddable_clause)
-        .filter(above_gate_or_verified)
-        .scalar()
-    ) or 0
-
     # The verification progress pill does NOT come from here. It reads
     # `verified_detections` / `total_detections` off
     # `/api/events/verification-stats`, which counts the whole reviewable
@@ -414,36 +404,38 @@ def get_label_stats(
     # pill and the dashboard bar agree. Do not add a percentage to this
     # endpoint: requiring an embedding would under-count, because the
     # event sort renders detections that have none.
-    has_embedding = exists().where(
-        DetectionEmbedding.detection_id == Detection.id
+    #
+    # The three counts read the same boxes, so they are one pass over the
+    # project's detections. It starts from the project like every other
+    # project count; counting from `detection_embeddings` scanned the
+    # embeddings of the whole database (41 s for a 27K-photo project next
+    # to a 900K one).
+    has_embedding = exists().where(DetectionEmbedding.detection_id == Detection.id)
+    # One embedding per detection and model (a unique index), so counting
+    # detections that have one is the distinct count.
+    has_model_embedding = exists().where(
+        DetectionEmbedding.detection_id == Detection.id,
+        DetectionEmbedding.embedding_model_id == embedding_model_id,
     )
-    verified = (
-        db.query(func.count(Detection.id))
+    # Same scope for `verified` as for `total`, or a signed-off file's
+    # rejected weak boxes (verified, embedded) count as reviewed work.
+    counted = and_(embeddable_clause, above_gate_or_verified)
+    reviewed = and_(above_gate_or_verified, Detection.verified == True, has_embedding)  # noqa: E712
+    embedded_here = (
+        and_(embeddable_clause, has_model_embedding) if embedding_model_id else false()
+    )
+
+    def _count(condition):
+        return func.coalesce(func.sum(case((condition, 1), else_=0)), 0)
+
+    total, verified, embedded = (
+        db.query(_count(counted), _count(reviewed), _count(embedded_here))
+        .select_from(Detection)
         .join(File, File.id == Detection.file_id)
         .join(Deployment, Deployment.id == File.deployment_id)
         .filter(Deployment.project_id == project_id)
-        .filter(has_embedding)
-        # Same scope as `total` above, or a signed-off file's rejected
-        # weak boxes (verified, embedded) count as reviewed work here.
-        .filter(above_gate_or_verified)
-        .filter(Detection.verified == True)  # noqa: E712
-        .scalar()
-    ) or 0
-
-    # Detections with embeddings for the current model
-    if embedding_model_id:
-        embedded = (
-            db.query(func.count(func.distinct(DetectionEmbedding.detection_id)))
-            .join(Detection, Detection.id == DetectionEmbedding.detection_id)
-            .join(File, File.id == Detection.file_id)
-            .join(Deployment, Deployment.id == File.deployment_id)
-            .filter(Deployment.project_id == project_id)
-            .filter(embeddable_clause)
-            .filter(DetectionEmbedding.embedding_model_id == embedding_model_id)
-            .scalar()
-        ) or 0
-    else:
-        embedded = 0
+        .one()
+    )
 
     # Get dimension from first embedding
     dim_row = (

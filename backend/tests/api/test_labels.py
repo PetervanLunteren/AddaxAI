@@ -1,10 +1,12 @@
 """Tests for the /api/projects/{id}/observations endpoints."""
 
 import json
+import uuid
 from unittest.mock import patch
 
 from app.api.schemas.label import DetectionSummary, SearchResponse, SortResponse
-from tests.conftest import make_project
+from app.models import DetectionEmbedding
+from tests.conftest import make_deployment, make_detection, make_file, make_project
 
 
 def _ndjson_stream(*events: dict) -> list[bytes]:
@@ -32,6 +34,45 @@ def test_get_observation_stats(client, db):
     data = resp.json()
     assert data["total_detections"] == 0
     assert data["embedded_detections"] == 0
+
+
+def test_observation_stats_count_only_this_project(client, db):
+    """The three counts of one pass, each with its own rule, and nothing
+    from another project's boxes or embeddings."""
+    model = "DINOV2-VITS14"
+
+    def box(project, *, confidence=0.9, verified=False, embed_model=None):
+        dep = make_deployment(db, project_id=project.id)
+        f = make_file(db, deployment_id=dep.id)
+        d = make_detection(db, file_id=f.id, confidence=confidence, verified=verified)
+        if embed_model:
+            db.add(
+                DetectionEmbedding(
+                    id=str(uuid.uuid4()),
+                    detection_id=d.id,
+                    embedding_model_id=embed_model,
+                    vector=b"\0" * 8,
+                    dimension=4,
+                    l2_norm=1.0,
+                )
+            )
+        return d
+
+    p = make_project(db, embedding_model_id=model, classification_gate=0.5)
+    other = make_project(db, embedding_model_id=model, classification_gate=0.5)
+    box(p, embed_model=model)  # counted, embedded
+    box(p, verified=True, embed_model=model)  # counted, embedded, reviewed
+    box(p, verified=True, embed_model="OTHER-MODEL")  # counted, reviewed, not embedded
+    box(p)  # counted, missing an embedding
+    box(p, confidence=0.1)  # below the gate: none of the three
+    box(other, verified=True, embed_model=model)  # another project
+    db.flush()
+
+    data = client.get(f"/api/projects/{p.id}/labels/stats").json()
+    assert data["total_detections"] == 4
+    assert data["verified_detections"] == 2
+    assert data["embedded_detections"] == 2
+    assert data["missing_embeddings"] == 2
 
 
 def test_sort_observations_success(client, db):
