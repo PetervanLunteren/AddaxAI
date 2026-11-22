@@ -1,8 +1,10 @@
 """
-Seed a throwaway AddaxAI data folder with a large image database, shaped
-like the ones that made the app slow (Simon Kravis, 923K photos, 4 GB).
+Seed a throwaway AddaxAI data folder with a large image database, in the
+shape of one of the databases that made the app slow.
 
-Five projects, about 1M photos in all at ``--scale 1``:
+``--shape simon`` (the default), after Simon Kravis: 923K photos, 4 GB, a
+small project next to a huge one. Five projects, about 1M photos in all at
+``--scale 1``:
 
 - "Large": one site, one deployment of 900K photos in 100 camera
   subfolders, a whole season of cameras in one deployment.
@@ -10,10 +12,16 @@ Five projects, about 1M photos in all at ``--scale 1``:
   gets slow because the large one shares its database.
 - "Normal 1" to "Normal 3": two sites and two deployments of 10K each.
 
-Boxes look like MegaDetector output stored down to 0.01, plus a tail of
-legacy boxes between 0.005 and 0.01 (``--legacy-share`` of all rows),
-which databases from before v7.2.0 still carry. Animal boxes carry a
-species from ``--taxonomy-csv``. Every box that passes the
+``--shape elliot``, after Elliot Johnston's ``addaxai-db-stats.txt``
+(v7.16, 3.8 GB): one project of 1.27M photos in 58 deployments of 2K to
+35K photos, each deployment with the photo count, box count and share of
+boxes at 0.2 or more that his has. About 270 species, a few common and
+many rare, and long events of about 62 photos.
+
+Boxes look like MegaDetector output stored down to 0.01. The Simon shape
+adds a tail of legacy boxes between 0.005 and 0.01 (``--legacy-share`` of
+all rows), which databases from before v7.2.0 still carry. Animal boxes
+carry a species from ``--taxonomy-csv``. Every box that passes the
 classification gate gets an embedding: random vectors, because only
 their size and count matter here. Events come from the app's own event
 generation, then the planner statistics are refreshed, as after a job.
@@ -44,6 +52,7 @@ import time
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -56,22 +65,107 @@ INSERT_CHUNK = 50_000
 EMBEDDING_CHUNK = 50_000
 EMBEDDING_MODEL_ID = "DINOV2-VITS14"
 EMBEDDING_DIM = 384
-SPECIES_COUNT = 30
 TIMEZONE = "Australia/Sydney"
 SEASON_START = datetime(2025, 1, 1)
+# Photos per trigger burst, on average: randint(1, 5) in `captures`.
+BURST_MEAN = 3
+# Of the boxes below 0.2 in Elliot's database, the share at 0.1 or more,
+# the classification gate: 232K of 2.03M. It sets his embedding count.
+WEAK_ABOVE_GATE = 0.11
 
-# (project name, number of sites, deployments per site, folders per
-# deployment, photos per deployment) at --scale 1.
-PROJECTS = [
-    ("Large", 1, 1, 100, 900_000),
-    ("Small", 3, 1, 1, 9_000),
-    ("Normal 1", 2, 1, 1, 10_000),
-    ("Normal 2", 2, 1, 1, 10_000),
-    ("Normal 3", 2, 1, 1, 10_000),
+
+@dataclass(frozen=True)
+class DeploymentShape:
+    photos: int
+    folders: int = 1
+    # (boxes per photo, share of boxes at 0.2 or more), copied from a
+    # user's database. None: the default MegaDetector-like box model.
+    rates: tuple[float, float] | None = None
+
+
+@dataclass(frozen=True)
+class ProjectShape:
+    name: str
+    # One tuple of deployments per site.
+    sites: tuple[tuple[DeploymentShape, ...], ...]
+    # Share of photos a person has verified, so the Verification card
+    # and the progress bars have something to show.
+    verified_share: float = 0.0
+
+
+@dataclass(frozen=True)
+class Shape:
+    projects: tuple[ProjectShape, ...]
+    species_count: int
+    # Weight species 1/rank, so a few are common and many are rare.
+    # False: every species equally likely.
+    zipf_species: bool
+    legacy_share: float
+    # Mean photos per event. None: every burst is its own event.
+    event_photos: int | None
+
+
+def _uniform(name: str, n_sites: int, per_site: int, folders: int, photos: int,
+             verified_share: float = 0.0) -> ProjectShape:
+    deployment = DeploymentShape(photos=photos, folders=folders)
+    return ProjectShape(name, ((deployment,) * per_site,) * n_sites, verified_share)
+
+
+# (photos, boxes, boxes at 0.2 or more) for each of Elliot's 58
+# deployments, from his addaxai-db-stats.txt (2026-11-21).
+ELLIOT_DEPLOYMENTS = [
+    (32583, 8629, 307), (2256, 4159, 1021), (6833, 8159, 861), (25971, 40477, 4798),
+    (32499, 48728, 1636), (32565, 18834, 1809), (32868, 11625, 392), (32643, 24871, 2246),
+    (32691, 44837, 2769), (33177, 10317, 303), (3090, 6452, 2374), (32665, 248114, 27699),
+    (3366, 7113, 2027), (32736, 36281, 6068), (5982, 9433, 1950), (32640, 6341, 1709),
+    (32478, 3866, 128), (2244, 1850, 573), (32472, 11770, 470), (34995, 54604, 13477),
+    (5433, 11008, 6469), (2631, 2620, 467), (27584, 68435, 13304), (33415, 77581, 4524),
+    (5901, 19262, 1409), (34165, 21547, 3085), (10185, 22570, 10483), (32585, 26627, 6664),
+    (33660, 548017, 125829), (23430, 25937, 1970), (3540, 2674, 388), (19697, 14975, 2744),
+    (34311, 49807, 13837), (35235, 434284, 123601), (35430, 24168, 836), (32495, 1564, 73),
+    (32712, 55689, 8504), (2619, 6923, 1032), (32892, 35729, 4394), (32581, 9505, 2365),
+    (2619, 6964, 1162), (3381, 9395, 2922), (33012, 22476, 735), (33366, 101353, 43041),
+    (3408, 4473, 1199), (31881, 57755, 5764), (3150, 3007, 538), (4044, 3518, 1336),
+    (2583, 4070, 1178), (32499, 54655, 2618), (32590, 17633, 1846), (11670, 26228, 13686),
+    (2661, 2907, 927), (23640, 11971, 1243), (26681, 29631, 2740), (33785, 5082, 118),
+    (9264, 33368, 3168), (33570, 111814, 51645),
 ]
-# Share of photos in the Small project that a person has verified, so the
-# Verification card has progress to show.
-VERIFIED_SHARE = {"Small": 0.10}
+
+SHAPES = {
+    "simon": Shape(
+        projects=(
+            _uniform("Large", 1, 1, 100, 900_000),
+            _uniform("Small", 3, 1, 1, 9_000, verified_share=0.10),
+            _uniform("Normal 1", 2, 1, 1, 10_000),
+            _uniform("Normal 2", 2, 1, 1, 10_000),
+            _uniform("Normal 3", 2, 1, 1, 10_000),
+        ),
+        species_count=30,
+        zipf_species=False,
+        legacy_share=0.19,
+        event_photos=None,
+    ),
+    "elliot": Shape(
+        projects=(
+            ProjectShape(
+                "Elliot",
+                tuple(
+                    (DeploymentShape(photos, rates=(boxes / photos, strong / boxes)),)
+                    for photos, boxes, strong in ELLIOT_DEPLOYMENTS
+                ),
+                # 2.2K of his 2.57M boxes are verified.
+                verified_share=0.002,
+            ),
+        ),
+        # About 2.57M boxes over 9,455 rows per label value.
+        species_count=270,
+        zipf_species=True,
+        # His database is from after v7.2.0, so it has no legacy tail.
+        legacy_share=0.0,
+        # 1.27M photos in 20.6K events.
+        event_photos=62,
+    ),
+}
 
 
 @contextmanager
@@ -83,16 +177,25 @@ def step(what: str) -> Iterator[None]:
 
 
 class Seeder:
-    def __init__(self, db, args: argparse.Namespace) -> None:
+    def __init__(self, db, args: argparse.Namespace, shape: Shape) -> None:
         from app.ml.taxonomy_db import ensure_builtin_labels
 
         self.db = db
         self.args = args
+        self.shape = shape
         self.rng = random.Random(SEED)
         self.np_rng = np.random.default_rng(SEED)
         self.builtin_ids = ensure_builtin_labels(db, ["animal", "person", "vehicle"])
+        self.legacy_share = (
+            shape.legacy_share if args.legacy_share is None else args.legacy_share
+        )
         self.legacy_owed = 0.0
         self.species = self._pick_species()
+        self.species_weights = (
+            [1 / rank for rank in range(1, len(self.species) + 1)]
+            if shape.zipf_species
+            else None
+        )
         self.files: list[dict] = []
         self.boxes: list[dict] = []
         self.embed_ids: list[str] = []
@@ -121,7 +224,7 @@ class Seeder:
         )
         if not rows:
             raise SystemExit(f"No species-level rows in {csv_path}")
-        return self.rng.sample(rows, min(SPECIES_COUNT, len(rows)))
+        return self.rng.sample(rows, min(self.shape.species_count, len(rows)))
 
     # Boxes ---------------------------------------------------------------
 
@@ -155,7 +258,10 @@ class Seeder:
         if box.category != "animal" or box.confidence < self.project.classification_gate:
             clear_classification(box, self.builtin_ids)
             return
-        row = self.rng.choice(self.species)
+        if self.species_weights is None:
+            row = self.rng.choice(self.species)
+        else:
+            row = self.rng.choices(self.species, self.species_weights)[0]
         box.label = row.name
         box.label_confidence = round(self.rng.uniform(0.3, 0.99), 4)
         box.label_taxonomy_id = row.id
@@ -164,8 +270,12 @@ class Seeder:
         box.original_label_confidence = box.label_confidence
         box.classification_method = "machine"
 
-    def boxes_for(self, file_id: str) -> list[SimpleNamespace]:
-        """MegaDetector-like boxes for one photo."""
+    @staticmethod
+    def _category(kind: float) -> str:
+        return "animal" if kind < 0.97 else ("person" if kind < 0.99 else "vehicle")
+
+    def _default_boxes(self, file_id: str) -> list[SimpleNamespace]:
+        """MegaDetector-like boxes: 40% of photos hold an animal."""
         rng = self.rng
         kind = rng.random()
         boxes = []
@@ -173,15 +283,46 @@ class Seeder:
             for _ in range(rng.randint(0, 3)):
                 boxes.append(self._box(file_id, "animal", rng.uniform(0.01, 0.2)))
         else:
-            category = "animal" if kind < 0.97 else ("person" if kind < 0.99 else "vehicle")
+            category = self._category(kind)
             for _ in range(rng.randint(1, 2)):
                 boxes.append(self._box(file_id, category, rng.uniform(0.5, 0.99)))
             for _ in range(rng.randint(1, 3)):
                 boxes.append(self._box(file_id, "animal", rng.uniform(0.01, 0.2)))
+        return boxes
+
+    def _rated_boxes(self, file_id: str, rates: tuple[float, float]) -> list[SimpleNamespace]:
+        """Boxes at a deployment's own rates, copied from a user's database.
+
+        The count per photo is spread evenly around the mean, and each box
+        is strong (0.2 or more) with the deployment's share. A photo
+        without a strong box is a blank one.
+        """
+        rng = self.rng
+        per_photo, strong_share = rates
+        x = rng.uniform(0, 2 * per_photo)
+        count = int(x) + (rng.random() < x - int(x))
+        boxes = []
+        for _ in range(count):
+            if rng.random() < strong_share:
+                category, confidence = self._category(rng.random()), rng.uniform(0.2, 0.99)
+            elif rng.random() < WEAK_ABOVE_GATE:
+                category, confidence = "animal", rng.uniform(0.1, 0.2)
+            else:
+                category, confidence = "animal", rng.uniform(0.01, 0.1)
+            boxes.append(self._box(file_id, category, confidence))
+        return boxes
+
+    def boxes_for(self, file_id: str, rates: tuple[float, float] | None) -> list[SimpleNamespace]:
+        """Boxes for one photo, plus the legacy tail."""
+        rng = self.rng
+        if rates is None:
+            boxes = self._default_boxes(file_id)
+        else:
+            boxes = self._rated_boxes(file_id, rates)
         # Legacy tail: L legacy rows next to n others make up share s when
         # L = n * s / (1 - s). The fraction carries over to the next photo,
         # so the share comes out exact over the whole database.
-        share = self.args.legacy_share
+        share = self.legacy_share
         self.legacy_owed += len(boxes) * share / (1 - share)
         n_legacy = int(self.legacy_owed)
         self.legacy_owed -= n_legacy
@@ -193,11 +334,12 @@ class Seeder:
 
     # Files ---------------------------------------------------------------
 
-    def add_photo(self, deployment_id: str, path: str, captured: datetime) -> None:
+    def add_photo(self, deployment_id: str, path: str, captured: datetime,
+                  rates: tuple[float, float] | None) -> None:
         from app.ml.observation_type import derive_observation_type
 
         file_id = self.uuid()
-        boxes = self.boxes_for(file_id)
+        boxes = self.boxes_for(file_id, rates)
         verified = self.rng.random() < self.verified_share
         for box in boxes:
             box.verified = verified
@@ -240,7 +382,14 @@ class Seeder:
         print(f"  {self.totals['files']:,} photos, {self.totals['boxes']:,} boxes", end="\r")
 
     def captures(self, count: int) -> Iterator[datetime]:
-        """Trigger bursts of 1 to 5 photos 2 s apart, 31 min to 6 h apart."""
+        """Trigger bursts of 1 to 5 photos 2 s apart.
+
+        A gap of 31 min to 6 h starts a new event, because the default
+        independence interval is 30 min. With ``event_photos`` set, most
+        gaps are 1 to 29 min instead, so the bursts form events of about
+        that many photos.
+        """
+        event_photos = self.shape.event_photos
         t = SEASON_START + timedelta(minutes=self.rng.uniform(0, 600))
         made = 0
         while made < count:
@@ -248,26 +397,26 @@ class Seeder:
                 yield t
                 t += timedelta(seconds=2)
                 made += 1
-            t += timedelta(minutes=self.rng.uniform(31, 360))
+            if event_photos is None or self.rng.random() < BURST_MEAN / event_photos:
+                t += timedelta(minutes=self.rng.uniform(31, 360))
+            else:
+                t += timedelta(minutes=self.rng.uniform(1, 29))
 
-    def seed_project(self, name: str, n_sites: int, per_site: int, folders: int,
-                     photos: int) -> str:
+    def seed_project(self, spec: ProjectShape) -> str:
         from app.models import Deployment, Project, Site
 
-        scale = self.args.scale
-        photos_per_folder = max(1, round(photos * scale / folders))
         self.project = Project(
             id=self.uuid(),
-            name=name,
+            name=spec.name,
             timezone=TIMEZONE,
             classification_model_id=self.args.classification_model,
             embedding_model_id=EMBEDDING_MODEL_ID,
         )
         self.db.add(self.project)
         self.db.flush()
-        self.verified_share = VERIFIED_SHARE.get(name, 0.0)
-        slug = name.lower().replace(" ", "-")
-        for s in range(n_sites):
+        self.verified_share = spec.verified_share
+        slug = spec.name.lower().replace(" ", "-")
+        for s, site_deployments in enumerate(spec.sites):
             site = Site(
                 id=self.uuid(),
                 project_id=self.project.id,
@@ -276,7 +425,9 @@ class Seeder:
                 longitude=151.0 + s * 0.05,
             )
             self.db.add(site)
-            for d in range(per_site):
+            for d, planned in enumerate(site_deployments):
+                folders = planned.folders
+                photos_per_folder = max(1, round(planned.photos * self.args.scale / folders))
                 folder = f"/seed/{slug}/site-{s + 1}-deployment-{d + 1}"
                 deployment = Deployment(
                     id=self.uuid(),
@@ -291,7 +442,9 @@ class Seeder:
                 for f in range(folders):
                     sub = f"{folder}/cam-{f + 1:03d}" if folders > 1 else folder
                     for i, captured in enumerate(self.captures(photos_per_folder)):
-                        self.add_photo(deployment.id, f"{sub}/IMG_{i + 1:06d}.JPG", captured)
+                        self.add_photo(
+                            deployment.id, f"{sub}/IMG_{i + 1:06d}.JPG", captured, planned.rates
+                        )
                         last = max(last, captured)
                 deployment.end_date_local = last.date()
                 self.flush()
@@ -330,12 +483,16 @@ def main() -> int:
                         help="model id the species come from, e.g. SPECIESNET-v4-0-2-A")
     parser.add_argument("--taxonomy-csv", required=True,
                         help="that model's taxonomy.csv")
+    parser.add_argument("--shape", choices=sorted(SHAPES), default="simon",
+                        help="whose database to copy (default simon)")
     parser.add_argument("--scale", type=float, default=1.0,
-                        help="multiplies every photo count (default 1: about 1M photos)")
-    parser.add_argument("--legacy-share", type=float, default=0.19,
-                        help="share of boxes between 0.005 and 0.01 (default 0.19)")
+                        help="multiplies every photo count (default 1: the full size)")
+    parser.add_argument("--legacy-share", type=float, default=None,
+                        help="share of boxes between 0.005 and 0.01 "
+                             "(default: the shape's, 0.19 for simon, 0 for elliot)")
     args = parser.parse_args()
-    if not 0 <= args.legacy_share < 1:
+    shape = SHAPES[args.shape]
+    if args.legacy_share is not None and not 0 <= args.legacy_share < 1:
         parser.error("--legacy-share must be at least 0 and below 1")
 
     db = open_seed_sandbox()
@@ -344,14 +501,14 @@ def main() -> int:
     from app.db.base import refresh_query_statistics
 
     started = time.perf_counter()
-    seeder = Seeder(db, args)
+    seeder = Seeder(db, args, shape)
     project_ids = []
-    for spec in PROJECTS:
-        with step(f"Project {spec[0]}"):
-            project_ids.append(seeder.seed_project(*spec))
+    for spec in shape.projects:
+        with step(f"Project {spec.name}"):
+            project_ids.append(seeder.seed_project(spec))
     with step("Embeddings"):
         embeddings = seeder.seed_embeddings()
-    for name, project_id in zip((p[0] for p in PROJECTS), project_ids, strict=True):
+    for name, project_id in zip((p.name for p in shape.projects), project_ids, strict=True):
         with step(f"Events for {name}"):
             events = generate_events_for_project(db, project_id)
         print(f"  {events:,} events")

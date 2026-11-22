@@ -93,12 +93,15 @@ Every phase measures this way, before and after, so the numbers compare.
    4. the Labels page of "Small" with one species filter
    5. the deployment info and site info of "Small"
    6. the similarity sort on that Labels page
+   7. on the Labels page of "Small" and of the Elliot seed: one verify in the grid (click a card, Enter), one in the detail view (double-click a card, Enter), and Next on the Files tab. Mark the log line count before each click, and read every request after it until the log goes quiet.
 5. **Read off.**
    - From the log: the startup lines, the background-task lines, and the `Slow request:` lines for each page.
    - The browser's Performance API is no use here: Vite's dev modules fill its 250-entry buffer before the page asks anything. Read the times from the log.
    - The sort is a worker process: its request returns at once, so time it from the `Streaming labels subprocess` line to the first crop request.
    - A species filter goes in the URL as `?lbl_labels=<taxonomy id>`, so it can be reloaded without clicking.
    - One table per phase, under "Measured facts".
+   - For the cause of a slow request, time its statements. A `sitecustomize.py` on `PYTHONPATH` that wraps `sqlite3.connect` (and `sqlite3.dbapi2.connect`, which SQLAlchemy calls) with a cursor that times execute plus fetches gives one line per statement; `EXPLAIN QUERY PLAN` on the 3.45 runtime then gives its plan. Kept out of the repo on purpose.
+   - Seed the Elliot shape with `--shape elliot` into its own folder. Only one copy fits on the internal disk next to the 8 GB that must stay free, so measure one shape at a time, and point `$SCRATCH/run/backups` at the SSD so the daily backup does not fill the disk.
 
 Absolute numbers come from a Mac with an internal NVMe disk, not from a user's laptop. The comparison between phases is what counts.
 
@@ -133,6 +136,7 @@ The numbers are under "Measured facts (2026-11-21, after phase A)".
 **Decided scope: project-first plans, worker cache, duplicate indexes.** Keyset paging and counter tables wait until a measurement asks for them.
 
 1. **Sort worker, project first.** There is no project column on `detections`, `files` or `detection_embeddings`; the project filter arrives only through `deployments` (`ml/inference/similarity_script.py:136-144`). `sqlite_stat1` holds one average per index for the whole database, so one huge deployment shapes the plan for every small project. Confirmed with `EXPLAIN QUERY PLAN` on a backup copy: with a label filter the plan starts from `idx_detections_label_taxonomy` (every detection with that label in the database), without one it scans all of `detection_embeddings` including the vector blobs. Fix: fixed join order with `CROSS JOIN` (deployments, files, detections), which SQLite documents for exactly this and advises to keep to the few queries that need it.
+   **Corrected 2026-11-22: not as a fixed rule.** Project first is wrong for a big project with a rare species: on the seed, "Large" with a 14.8K-box species took 5 to 6 s starting from the species and 66 to 102 s forced project first. "Small" with the same filter went the other way (6 s against 4 s, 15 s against 4 s for a common species). Without a species filter the sort worker's queries already start from the project. The packaged SQLite has no `STAT4`, so it cannot see the skew itself. The choice for species-filtered queries is taken after the stage 3 measurements; see "Measured facts (2026-11-22, phase B baseline)".
 2. **Count folded into the load.** `_load_metadata` and `_load_embeddings` run `SELECT COUNT(*) FROM (sql)` and then the same query again (`similarity_script.py:369-379`, `:410-422`). One pass with `count(*) OVER ()`.
 3. **Worker connections.** Each helper opens its own read-only connection with SQLite's 2 MB default cache, up to four per run (`:366`, `:403`, `:457`, `:476`). One connection per run, with `cache_size` and `temp_store` set.
 4. **Duplicate indexes.** `idx_files_deployment` (prefix of `idx_files_deployment_path`), `idx_detection_embeddings_detection` (prefix of the unique index) and `idx_event_files_event` (prefix of the primary key). Each costs space and insert time and buys nothing. Check each against the foreign-key cascade rule in `DEVELOPERS.md` before dropping.
@@ -145,7 +149,8 @@ The numbers are under "Measured facts (2026-11-21, after phase A)".
 - **One big project** (Elliot's complaint: 1.27M photos and 2.57M boxes in one project, 58 deployments of 2K to 35K photos, 20K events). The query is right, but counting the project's own rows takes long however it is planned. His pain is a lag after every click on the Labels page: verifying, scrolling through blanks, changing a filter. Two steps, in this order:
   1. **Fewer counts per click.** Measure first what one verify and one filter change on the Labels page request. If a click refetches the project-wide totals (`labels/progress`, `labels/stats`, `label-tree`), refetch only what the click changed, or once the user stops clicking. Probably the biggest gain for this case, and mostly front-end.
   2. **Cheaper counts.** Merge counts that read the same rows into one pass, and check that the indexes cover them. Counter tables stay rejected unless both steps fall short.
-- **Seed.** Add an "Elliot shape" next to the current one: one project, 58 deployments of 2K to 35K photos, about two boxes per photo with 13% at 0.2 or higher, few large events (about 62 photos each), ViT-S embeddings. His `addaxai-db-stats.txt` (v7.16, Windows, 3.8 GB) is the source. Simon's numbers are still to come.
+- **Seed.** Add an "Elliot shape" next to the current one: one project, 58 deployments of 2K to 35K photos, about two boxes per photo with 21% at 0.2 or higher, few large events (about 62 photos each), ViT-S embeddings. His `addaxai-db-stats.txt` (v7.16, Windows, 3.8 GB) is the source. Simon's numbers are still to come.
+  **Built (2026-11-22):** `--shape elliot` copies each of his 58 deployments (photos, boxes, share at 0.2 or more), about 270 species weighted 1/rank, events of about 62 photos, no legacy tail. Full scale gave 1,271,059 photos, 2,568,006 boxes, 763,734 embeddings and 20,669 events (his: 1,271,059, 2,571,682, 772,337, 20,555), 3.4 GB, in 20 minutes. Golden copy: `/Volumes/2TB-SSD/addaxai-speed/golden-elliot`.
 - **Measuring.** "How we measure" gets the Labels page clicks: the time from a verify, a scroll through blanks and a filter change until the page is settled, on both shapes.
 
 ## Later: features
@@ -264,6 +269,36 @@ What it shows:
 - **One engine (A1) buys little by itself.** Project list 6.7 to 5.3 s, "Large" info sheets about a third faster. A controlled check (the same query alternating a brand-new and a pooled connection) shows no penalty either way.
 - **The Verification card is disk-bound and its time is noise.** The same request took 106, 125, 177, 346, 454 and 473 s across runs, and 669 s alone on a brand-new connection outside the app. That last run spent 16% of its time on CPU, mostly in system calls. It depends on what the OS happens to cache, not on the code around it. Its three `count(DISTINCT …)` queries likely spill temporary B-trees to disk. Phase B looks at the query.
 - **The card-picture pass still runs while a project has none.** On the seed no photo exists, so every launch spends 19 s in the background trying again. With real photos a project gets its picture once.
+
+## Measured facts (2026-11-22, phase B baseline)
+
+`main` at 6a836cce (all of phase A), same runtime and procedure as before, on both seeds. Every SQL statement over 50 ms was also timed from inside the backend with its 3.45 query plan, through a throwaway `sitecustomize` tracer (not in the repo). Times are cold unless marked.
+
+| What | Simon seed | Elliot seed |
+|---|---|---|
+| Project list | 5.4 s | 7.1 s |
+| Dashboard, Verification card | "Large" 86 s, warm 93 s; "Small" 2.2 s | 61 s |
+| Dashboard, other slow cards | "Large": `labels/progress` 32 s, animal photos 25 s, progress per label 25 s, overview 24 s, `label-colors` 15 s, timeline 11 s; warm about half | `labels/progress` 22.5 s, animal photos 16 s, overview 15 s, progress per label 15 s, `label-colors` 11 s |
+| Labels, open the page | "Small": `labels/stats` 26 s, `label-tree` 15 s, sort starts at 26 s, grid after about 60 s; the same with one species filter | `labels/stats` 38 s, `filter-options` 37 s, `label-tree` 28 s, `labels/progress` 22 s, sort starts at 38 s |
+| Sort worker alone | | similarity 24 s (13 s of it the count before the load), by event 23 s |
+| Verify one card in the grid | `bulk-verify` 3.7 s, then `filter-options` 1.8 s and `labels/progress` 0.7 s | `bulk-verify` 2.3 s, then `labels/progress` 17 s and `filter-options` 30 s |
+| Verify in the detail view | `bulk-verify` 5.8 s, a full re-sort, `label-tree` 22 s | `bulk-verify` 5.6 s, a full re-sort, `label-tree` 31 s, `labels/progress` twice (23 s each), `filter-options` 47 s, `label-colors` 10 s |
+| Files tab, open / next page | | `label-tree` 48 s and `filter-options` 51 s on open; `labels/files` 13 to 15 s per page, and the prefetched page after it the same |
+| Deployment / site info | "Small" 0.4 / 0.1 s; "Large" 22 / 9 s | biggest deployment 1.0 / 0.2 s |
+
+What it shows:
+
+- **Elliot's lag is the number of counts, not their plans.** Every slow statement on his seed starts from the project, which is the whole database. One pass over his 2.5M boxes costs 12 to 15 s on an NVMe disk whatever the plan, because each box is a row read. Opening the Labels page and one verify ran the "which species are present" query 7 times (84 s), the events-per-species count 4 times (83 s), each of the two progress counts 6 times (72 s and 60 s), and a `min(label_confidence)` 4 times (34 s). A verify refetches `labels/progress` and `filter-options`, which a verify does not change; one in the detail view also re-sorts and refetches four more.
+- **Two queries start from the whole database without any species filter** (Simon's case). The embedding count in `labels/stats` scans every row of `detection_embeddings` (up to 41 s for "Small"). The label-tree count walks every box in the database in species order when the "Unverified" filter is on (up to 29 s).
+- **The Verification card re-runs one subquery seven times.** Each of its seven statements recomputes the filtered events, with an `EXISTS` per event through `event_files`, `files` and `detections`.
+- **The rest already start from the project and are slow because "Large" has 2.5M boxes**, read several times per page (`labels/progress`, overview, animal photos, the info sheets).
+- **`bulk-verify` itself takes 2 to 6 s.** Not yet looked at.
+
+**After the decided fixes (same day, Elliot seed):**
+
+- **A verify refreshes only what it changed, once the clicks stop** (`invalidateAfterVerify` in `frontend/src/lib/invalidate-label-queries.ts`). Three quick verifies in the grid: one `labels/progress` (20 s) and one `label-tree` (29 s), where each verify used to refetch `labels/progress` (17 s) and `filter-options` (30 s). Two verifies in the detail view: the same pair once, with no re-sort, no `filter-options`, no `label-colors`. The label tree is now refreshed after a verify when the Verified filter is on; before, the grid left its counts stale.
+- **The three duplicate indexes are dropped** (migration `b9c3d5e7f9a1`). On 3.45 the cascades seek the longer index, and deleting a 27K-photo project took 2.5 s with and without them.
+- **Item 2 and 3 above measured to nothing, so they are left out.** Folding the count into the load with `count(*) OVER ()` was slower (17.8 s against 10.5 to 16 s), because the load alone walks the capture-time index and stops at the cap in about 2 s, while the window needs every row. One shared connection with a 64 MB cache gave 17 to 22 s against 17 to 19 s with four.
 
 ## Open questions
 

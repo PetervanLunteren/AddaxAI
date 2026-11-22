@@ -17,7 +17,9 @@ SCRIPT = BACKEND / "scripts" / "seed_large_image_database.py"
 TAXONOMY = BACKEND / "tests" / "data" / "seed_taxonomy.csv"
 
 
-def _seed(data_dir: Path, home: Path) -> subprocess.CompletedProcess:
+def _seed(
+    data_dir: Path, home: Path, shape: str = "simon", scale: str = "0.0005"
+) -> subprocess.CompletedProcess:
     env = {
         k: v
         for k, v in os.environ.items()
@@ -33,8 +35,10 @@ def _seed(data_dir: Path, home: Path) -> subprocess.CompletedProcess:
             "TEST-MODEL",
             "--taxonomy-csv",
             str(TAXONOMY),
+            "--shape",
+            shape,
             "--scale",
-            "0.0005",
+            scale,
         ],
         env=env,
         capture_output=True,
@@ -70,6 +74,27 @@ def test_a_tiny_seed_fills_every_table_the_pages_read(tmp_path: Path) -> None:
     assert count("SELECT count(*) FROM files WHERE observation_type = 'unclassified'") == 0
     assert count("SELECT count(*) FROM detections WHERE confidence < 0.01") > 0
     assert count("SELECT count(*) FROM files WHERE verified") > 0
+    conn.close()
+
+
+def test_the_elliot_shape_is_one_project_of_58_deployments(tmp_path: Path) -> None:
+    data_dir = tmp_path / "seed"
+    result = _seed(data_dir, tmp_path / "home", shape="elliot", scale="0.002")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    conn = sqlite3.connect(data_dir / "addaxai.db")
+
+    def count(sql: str) -> int:
+        return conn.execute(sql).fetchone()[0]
+
+    assert count("SELECT count(*) FROM projects") == 1
+    assert count("SELECT count(*) FROM deployments") == 58
+    for table in ("detections", "detection_embeddings", "events", "event_observations"):
+        assert count(f"SELECT count(*) FROM {table}") > 0, table
+    # His database is from after v7.2.0: nothing below the 0.01 floor.
+    assert count("SELECT count(*) FROM detections WHERE confidence < 0.01") == 0
+    # Long events, not one per burst.
+    assert count("SELECT count(*) FROM event_files") > 5 * count("SELECT count(*) FROM events")
     conn.close()
 
 
