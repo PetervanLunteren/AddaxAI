@@ -1274,33 +1274,26 @@ def get_event_verification_stats(
         .one()
     )
 
-    # Query 2: MaxN frame counts (distinct max_n_file_ids and their verification)
+    # Query 2, over the filtered events' observations: the MaxN frames
+    # (distinct max_n_file_ids and their verification) and the
+    # observation count (effective_count: human_count when set, else the
+    # AI max_n). One pass, because each statement recomputes the filtered
+    # events, which is most of its cost on a large project. The outer
+    # join keeps observations without a MaxN frame in the sum; count
+    # DISTINCT and the verified sum skip their NULLs, as the inner join
+    # used to.
     MaxNFile = aliased(File)
-    maxn_stats = (
+    maxn_frames, maxn_verified, total_observations = (
         db.query(
             func.count(func.distinct(EventObservation.max_n_file_id)),
-            func.sum(
-                func.cast(MaxNFile.verified, Integer)
-            ),
-        )
-        .select_from(EventObservation)
-        .join(Event, Event.id == EventObservation.event_id)
-        .join(MaxNFile, MaxNFile.id == EventObservation.max_n_file_id)
-        .filter(Event.id.in_(select(event_ids_subq.c.id)))
-        .filter(EventObservation.max_n_file_id.isnot(None))
-        .one()
-    )
-
-    # Query 3: observation counts (effective_count from event_observations:
-    # human_count when set, else the AI max_n).
-    obs_q = (
-        db.query(
+            func.sum(func.cast(MaxNFile.verified, Integer)),
             func.coalesce(func.sum(EventObservation.effective_count), 0),
         )
-        .join(Event, Event.id == EventObservation.event_id)
-        .filter(Event.id.in_(select(event_ids_subq.c.id)))
+        .select_from(EventObservation)
+        .outerjoin(MaxNFile, MaxNFile.id == EventObservation.max_n_file_id)
+        .filter(EventObservation.event_id.in_(select(event_ids_subq.c.id)))
+        .one()
     )
-    total_observations = obs_q.scalar() or 0
 
     # Per-detection counts for the Observations verification progress.
     # Denominator and numerator share the same filter so the ratio is
@@ -1313,15 +1306,9 @@ def get_event_verification_stats(
     # user can never open: a video project sat at 19% with every card on
     # screen already verified, and could not have reached 100%. Verified
     # detections pass on any frame, so only the denominator moves.
-    det_total_q = (
-        db.query(func.count(Detection.id))
-        .join(File, File.id == Detection.file_id)
-        .join(event_files, event_files.c.file_id == File.id)
-        .filter(event_files.c.event_id.in_(select(event_ids_subq.c.id)))
-        .filter(on_visible_frame())
-    )
-    det_verified_q = (
+    det_q = (
         db.query(
+            func.count(Detection.id),
             func.sum(func.cast(Detection.verified, Integer)),
         )
         .join(File, File.id == Detection.file_id)
@@ -1330,39 +1317,32 @@ def get_event_verification_stats(
         .filter(on_visible_frame())
     )
     if project_floor is not None:
-        floor_clause = threshold_or_verified(project_floor)
-        det_total_q = det_total_q.filter(floor_clause)
-        det_verified_q = det_verified_q.filter(floor_clause)
+        det_q = det_q.filter(threshold_or_verified(project_floor))
     if min_confidence is not None:
-        det_total_q = det_total_q.filter(Detection.confidence >= min_confidence)
-        det_verified_q = det_verified_q.filter(Detection.confidence >= min_confidence)
-    total_detections = int(det_total_q.scalar() or 0)
-    verified_detections = int(det_verified_q.scalar() or 0)
+        det_q = det_q.filter(Detection.confidence >= min_confidence)
+    total_detections, verified_detections = det_q.one()
 
     # Event-level verification: total and signed-off counts. Event
     # verification is the explicit human sign-off stored on Event.confirmed.
-    events_total_q = db.query(func.count(Event.id)).filter(
-        Event.id.in_(select(event_ids_subq.c.id))
-    )
-    events_total = events_total_q.scalar() or 0
-
-    events_confirmed_q = (
-        db.query(func.count(Event.id))
+    events_total, events_confirmed = (
+        db.query(
+            func.count(Event.id),
+            func.sum(func.cast(Event.confirmed, Integer)),
+        )
         .filter(Event.id.in_(select(event_ids_subq.c.id)))
-        .filter(Event.confirmed == True)  # noqa: E712
+        .one()
     )
-    events_confirmed = events_confirmed_q.scalar() or 0
 
     return {
-        "events_confirmed": events_confirmed,
-        "events_total": events_total,
+        "events_confirmed": int(events_confirmed or 0),
+        "events_total": events_total or 0,
         "total_files": file_stats[0] or 0,
         "verified_files": int(file_stats[1] or 0),
-        "total_max_n_frames": maxn_stats[0] or 0,
-        "verified_max_n_frames": int(maxn_stats[1] or 0),
-        "total_observations": total_observations,
-        "total_detections": total_detections,
-        "verified_detections": verified_detections,
+        "total_max_n_frames": maxn_frames or 0,
+        "verified_max_n_frames": int(maxn_verified or 0),
+        "total_observations": total_observations or 0,
+        "total_detections": int(total_detections or 0),
+        "verified_detections": int(verified_detections or 0),
     }
 
 

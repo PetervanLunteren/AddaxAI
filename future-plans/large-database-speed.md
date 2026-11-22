@@ -298,6 +298,17 @@ What it shows:
 
 - **A verify refreshes only what it changed, once the clicks stop** (`invalidateAfterVerify` in `frontend/src/lib/invalidate-label-queries.ts`). Three quick verifies in the grid: one `labels/progress` (20 s) and one `label-tree` (29 s), where each verify used to refetch `labels/progress` (17 s) and `filter-options` (30 s). Two verifies in the detail view: the same pair once, with no re-sort, no `filter-options`, no `label-colors`. The label tree is now refreshed after a verify when the Verified filter is on; before, the grid left its counts stale.
 - **The three duplicate indexes are dropped** (migration `b9c3d5e7f9a1`). On 3.45 the cascades seek the longer index, and deleting a 27K-photo project took 2.5 s with and without them.
+- **A verify no longer scans every box.** `bulk-verify` looked its boxes up with `id IN (...) OR track_id IN (...)`, and 3.45 answered with `SCAN detections` because `track_id` is NULL on every image box, so its `sqlite_stat1` row read "any value matches the whole table". The row is now dropped after every `ANALYZE`, like the one for `idx_files_source_video`. Elliot seed: 2.3 to 6.8 s per verify, now 0.02 to 0.09 s.
+- **Three more fixes, timed old against new on the same requests** (each twice; same answers):
+
+  | Request | Simon seed, old | new | Elliot seed, old | new |
+  |---|---|---|---|---|
+  | `labels/stats` ("Small" for Simon) | 37 / 21 s | 2.0 / 0.3 s | 43 / 22 s | 11 / 11 s |
+  | `label-tree`, Unverified ("Small") | 11.5 / 9.2 s | 0.2 / 0.2 s | 10.4 / 9.5 s | 8.6 / 7.8 s |
+  | Verification card ("Large" for Simon) | 65 / 67 s | 42 / 46 s | 47 / 44 s | 26 / 27 s |
+
+  `labels/stats` counts its three numbers in one pass that starts from the project; counting embeddings from `detection_embeddings` read every embedding in the database. The label-tree count fixes its join order with `CROSS JOIN`, project first: it never carries a label filter, so that start is always right, and left to itself 3.45 walked every box in the database in label order (315 to 423 s for "Small" off the USB SSD, 3.2 s cold now). The Verification card merges the counts that read the same rows, seven statements to four.
+- **Measured and left alone.** `labels/progress`: the plain file count it could merge never took 50 ms; its two expensive counts read different rows. The Files tab: per page the count is 1.3 to 1.6 s and the page itself 11 to 14 s, because the event order sorts every file of the project through correlated subqueries on every page. Fixing that means walking events in index order, a rewrite for a separate decision.
 - **Item 2 and 3 above measured to nothing, so they are left out.** Folding the count into the load with `count(*) OVER ()` was slower (17.8 s against 10.5 to 16 s), because the load alone walks the capture-time index and stops at the cap in about 2 s, while the window needs every row. One shared connection with a 64 MB cache gave 17 to 22 s against 17 to 19 s with four.
 
 ## Open questions
