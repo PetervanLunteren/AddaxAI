@@ -17,7 +17,7 @@ export function invalidateProjectData(
     ["files", projectId],
     ["file"],
     ["detection-stats", projectId],
-    ["label-stats", projectId],
+    ["labels-stats", projectId],
     ["observation-type-stats", projectId],
     ["projects", projectId],
     ["deployments", projectId],

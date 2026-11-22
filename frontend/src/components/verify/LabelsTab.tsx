@@ -106,7 +106,12 @@ import type {
   UndoSnapshot,
   VerifySort,
 } from "../../api/types";
-import { invalidateLabelQueries } from "../../lib/invalidate-label-queries";
+import {
+  invalidateAfterVerify,
+  invalidateLabelQueries,
+  isEventFamilyQuery,
+  type DetectionActionKind,
+} from "../../lib/invalidate-label-queries";
 
 // Labels dropdown, kept deliberately small: browse look-alikes or
 // review by event. Low-confidence triage is the confidence slider's
@@ -779,7 +784,7 @@ export function LabelsTab({
 
   // `handleActionComplete` is declared further down and reads `openTrack`,
   // so closing reaches it through a ref rather than reordering the file.
-  const handleActionCompleteRef = useRef<(() => void) | null>(null);
+  const handleActionCompleteRef = useRef<((kind: DetectionActionKind) => void) | null>(null);
 
   const openTrackFrames = useCallback(
     (card: DetectionSummary) => {
@@ -801,7 +806,7 @@ export function LabelsTab({
     // catch-up out altogether, and a card undone from inside another
     // track kept its check mark).
     sortMutation.mutate({ sort: lblSort, background: true });
-    handleActionCompleteRef.current?.();
+    handleActionCompleteRef.current?.("change");
   }, [clearSelection, lblSort]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The large view navigates a list pinned when it opens. The grid list
@@ -840,9 +845,20 @@ export function LabelsTab({
     setDetailDetection(detection);
   }, []);
 
-  const handleActionComplete = useCallback(() => {
+  const handleActionComplete = useCallback((kind: DetectionActionKind) => {
+    // A verify only flips verified flags. The grid already shows that
+    // (`onVerify` patched it), so the order stays as the user saw it and
+    // the counts follow once the clicks stop. Re-sorting here cost a full
+    // pass over the project per verify. The photo and an open track still
+    // redraw their verified look from their own queries.
+    if (kind === "verify") {
+      invalidateAfterVerify(queryClient, projectId, verificationFilter !== "all");
+      queryClient.invalidateQueries({ queryKey: ["file"] });
+      queryClient.invalidateQueries({ queryKey: ["track-detections"] });
+      return;
+    }
     // Re-run the current sort to refresh data. Background: this fires after
-    // an in-grid verify/relabel, so it must reconcile without blanking the
+    // an in-grid relabel, so it must reconcile without blanking the
     // grid the user is working in. Skipped while a track is open: the grid
     // is showing that track's frames, not the sorted list, so re-sorting
     // would be work nobody can see. Closing the track runs it once.
@@ -867,22 +883,17 @@ export function LabelsTab({
     // refresh they get: an undo that reaches past the frames on screen (a
     // card verdict made before the track was opened) lands here.
     queryClient.invalidateQueries({ queryKey: ["track-detections"] });
-  }, [lblSort, queryClient, projectId, openTrack]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lblSort, queryClient, projectId, openTrack, verificationFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   handleActionCompleteRef.current = handleActionComplete;
 
   /** Re-embed (Embed now / Process now) finished: the grid renders from
    *  the sort mutation, so query invalidation alone can't show the newly
-   *  embedded detections. Refresh the embedding-coverage stats (note the
-   *  labels-stats key — invalidateProjectData uses a different one) and
-   *  the unprocessed-tail count, then re-run the sort so the new crops
-   *  appear without a hard refresh. */
+   *  embedded detections. Refresh the project's queries (the embedding
+   *  coverage and the unprocessed-tail count among them), then re-run
+   *  the sort so the new crops appear without a hard refresh. */
   const handleReEmbedComplete = useCallback(() => {
     invalidateProjectData(queryClient, projectId);
-    queryClient.invalidateQueries({ queryKey: ["labels-stats", projectId] });
-    queryClient.invalidateQueries({
-      queryKey: ["labels-unprocessed", projectId],
-    });
     sortMutation.mutate({ sort: lblSort });
   }, [lblSort, queryClient, projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -950,11 +961,17 @@ export function LabelsTab({
    *  singleton inside an otherwise-intact cohort. Strip the ids
    *  instead, matching what the cohort divider's Accept button does.
    *
-   *  Also invalidates the cohorts query so the toolbar pill catches up
-   *  regardless of which action path triggered the change.
+   *  Also refreshes the counts the action moved, whichever path it came
+   *  from. A verify (`kind` "verify") moves only the verified counts, and
+   *  waits for the clicks to stop (`invalidateAfterVerify`); a relabel
+   *  ("change") refreshes the progress, cohorts and event queries at once.
    */
   const applyDetectionAction = useCallback(
-    (ids: string[], patch: (d: DetectionSummary) => DetectionSummary) => {
+    (
+      ids: string[],
+      patch: (d: DetectionSummary) => DetectionSummary,
+      kind: DetectionActionKind,
+    ) => {
       const idSet = new Set(ids);
       // The strip-from-the-grid branch is about cohorts, and an open
       // track has none: its cards are one animal's frames and they stay
@@ -978,6 +995,10 @@ export function LabelsTab({
           idSet.has(d.detection_id) ? patch(d) : d,
         );
       }
+      if (kind === "verify") {
+        invalidateAfterVerify(queryClient, projectId, verificationFilter !== "all");
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
       // The page's progress bar counts photos, and verifying the last
       // box on one flips File.verified server-side. Its key does not
@@ -987,21 +1008,11 @@ export function LabelsTab({
         queryKey: ["labels-progress", projectId],
       });
       // Relabelling rebuilds the event's observations server-side (and
-      // cascades up to File.verified / event verification). Refresh every
-      // event-family query so the Counts page reflects it: the event list
-      // (["events", ...]), the single-event modal (["event", id]), the
-      // count badges (["event-count", ...]) and the filter options. A
-      // plain ["events"] prefix would miss the singular ["event", ...] and
-      // ["event-count", ...] keys, which is why the Counts view and its
-      // event modal used to stay stale after a relabel.
-      queryClient.invalidateQueries({
-        predicate: (q) => {
-          const key = q.queryKey[0];
-          return typeof key === "string" && key.startsWith("event");
-        },
-      });
+      // cascades up to File.verified / event verification), so the
+      // Counts page and the filter options need every event query.
+      queryClient.invalidateQueries({ predicate: isEventFamilyQuery });
     },
-    [lblSort, openTrack, patchLocalDetections, projectId, queryClient],
+    [lblSort, openTrack, patchLocalDetections, projectId, queryClient, verificationFilter],
   );
 
   // Undo: one history for this tab and its detail view. Every action
@@ -1020,7 +1031,7 @@ export function LabelsTab({
       ),
     );
     if (detections.some((r) => !loaded.has(r.id))) {
-      handleActionComplete();
+      handleActionComplete("change");
       return;
     }
     const byId = new Map(detections.map((r) => [r.id, r]));
@@ -1041,7 +1052,7 @@ export function LabelsTab({
         neighbor_top_label: null,
         neighbor_top_scientific_name: null,
       };
-    });
+    }, "change");
     // Bring the restored crops back into view so the user can re-act.
     // No success toast: the crops changing back is the confirmation, and
     // the verify workflow is toast-fatigued already.
@@ -1055,8 +1066,9 @@ export function LabelsTab({
       ids: string[],
       patch: (d: DetectionSummary) => DetectionSummary,
       before: UndoSnapshot,
+      kind: DetectionActionKind,
     ) => {
-      applyDetectionAction(ids, patch);
+      applyDetectionAction(ids, patch, kind);
       undo.push(before);
     },
     [applyDetectionAction, undo],
@@ -1084,7 +1096,7 @@ export function LabelsTab({
         neighbor_top_label: null,
         neighbor_top_scientific_name: null,
         verified: true,
-      }), before);
+      }), before, "change");
       invalidateLabelQueries(queryClient);
       advanceSelectionAfter(ids);
     },
@@ -1125,15 +1137,8 @@ export function LabelsTab({
         );
         queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
         invalidateLabelQueries(queryClient);
-        // Refresh every event-family query (list, single-event modal,
-        // count badges, filter options) so the Counts page reflects the
-        // rebuilt observations, not just the ["events"] list prefix.
-        queryClient.invalidateQueries({
-          predicate: (q) => {
-            const key = q.queryKey[0];
-            return typeof key === "string" && key.startsWith("event");
-          },
-        });
+        // The Counts page reflects the rebuilt observations.
+        queryClient.invalidateQueries({ predicate: isEventFamilyQuery });
         toast.success(
           `Relabelled ${cohort.count} label${
             cohort.count === 1 ? "" : "s"
@@ -1222,7 +1227,7 @@ export function LabelsTab({
         neighbor_top_label: null,
         neighbor_top_scientific_name: null,
         verified: true,
-      }), before);
+      }), before, "change");
       invalidateLabelQueries(queryClient);
       advanceSelectionAfter(ids);
     },
@@ -1255,7 +1260,7 @@ export function LabelsTab({
         neighbor_top_label: null,
         neighbor_top_scientific_name: null,
         verified: true,
-      }), before);
+      }), before, "change");
       invalidateLabelQueries(queryClient);
       advanceSelectionAfter(ids);
     },
@@ -1274,7 +1279,7 @@ export function LabelsTab({
 
   const handleBulkVerify = useCallback(
     (ids: string[], before: UndoSnapshot) => {
-      applyUndoableAction(ids, (d) => ({ ...d, verified: true }), before);
+      applyUndoableAction(ids, (d) => ({ ...d, verified: true }), before, "verify");
       advanceSelectionAfter(ids);
     },
     [applyUndoableAction, advanceSelectionAfter]
@@ -1285,7 +1290,7 @@ export function LabelsTab({
   // default view, so the selection advances the same way.
   const handleBulkUnverify = useCallback(
     (ids: string[], before: UndoSnapshot) => {
-      applyUndoableAction(ids, (d) => ({ ...d, verified: false }), before);
+      applyUndoableAction(ids, (d) => ({ ...d, verified: false }), before, "verify");
       advanceSelectionAfter(ids);
     },
     [applyUndoableAction, advanceSelectionAfter]
@@ -1333,7 +1338,7 @@ export function LabelsTab({
             neighbor_top_label: null,
             neighbor_top_scientific_name: null,
             verified: true,
-          }), r.before);
+          }), r.before, "change");
           advanceSelectionAfter(ids);
           // No success toast: this fires on every E->M in a run of
           // hundreds of events. The grid updating (crops verified /
@@ -1499,7 +1504,7 @@ export function LabelsTab({
               neighbor_top_label: null,
               neighbor_top_scientific_name: null,
               verified: true,
-            }), r.before);
+            }), r.before, "change");
             advanceSelectionAfter(ids);
           })
           .catch((err: Error) => toast.error(err.message));
@@ -2006,7 +2011,7 @@ export function LabelsTab({
         onDeselectAll={clearSelection}
         labelOptions={labelOptions}
         labelOptionsLoading={labelOptionsLoading}
-        onActionComplete={handleActionComplete}
+        onActionComplete={() => handleActionComplete("change")}
         onRelabel={handleBulkRelabel}
         expandTracks={openTrack === null}
         onVerify={handleBulkVerify}
@@ -2053,7 +2058,7 @@ export function LabelsTab({
             neighbor_top_label: null,
             neighbor_top_scientific_name: null,
             verified: true,
-          }));
+          }), "change");
         }}
         onMarkFalse={(detectionId) => {
           applyDetectionAction([detectionId], (d) => ({
@@ -2065,7 +2070,7 @@ export function LabelsTab({
             neighbor_top_label: null,
             neighbor_top_scientific_name: null,
             verified: true,
-          }));
+          }), "change");
         }}
         onMarkUnknown={(detectionId) => {
           applyDetectionAction([detectionId], (d) => ({
@@ -2077,10 +2082,10 @@ export function LabelsTab({
             neighbor_top_label: null,
             neighbor_top_scientific_name: null,
             verified: true,
-          }));
+          }), "change");
         }}
         onVerify={(detectionId, verified = true) => {
-          applyDetectionAction([detectionId], (d) => ({ ...d, verified }));
+          applyDetectionAction([detectionId], (d) => ({ ...d, verified }), "verify");
         }}
         // The rail's flag/like: patch every crop of that file so the
         // corner badges follow without a re-sort. Not undoable — F is

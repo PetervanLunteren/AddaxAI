@@ -66,12 +66,14 @@ import { DetailCard, VerifyDetailShell } from "./VerifyDetailShell";
 import { FileLocation } from "./FileLocation";
 import { TruncateStart } from "@/components/ui/truncate-start";
 import { useSpeciesColorsVersion } from "../../utils/species-colors";
+import type { DetectionActionKind } from "../../lib/invalidate-label-queries";
 
 interface DetectionDetailModalProps {
   detection: DetectionSummary | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onActionComplete: () => void;
+  /** Runs after each action's API call answers, with what it changed. */
+  onActionComplete: (kind: DetectionActionKind) => void;
   /** The grid's undo history. This view runs its own API calls and
    *  pushes their `before` here; drawing a box clears it. Cmd+Z is the
    *  grid's handler, which stays live while this view is open. */
@@ -385,7 +387,7 @@ export function DetectionDetailModal({
         .bulkRelabel([id], option.label, option.category)
         .then((r) => {
           undo.push(r.before);
-          onActionComplete();
+          onActionComplete("change");
         })
         .catch((err: Error) => toast.error(err.message));
     },
@@ -437,7 +439,7 @@ export function DetectionDetailModal({
     onSuccess: (r) => {
       undo.push(r.before);
       onVerify?.(detection!.detection_id, !detection!.verified);
-      onActionComplete();
+      onActionComplete("verify");
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -448,7 +450,7 @@ export function DetectionDetailModal({
     onSuccess: (r, { label, category }) => {
       undo.push(r.before);
       onRelabel?.(detection!.detection_id, label, category);
-      onActionComplete();
+      onActionComplete("change");
       onNavigate?.("nextUnverified");
     },
     onError: (err: Error) => toast.error(err.message),
@@ -460,7 +462,7 @@ export function DetectionDetailModal({
     onSuccess: (r) => {
       undo.push(r.before);
       onMarkFalse?.(detection!.detection_id);
-      onActionComplete();
+      onActionComplete("change");
       onNavigate?.("nextUnverified");
     },
     onError: (err: Error) => toast.error(err.message),
@@ -472,7 +474,7 @@ export function DetectionDetailModal({
     onSuccess: (r) => {
       undo.push(r.before);
       onMarkUnknown?.(detection!.detection_id);
-      onActionComplete();
+      onActionComplete("change");
       onNavigate?.("nextUnverified");
     },
     onError: (err: Error) => toast.error(err.message),
@@ -495,7 +497,7 @@ export function DetectionDetailModal({
       .bulkVerify([detection.detection_id], true, expandTracks)
       .then((r) => {
         undo.push(r.before);
-        onActionComplete();
+        onActionComplete("verify");
       })
       .catch((err: Error) => toast.error(err.message));
   }, [detection, expandTracks, onActionComplete, onNavigate, onVerify, undo]);
@@ -720,7 +722,7 @@ export function DetectionDetailModal({
             // Cmd+Z must never reach past it to an older action.
             onMutated={() => {
               undo.clear();
-              onActionComplete();
+              onActionComplete("change");
             }}
             onCreated={setDrawnId}
             boxesHidden={boxesHidden}
