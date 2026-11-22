@@ -68,6 +68,23 @@ def test_upgrade_from_base_matches_models(engine) -> None:
     assert schema_problems(engine) == []
 
 
+def test_the_chain_drops_the_covered_indexes(engine) -> None:
+    """Each of these is the leading column of a longer index, which serves
+    its lookups and its foreign-key cascade (migration b9c3d5e7f9a1).
+
+    `schema_problems` only reports what the models lack, so it would stay
+    quiet if a later migration created one of them again.
+    """
+    upgrade_to_head()
+    inspector = inspect(engine)
+    for table, name in (
+        ("files", "idx_files_deployment"),
+        ("detection_embeddings", "idx_detection_embeddings_detection"),
+        ("event_files", "idx_event_files_event"),
+    ):
+        assert name not in {i["name"] for i in inspector.get_indexes(table)}
+
+
 # Deliberately absent: a "the chain is idempotent" test. A second
 # `upgrade head` re-runs nothing, because alembic no-ops at head, so such
 # a test asserts nothing while reading as coverage. The property itself

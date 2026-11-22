@@ -77,7 +77,7 @@ def test_refresh_keeps_every_other_statistic(engine):
         conn.commit()
 
         kept = _stat_indexes(conn)
-        assert "idx_files_deployment" in kept
+        assert "idx_files_deployment_path" in kept
         assert _UNUSABLE_STAT_INDEX not in kept
 
 

@@ -48,8 +48,9 @@ class DetectionEmbedding(Base):
 
     # Indexes
     __table_args__ = (
-        Index("idx_detection_embeddings_detection", "detection_id"),
         Index("idx_detection_embeddings_model", "embedding_model_id"),
+        # Leads with detection_id, so it also serves the lookups by
+        # detection and the cascade from detections.
         Index(
             "idx_detection_embeddings_detection_model",
             "detection_id",

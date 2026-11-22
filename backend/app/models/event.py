@@ -39,7 +39,8 @@ event_files = Table(
     Column("event_id", String(36), ForeignKey("events.id", ondelete="CASCADE"), primary_key=True),
     Column("file_id", String(36), ForeignKey("files.id", ondelete="CASCADE"), primary_key=True),
     Column("sequence_number", Integer, nullable=True),  # Order within event
-    Index("idx_event_files_event", "event_id"),
+    # The primary key (event_id, file_id) serves lookups by event and the
+    # cascade from events; file_id needs its own.
     Index("idx_event_files_file", "file_id"),
 )
 

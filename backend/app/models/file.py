@@ -160,10 +160,9 @@ class File(Base):
 
     # Indexes for common queries
     __table_args__ = (
-        Index("idx_files_deployment", "deployment_id"),
         # Ingest looks every file up by (deployment_id, file_path) before
         # inserting it. Without this the planner falls back to
-        # idx_files_deployment, which has no selectivity when a whole
+        # an index on deployment_id alone, which has no selectivity when a whole
         # library sits in one deployment: it hands back every row already
         # inserted and compares file_path on each, so file N scans N
         # rows. That is quadratic, and it is why a 1M-image ingest sat in
@@ -172,8 +171,8 @@ class File(Base):
         #
         # deployment_id leads on purpose. That order serves the ingest
         # lookup, still serves deployment-only queries, and stays usable
-        # for foreign-key enforcement on the delete cascade, so it is a
-        # strict superset of idx_files_deployment above.
+        # for foreign-key enforcement on the delete cascade, so there is
+        # no separate index on deployment_id (dropped 2026-11-22).
         Index("idx_files_deployment_path", "deployment_id", "file_path"),
         Index("idx_files_captured_at_local", "captured_at_local"),
         Index("idx_files_verified", "verified"),
