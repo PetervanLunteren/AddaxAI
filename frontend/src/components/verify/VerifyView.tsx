@@ -221,9 +221,14 @@ export function VerifyView({ projectId }: VerifyViewProps) {
   });
   const detectionThreshold = project?.counting_threshold ?? 0;
 
-  // Get total event count (unfiltered)
+  // The unfiltered event count, and how many of those are confirmed for
+  // the progress pill. Deliberately UNFILTERED: the pill measures
+  // progress against the whole project, not the current filter view, so
+  // the user can't mistake a narrowed view for "everything confirmed".
+  // Under the ["events"] prefix, so everything that refreshes the event
+  // list (a confirm, a relabel) refreshes the pill with it.
   const { data: totalCountData } = useQuery({
-    queryKey: ["event-count", projectId],
+    queryKey: ["events", "count", projectId],
     queryFn: () => eventsApi.count(projectId),
   });
 
@@ -234,15 +239,6 @@ export function VerifyView({ projectId }: VerifyViewProps) {
     queryKey: ["event-count-filtered", projectId, debouncedFilters],
     queryFn: () => eventsApi.count(projectId, debouncedFilters),
     enabled: isDebouncedFiltered,
-  });
-
-  // Verification stats for the progress pill. Deliberately UNFILTERED:
-  // the bar measures progress against the whole project, not the
-  // current filter view, so the user can't mistake a narrowed view for
-  // "everything verified".
-  const { data: verificationStats } = useQuery({
-    queryKey: ["events", "verification-stats", projectId],
-    queryFn: () => eventsApi.verificationStats(projectId),
   });
 
   // Get events with debounced filters
@@ -315,7 +311,7 @@ export function VerifyView({ projectId }: VerifyViewProps) {
         detectionFloor={detectionThreshold}
         countBy="event"
       />
-      {totalEvents > 0 && verificationStats && (
+      {totalEvents > 0 && (
         <VerifyToolbar>
           {/* Left: sort. Right: meta icons + progress, matching the
               Labels grid's toolbar grouping. */}
@@ -359,13 +355,7 @@ export function VerifyView({ projectId }: VerifyViewProps) {
             <VerifyGuideLink step="counts" />
             <div className="ml-2">
               <VerifyProgressPill
-                pct={
-                  verificationStats.events_total > 0
-                    ? (verificationStats.events_confirmed /
-                        verificationStats.events_total) *
-                      100
-                    : 0
-                }
+                pct={((totalCountData?.confirmed ?? 0) / totalEvents) * 100}
                 label="confirmed"
               />
             </div>

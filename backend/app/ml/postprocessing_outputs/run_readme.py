@@ -26,7 +26,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import __version__ as APP_VERSION
-from app.api.crud.event import get_event_verification_stats
+from app.api.crud.event import get_event_counts
 from app.core.confidence import ROLLUP_THRESHOLD, format_confidence_pct
 from app.core.config import get_settings
 from app.core.logging_config import get_logger
@@ -206,10 +206,10 @@ def _count_confirmation_stats(
     helper and floor as that step's progress pill, so an event with
     nothing to count is in neither number and the file agrees with the
     screen."""
-    stats = get_event_verification_stats(
+    counts = get_event_counts(
         db, project.id, project_floor=project.counting_threshold
     )
-    return int(stats["events_confirmed"]), int(stats["events_total"])
+    return counts.confirmed, counts.total
 
 
 def _ratio(done: int, total: int) -> str:

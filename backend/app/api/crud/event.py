@@ -9,9 +9,10 @@ from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, time
+from typing import NamedTuple
 
 from sqlalchemy import Integer, delete, exists, func, insert, select, text
-from sqlalchemy.orm import Session, aliased, joinedload, selectinload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.logging_config import get_logger
 from app.db.sql_params import iter_id_chunks
@@ -1053,7 +1054,12 @@ def get_event_with_files(db: Session, event_id: str) -> Event | None:
     return event
 
 
-def get_event_count_by_project(
+class EventCounts(NamedTuple):
+    total: int
+    confirmed: int
+
+
+def get_event_counts(
     db: Session,
     project_id: str,
     site_ids: list[str] | None = None,
@@ -1069,10 +1075,14 @@ def get_event_count_by_project(
     min_label_confidence: float | None = None,
     max_label_confidence: float | None = None,
     project_floor: float | None = None,
-) -> int:
-    """Get total event count for a project."""
+) -> EventCounts:
+    """How many events pass the filters, and how many of those a person
+    signed off on the Counts page (`Event.confirmed`). One statement."""
     query = (
-        db.query(func.count(Event.id))
+        db.query(
+            func.count(Event.id),
+            func.coalesce(func.sum(func.cast(Event.confirmed, Integer)), 0),
+        )
         .join(Deployment)
         .filter(Deployment.project_id == project_id)
     )
@@ -1093,8 +1103,8 @@ def get_event_count_by_project(
         max_label_confidence=max_label_confidence,
         project_floor=project_floor,
     )
-    count = query.scalar()
-    return count or 0
+    total, confirmed = query.one()
+    return EventCounts(total=total, confirmed=int(confirmed))
 
 
 def get_adjacent_events(
@@ -1237,7 +1247,10 @@ def get_event_verification_stats(
     max_label_confidence: float | None = None,
     project_floor: float | None = None,
 ) -> dict[str, int]:
-    """Get aggregate file verification stats across filtered events."""
+    """The reprocess dialog's "what is protected" numbers: the filtered
+    events and how many are confirmed, and the cards on those events and
+    how many are verified. A caller that needs the events only uses
+    `get_event_counts`, which skips the pass over the detections."""
     filter_kwargs = dict(
         site_ids=site_ids,
         date_from=date_from,
@@ -1263,42 +1276,8 @@ def get_event_verification_stats(
     event_ids_q = _apply_event_filters(event_ids_q, db, **filter_kwargs)
     event_ids_subq = event_ids_q.subquery()
 
-    # Query 1: file-level counts
-    file_stats = (
-        db.query(
-            func.count(func.distinct(File.id)),
-            func.sum(func.cast(File.verified, Integer)),
-        )
-        .join(event_files, event_files.c.file_id == File.id)
-        .filter(event_files.c.event_id.in_(select(event_ids_subq.c.id)))
-        .one()
-    )
-
-    # Query 2, over the filtered events' observations: the MaxN frames
-    # (distinct max_n_file_ids and their verification) and the
-    # observation count (effective_count: human_count when set, else the
-    # AI max_n). One pass, because each statement recomputes the filtered
-    # events, which is most of its cost on a large project. The outer
-    # join keeps observations without a MaxN frame in the sum; count
-    # DISTINCT and the verified sum skip their NULLs, as the inner join
-    # used to.
-    MaxNFile = aliased(File)
-    maxn_frames, maxn_verified, total_observations = (
-        db.query(
-            func.count(func.distinct(EventObservation.max_n_file_id)),
-            func.sum(func.cast(MaxNFile.verified, Integer)),
-            func.coalesce(func.sum(EventObservation.effective_count), 0),
-        )
-        .select_from(EventObservation)
-        .outerjoin(MaxNFile, MaxNFile.id == EventObservation.max_n_file_id)
-        .filter(EventObservation.event_id.in_(select(event_ids_subq.c.id)))
-        .one()
-    )
-
-    # Per-detection counts for the Observations verification progress.
-    # Denominator and numerator share the same filter so the ratio is
-    # meaningful (sharing it with `total_observations`, an effective-count
-    # sum, would give nonsense like 23 / 12).
+    # Per-detection counts. Denominator and numerator share the same
+    # filter so the ratio is meaningful.
     #
     # Same visible surface as the Labels grid these numbers describe. A
     # video stores a detection per sampled frame but only its best frame
@@ -1322,25 +1301,11 @@ def get_event_verification_stats(
         det_q = det_q.filter(Detection.confidence >= min_confidence)
     total_detections, verified_detections = det_q.one()
 
-    # Event-level verification: total and signed-off counts. Event
-    # verification is the explicit human sign-off stored on Event.confirmed.
-    events_total, events_confirmed = (
-        db.query(
-            func.count(Event.id),
-            func.sum(func.cast(Event.confirmed, Integer)),
-        )
-        .filter(Event.id.in_(select(event_ids_subq.c.id)))
-        .one()
-    )
+    events = get_event_counts(db, project_id, **filter_kwargs)
 
     return {
-        "events_confirmed": int(events_confirmed or 0),
-        "events_total": events_total or 0,
-        "total_files": file_stats[0] or 0,
-        "verified_files": int(file_stats[1] or 0),
-        "total_max_n_frames": maxn_frames or 0,
-        "verified_max_n_frames": int(maxn_verified or 0),
-        "total_observations": total_observations or 0,
+        "events_confirmed": events.confirmed,
+        "events_total": events.total,
         "total_detections": int(total_detections or 0),
         "verified_detections": int(verified_detections or 0),
     }

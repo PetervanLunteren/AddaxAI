@@ -155,10 +155,10 @@ def test_event_counts_match_the_counts_page(db):
     tree = build_label_filter_tree(project.id, db, count_by="event", **filters)
 
     for leaf, count in _leaf_counts(tree).items():
-        assert count == event_crud.get_event_count_by_project(
+        assert count == event_crud.get_event_counts(
             db, project.id, labels=[leaf],
             project_floor=project.counting_threshold, **filters
-        ), leaf
+        ).total, leaf
     assert _leaf_counts(tree) == {fox.id: 3, deer.id: 0}
 
 

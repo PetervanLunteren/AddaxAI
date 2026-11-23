@@ -35,7 +35,7 @@ export default function CountsPage() {
   // as VerifyView's internal totalCountData, so the TanStack cache
   // serves both subscribers from one fetch.
   const { data: totalCountData } = useQuery({
-    queryKey: ["event-count", projectId],
+    queryKey: ["events", "count", projectId],
     queryFn: () => eventsApi.count(projectId!),
     enabled: !!projectId,
   });

@@ -26,7 +26,6 @@ export function invalidateProjectData(
     ["sites", projectId],
     ["sites-with-stats", projectId],
     ["events"],
-    ["event-count"],
     ["event-count-filtered"],
     ["statistics"],
     ["label-tree"],

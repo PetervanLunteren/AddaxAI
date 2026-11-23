@@ -848,15 +848,17 @@ export interface EventWithFiles {
   files: FileWithDetections[];
 }
 
-export interface EventVerificationStats {
+/** The events that pass a filter, and how many of them are confirmed. */
+export interface EventCounts {
+  count: number;
   /** Events the user has confirmed (Event.confirmed). */
+  confirmed: number;
+}
+
+/** What a reprocess must keep: confirmed events and verified cards. */
+export interface EventVerificationStats {
   events_confirmed: number;
   events_total: number;
-  total_files: number;
-  verified_files: number;
-  total_max_n_frames: number;
-  verified_max_n_frames: number;
-  total_observations: number;
   total_detections: number;
   verified_detections: number;
 }

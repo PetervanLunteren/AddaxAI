@@ -46,16 +46,19 @@ def test_get_event_count(client, db):
     p = make_project(db)
     resp = client.get(f"/api/events/count?project_id={p.id}")
     assert resp.status_code == 200
-    assert resp.json()["count"] == 0
+    assert resp.json() == {"count": 0, "confirmed": 0}
 
 
 def test_get_verification_stats(client, db):
     p = make_project(db)
     resp = client.get(f"/api/events/verification-stats?project_id={p.id}")
     assert resp.status_code == 200
-    data = resp.json()
-    assert "total_files" in data
-    assert "verified_files" in data
+    assert resp.json() == {
+        "events_confirmed": 0,
+        "events_total": 0,
+        "total_detections": 0,
+        "verified_detections": 0,
+    }
 
 
 def test_get_event_not_found(client):
@@ -979,6 +982,9 @@ def test_verification_stats_reach_100_percent_with_blanks_around(client, db):
     ).json()
     assert data["events_confirmed"] == 1
     assert data["events_total"] == 1
+    # The Counts page and the dashboard read the same two numbers here.
+    count = client.get(f"/api/events/count?project_id={p.id}").json()
+    assert count == {"count": 1, "confirmed": 1}
 
 
 def test_observation_attributes_and_split_endpoints(client, db):

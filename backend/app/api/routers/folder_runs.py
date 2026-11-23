@@ -769,7 +769,7 @@ def lookup_folder_run(
     # dashboard's "Labels verified" + "Counts confirmed" split. Read off
     # the same helper as the Counts step's progress pill, so an event with
     # nothing to count is in neither number and the two always agree.
-    event_stats = crud_event.get_event_verification_stats(
+    event_counts = crud_event.get_event_counts(
         db, existing.id, project_floor=threshold
     )
 
@@ -795,8 +795,8 @@ def lookup_folder_run(
         species_count=species_count,
         verified_file_count=verified_file_count,
         verified_detection_count=verified_detection_count,
-        event_count=event_stats["events_total"],
-        confirmed_event_count=event_stats["events_confirmed"],
+        event_count=event_counts.total,
+        confirmed_event_count=event_counts.confirmed,
         detection_resume=_detection_resume(db, existing, folder, image_count),
     )
 

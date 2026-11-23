@@ -171,20 +171,15 @@ class DateRange(BaseModel):
 
 
 class EventVerificationStats(BaseModel):
-    """Aggregate verification stats across filtered events.
+    """What a reprocess must not lose, across the filtered events: the
+    confirmed events and the verified cards on them.
 
-    The Events tab progress bar reads `events_confirmed` /
-    `events_total`. The other fields remain for any downstream
-    consumer that needs file-level granularity.
+    The Counts page and the dashboard read the event half from
+    `/api/events/count`, which does not walk the detections.
     """
 
     events_confirmed: int
     events_total: int
-    total_files: int
-    verified_files: int
-    total_max_n_frames: int
-    verified_max_n_frames: int
-    total_observations: int
     total_detections: int
     verified_detections: int
 

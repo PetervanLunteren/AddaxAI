@@ -27,6 +27,7 @@ import type {
   AdjacentEventsResponse,
   EventFilterParams,
   EventFilterOptions,
+  EventCounts,
   EventVerificationStats,
   LabelTreeResponse,
 } from "./types";
@@ -96,15 +97,15 @@ export const eventsApi = {
     return api.get<EventSummary[]>(`/api/events?${searchParams.toString()}`);
   },
 
-  /** Get total event count for a project with optional filters. */
+  /** How many events pass the filters, and how many are confirmed. */
   count: async (
     projectId: string,
     filters?: EventFilterParams
-  ): Promise<{ count: number }> => {
+  ): Promise<EventCounts> => {
     const searchParams = new URLSearchParams();
     searchParams.set("project_id", projectId);
     appendFilterParams(searchParams, filters);
-    return api.get<{ count: number }>(
+    return api.get<EventCounts>(
       `/api/events/count?${searchParams.toString()}`
     );
   },
@@ -246,7 +247,7 @@ export const eventsApi = {
     );
   },
 
-  /** Get aggregate verification stats for filtered events. */
+  /** The confirmed events and verified cards a reprocess must keep. */
   verificationStats: async (
     projectId: string,
     filters?: EventFilterParams

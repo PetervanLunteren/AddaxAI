@@ -270,7 +270,8 @@ def get_event_count(
     max_label_confidence: float | None = Query(None, ge=0, le=1),
     db: Session = Depends(get_db),
 ):
-    """Get total event count for a project with optional filters."""
+    """How many events pass the filters (`count`), and how many of those
+    are confirmed on the Counts page (`confirmed`)."""
     filters = _parse_filter_params(
         site_ids, date_from, date_to, labels, verification,
         min_confidence, max_confidence,
@@ -282,10 +283,8 @@ def get_event_count(
     # Count is sort-invariant; the count CRUD doesn't accept sort/seed.
     filters.pop("sort", None)
     filters.pop("seed", None)
-    count = event_crud.get_event_count_by_project(
-        db, project_id, **filters,
-    )
-    return {"count": count}
+    counts = event_crud.get_event_counts(db, project_id, **filters)
+    return {"count": counts.total, "confirmed": counts.confirmed}
 
 
 @router.get("/verification-stats", response_model=EventVerificationStats)
@@ -305,7 +304,7 @@ def get_verification_stats(
     max_label_confidence: float | None = Query(None, ge=0, le=1),
     db: Session = Depends(get_db),
 ):
-    """Get aggregate file verification stats across filtered events."""
+    """The confirmed events and verified cards a reprocess must keep."""
     filters = _parse_filter_params(
         site_ids,
         date_from,
