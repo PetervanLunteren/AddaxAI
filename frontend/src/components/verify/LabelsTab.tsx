@@ -599,12 +599,6 @@ export function LabelsTab({
   // chips, and URL all update live off the undebounced state.
   const debouncedSortKey = useDebouncedValue(sortKey, FILTER_DEBOUNCE_MS);
 
-  // Event sort needs no embeddings (it orders by capture time / event),
-  // so it may run even when embedded_detections is 0. Similarity still
-  // requires embeddings.
-  const canSort =
-    lblSort === "events" ? !!stats : (stats?.embedded_detections ?? 0) > 0;
-
   // Cancel the running sort when the page closes. Forgetting the last key
   // makes a remount sort again rather than wait on the cancelled run
   // (React's StrictMode remounts every component once in development).
@@ -617,13 +611,16 @@ export function LabelsTab({
     [],
   );
 
-  // Auto-sort on mount and when filters or sort mode settle.
+  // Auto-sort on mount and when filters or sort mode settle. It does not
+  // wait for the embedding coverage (`stats`): on a large project that
+  // count takes many seconds, and the sort needs none of it. A project
+  // without embeddings gets an empty similarity sort back at once.
   useEffect(() => {
-    if (canSort && debouncedSortKey !== lastSortKeyRef.current) {
+    if (debouncedSortKey !== lastSortKeyRef.current) {
       lastSortKeyRef.current = debouncedSortKey;
       sortMutation.mutate({ sort: lblSort });
     }
-  }, [debouncedSortKey, canSort]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSortKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The frames behind the open card: every box of the track. Nothing
   // from the grid travels: the filters are hidden while a track is open
@@ -1565,7 +1562,13 @@ export function LabelsTab({
   // try again — so a reload is never silent. Only a background sort (the
   // post-action reconcile in handleActionComplete) keeps the current grid
   // in place, so verifying doesn't blank the grid you're working in.
-  const isLoading = isSorting && !isBackgroundSort;
+  //
+  // An empty similarity sort has two causes: nothing matches, or nothing
+  // is embedded yet. Only the coverage count tells them apart, so the
+  // loading view stays until it is in rather than naming the wrong one.
+  const emptyCauseUnknown =
+    !stats && lblSort !== "events" && sortResult?.detections.length === 0;
+  const isLoading = (isSorting && !isBackgroundSort) || emptyCauseUnknown;
 
   const handleEmbedNow = async () => {
     try {

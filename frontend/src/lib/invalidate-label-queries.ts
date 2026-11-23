@@ -16,9 +16,10 @@ export function invalidateLabelQueries(queryClient: QueryClient): void {
 }
 
 /**
- * Every event-family query: the event list (["events", ...]), one event
- * (["event", id]), the count badges (["event-count", ...]) and the filter
- * options (["event-filter-options", ...]). A plain ["events"] prefix
+ * Every event-family query: the event list and count (["events", ...]),
+ * one event (["event", id]), the filtered count
+ * (["event-count-filtered", ...]) and the filter options
+ * (["event-filter-options", ...]). A plain ["events"] prefix
  * misses the singular keys, which once left the Counts page stale after a
  * relabel.
  */
@@ -42,8 +43,10 @@ let verifySettleTimer: ReturnType<typeof setTimeout> | undefined;
  * Refresh what a verify or unverify changes, once the clicks stop.
  *
  * A verify moves no box into or out of a species, so the species colours,
- * the dashboard statistics and the filter options keep their values. It
- * does move the progress bar, the cohorts, and the label tree's counts
+ * the dashboard statistics and the filter options are not refetched. (One
+ * rare case does change them: unverifying a box below the threshold hides
+ * it, and with it a species that had no other box. Those lists catch up
+ * on their next refetch.) A verify does move the progress bar, the cohorts, and the label tree's counts
  * when the Verified filter is on (its default is "Unverified"). On a large
  * project each of those is a pass over every box, so they refetch once,
  * `VERIFY_SETTLE_MS` after the last verify, instead of once per click.

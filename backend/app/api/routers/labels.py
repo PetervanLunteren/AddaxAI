@@ -398,12 +398,11 @@ def get_label_stats(
     above_gate_or_verified = threshold_or_verified(gate)
 
     # The verification progress pill does NOT come from here. It reads
-    # `verified_detections` / `total_detections` off
-    # `/api/events/verification-stats`, which counts the whole reviewable
-    # population rather than only the embedded part of it, so the Labels
-    # pill and the dashboard bar agree. Do not add a percentage to this
-    # endpoint: requiring an embedding would under-count, because the
-    # event sort renders detections that have none.
+    # `/labels/progress`, which counts the whole reviewable population
+    # rather than only the embedded part of it, so the Labels pill and
+    # the dashboard bar agree. Do not add a percentage to this endpoint:
+    # requiring an embedding would under-count, because the event sort
+    # renders detections that have none.
     #
     # The three counts read the same boxes, so they are one pass over the
     # project's detections. It starts from the project like every other
