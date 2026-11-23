@@ -27,11 +27,12 @@ interface VerificationProgressChartProps {
 
 interface BarRow {
   label: string;
-  verified: number;
-  total: number;
+  /** Absent while the row's own request is still running. */
+  counts?: { verified: number; total: number };
 }
 
-function SlimProgressRow({ label, verified, total }: BarRow) {
+function SlimProgressRow({ label, counts }: BarRow) {
+  const { verified, total } = counts ?? { verified: 0, total: 0 };
   const pct = total > 0 ? (verified / total) * 100 : 0;
 
   return (
@@ -39,8 +40,14 @@ function SlimProgressRow({ label, verified, total }: BarRow) {
       <div className="flex justify-between items-baseline text-sm">
         <span className="truncate pr-2">{label}</span>
         <span className="text-muted-foreground tabular-nums shrink-0">
-          {verified.toLocaleString()} of {total.toLocaleString()}
-          {total > 0 && ` (${Math.round(pct)}%)`}
+          {counts ? (
+            <>
+              {verified.toLocaleString()} of {total.toLocaleString()}
+              {total > 0 && ` (${Math.round(pct)}%)`}
+            </>
+          ) : (
+            "Loading..."
+          )}
         </span>
       </div>
       <div className="h-2 rounded-full bg-muted overflow-hidden">
@@ -68,9 +75,12 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
     date_to: dateTo,
   };
 
-  const { data: eventStats, isLoading } = useQuery({
+  // The card has three requests, and on a large project they take
+  // seconds to tens of seconds each. Every part shows as soon as its own
+  // request is back, so the card never waits for the slowest one.
+  const { data: eventCounts, isLoading: countsLoading } = useQuery({
     queryKey: ["statistics", "verification-progress", "events", projectId, siteIds, dateFrom, dateTo],
-    queryFn: () => eventsApi.verificationStats(projectId, filterArgs),
+    queryFn: () => eventsApi.count(projectId, filterArgs),
   });
   // The Labels bar counts files, from the same endpoint the Labels page
   // pill reads, so the two surfaces can never disagree. Deliberately not
@@ -78,11 +88,11 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
   // threshold, which drops events with nothing passing, and that is
   // exactly where the empty files live. On a real project it was 41
   // files short.
-  const { data: labelsProgress } = useQuery({
+  const { data: labelsProgress, isLoading: labelsLoading } = useQuery({
     queryKey: ["labels-progress", projectId, filterArgs],
     queryFn: () => labelsApi.progress(projectId, filterArgs),
   });
-  const { data: labelStats } = useQuery({
+  const { data: labelStats, isLoading: perLabelLoading } = useQuery({
     queryKey: ["statistics", "verification-progress", "by-label", projectId, siteIds, dateFrom, dateTo],
     queryFn: () =>
       statisticsApi.getVerificationProgressByLabel(projectId, siteIds, dateFrom, dateTo),
@@ -99,20 +109,24 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
   // 100% while every empty file is untouched. The per-taxon list below
   // is per-detection only, because one file can hold two species, so it
   // is headed separately rather than as this bar's breakdown.
-  const labelsRow: BarRow | null = labelsProgress
-    ? {
-        label: "Labels verified",
-        verified: labelsProgress.verified_labels,
-        total: labelsProgress.total_labels,
-      }
-    : null;
-  const countsRow: BarRow | null = eventStats
-    ? {
-        label: "Counts confirmed",
-        verified: eventStats.events_confirmed,
-        total: eventStats.events_total,
-      }
-    : null;
+  const labelsRow: BarRow = {
+    label: "Labels verified",
+    counts: labelsProgress && {
+      verified: labelsProgress.verified_labels,
+      total: labelsProgress.total_labels,
+    },
+  };
+  const countsRow: BarRow = {
+    label: "Counts confirmed",
+    counts: eventCounts && {
+      verified: eventCounts.confirmed,
+      total: eventCounts.count,
+    },
+  };
+  // Nothing to verify is only known once both bars have answered.
+  const stillLoading = labelsLoading || countsLoading;
+  const hasWork =
+    (labelsRow.counts?.total ?? 0) > 0 || (countsRow.counts?.total ?? 0) > 0;
 
   return (
     <Card className={cn("flex flex-col", className)}>
@@ -134,11 +148,7 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
         }
       />
       <CardContent className="flex flex-1 flex-col">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <p className="text-muted-foreground">Loading...</p>
-          </div>
-        ) : labelsRow && countsRow && (labelsRow.total > 0 || countsRow.total > 0) ? (
+        {stillLoading || hasWork ? (
           // The list takes whatever height the card is given and scrolls
           // inside it. Absolutely placed so its length never adds to the
           // card's own height: the Overview stretches this card to end
@@ -148,6 +158,11 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
             <div className="flex flex-col gap-3">
               <SlimProgressRow {...labelsRow} />
               <SlimProgressRow {...countsRow} />
+              {perLabelLoading && (
+                <p className="text-xs text-muted-foreground">
+                  Loading the list per taxon...
+                </p>
+              )}
               {labelStats && labelStats.rows.length > 0 && (
                 <>
                   <Separator className="my-1" />
@@ -161,8 +176,7 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
                     <SlimProgressRow
                       key={row.label_taxonomy_id ?? row.scientific_name}
                       label={resolveSpeciesName(row)}
-                      verified={row.verified}
-                      total={row.total}
+                      counts={row}
                     />
                   ))}
                 </>
