@@ -146,6 +146,7 @@ import { FileLocation } from "./FileLocation";
 import { UNDO_KBD } from "./shortcuts";
 import type { UndoStack } from "./useUndoStack";
 import { mergeSnapshots } from "../../lib/undo-snapshot";
+import type { DetectionActionKind } from "../../lib/invalidate-label-queries";
 import type { LabelsFileItem, UndoSnapshot } from "../../api/types";
 
 interface FileDetailModalProps {
@@ -162,9 +163,10 @@ interface FileDetailModalProps {
    *  meanwhile, which is what keeps the list and the index into it from
    *  disagreeing while the list is being replaced. */
   loadingMore?: boolean;
-  /** Something about this file changed. Fires immediately so the
-   *  progress bar keeps up; the grid itself waits for the close. */
-  onChanged: () => void;
+  /** Something about this file changed: only verified flags ("verify")
+   *  or labels and boxes too ("change"). Fires immediately so the counts
+   *  keep up; the grid itself waits for the close. */
+  onChanged: (kind: DetectionActionKind) => void;
   /** Opened from a track's card: show that track's frame with the
    *  track selected, so the detection the person was looking at is the
    *  one on screen. Ignored when the file has no such track. */
@@ -578,7 +580,7 @@ export function FileDetailModal({
       undo.push(alongside ? mergeSnapshots([alongside, r.before]) : r.before);
       if (verified) verifiedHere.current.add(id);
       else verifiedHere.current.delete(id);
-      onChanged();
+      onChanged("verify");
       queryClient.invalidateQueries({ queryKey: ["file", id] });
     },
     onError: (err: Error) => toast.error(err.message),
@@ -616,13 +618,16 @@ export function FileDetailModal({
     queryClient.prefetchQuery(fileQueryOptions(nextItem.id));
   }, [nextItem, queryClient]);
 
-  /** A box was drawn, moved, resized or relabelled. Refresh this file
-   *  and the counts, but leave the list alone so the user can keep
-   *  working on the box they just made. */
-  const handleCanvasChange = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["file", item?.id] });
-    onChanged();
-  }, [item?.id, onChanged, queryClient]);
+  /** A box was verified, drawn, moved, resized or relabelled. Refresh
+   *  this file and the counts, but leave the list alone so the user can
+   *  keep working on the box they just made. */
+  const handleCanvasChange = useCallback(
+    (kind: DetectionActionKind) => {
+      queryClient.invalidateQueries({ queryKey: ["file", item?.id] });
+      onChanged(kind);
+    },
+    [item?.id, onChanged, queryClient],
+  );
 
   /** A box the user has just drawn. A drawn box is worth little without
    *  a species, and the pill that opens the picker is small and easy to
@@ -747,11 +752,13 @@ export function FileDetailModal({
     (ids: string[], agreeing: boolean) => {
       // Each returned step takes the verdict's undo snapshot: it goes on
       // the history as one entry, merged with the sign-off when the
-      // verdict finishes the file, so one press is one undo.
+      // verdict finishes the file, so one press is one undo. A verdict
+      // that does not agree changed a label; one that agrees only
+      // verified.
       const stay = (before: UndoSnapshot) => {
         undo.push(before);
         setSelectedDetectionId(null);
-        handleCanvasChange();
+        handleCanvasChange("change");
       };
       const waiting = waitingAfter(ids);
       if (waiting.length === 0) {
@@ -760,7 +767,7 @@ export function FileDetailModal({
           if (item) setVerified({ id: item.id, verified: true, alongside: before });
           else undo.push(before);
           setSelectedDetectionId(null);
-          handleCanvasChange();
+          handleCanvasChange("change");
         };
       }
       if (!agreeing) return stay;
@@ -779,7 +786,7 @@ export function FileDetailModal({
         return (before: UndoSnapshot) => {
           undo.push(before);
           setSelectedDetectionId(nextBox.id);
-          handleCanvasChange();
+          handleCanvasChange("verify");
         };
       }
       const next = nextWaitingAfter(ids);
@@ -791,7 +798,7 @@ export function FileDetailModal({
           const track = file?.tracks.find((t) => t.id === next.track_id);
           if (track) showFrame(track.representative_frame_number);
         }
-        handleCanvasChange();
+        handleCanvasChange("verify");
       };
     },
     [
@@ -1168,7 +1175,7 @@ export function FileDetailModal({
                 // older action.
                 onMutated={() => {
                   undo.clear();
-                  handleCanvasChange();
+                  handleCanvasChange("change");
                 }}
                 onCreated={handleCreated}
                 onLoadingChange={handleLoading}

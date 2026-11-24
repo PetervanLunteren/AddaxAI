@@ -41,6 +41,10 @@ import { resolveSpeciesName } from "../../lib/species-name-mode";
 import { labelMajority } from "./label-majority";
 import { BulkActionBar } from "./BulkActionBar";
 import { formatConfidencePct } from "../../lib/confidence";
+import {
+  invalidateAfterDetectionAction,
+  type DetectionActionKind,
+} from "../../lib/invalidate-label-queries";
 import { Button } from "../ui/button";
 import { Callout } from "../ui/callout";
 import { FilesGrid } from "./FilesGrid";
@@ -393,21 +397,35 @@ export function FilesTab({
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const floor = data?.floor ?? project?.counting_threshold ?? 0;
 
-  const refresh = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["labels-files", projectId] });
-    queryClient.invalidateQueries({ queryKey: ["labels-progress", projectId] });
-  }, [projectId, queryClient]);
+  // The counts follow the same rule as the Detections tab: a verify
+  // refreshes them once the clicks stop, a change of label at once.
+  const verifiedFilterOn = (filters.verification ?? "unverified") !== "all";
+  const refreshCounts = useCallback(
+    (kind: DetectionActionKind) =>
+      invalidateAfterDetectionAction(queryClient, projectId, kind, verifiedFilterOn),
+    [projectId, queryClient, verifiedFilterOn],
+  );
+  const refresh = useCallback(
+    (kind: DetectionActionKind) => {
+      queryClient.invalidateQueries({ queryKey: ["labels-files", projectId] });
+      refreshCounts(kind);
+    },
+    [projectId, queryClient, refreshCounts],
+  );
 
   // The viewer changes files while it is open, and some of those
   // changes take the file out of this list: sign it off and it is no
   // longer unverified. Refetching there would pull the file out from
-  // under the person still working on it, so the counts update straight
-  // away and the list waits for the viewer to close.
+  // under the person still working on it, so the counts update and the
+  // list waits for the viewer to close.
   const listDirtyRef = useRef(false);
-  const refreshCountsNow = useCallback(() => {
-    listDirtyRef.current = true;
-    queryClient.invalidateQueries({ queryKey: ["labels-progress", projectId] });
-  }, [projectId, queryClient]);
+  const refreshCountsNow = useCallback(
+    (kind: DetectionActionKind) => {
+      listDirtyRef.current = true;
+      refreshCounts(kind);
+    },
+    [refreshCounts],
+  );
   const closeViewer = useCallback(() => {
     setOpenIndex(null);
     setPendingTrackId(null);
@@ -520,7 +538,8 @@ export function FilesTab({
   // While the viewer is open the list only goes dirty, the same rule as
   // every other change made from the viewer (see `refreshCountsNow`).
   // In the grid the restored files are selected, as the crop grid does,
-  // so the next key acts on what undo put back.
+  // so the next key acts on what undo put back. An undo can put labels
+  // back, so it counts as a change of label.
   const undo = useUndoStack(({ snapshot, detections }) => {
     const fileIds = new Set(snapshot.files.map((f) => f.file_id));
     for (const d of detections) fileIds.add(d.file_id);
@@ -528,10 +547,10 @@ export function FilesTab({
       queryClient.invalidateQueries({ queryKey: ["file", id] });
     }
     if (openIndex !== null) {
-      refreshCountsNow();
+      refreshCountsNow("change");
       return;
     }
-    refresh();
+    refresh("change");
     anchorRef.current = fileIds.values().next().value ?? null;
     updateSelection(fileIds);
   });
@@ -551,7 +570,7 @@ export function FilesTab({
       // still toast.
       undo.push(r.before);
       advanceAfter(ids);
-      refresh();
+      refresh("verify");
       // The tiles draw from the file detail, which the verify changed.
       for (const id of ids) {
         queryClient.invalidateQueries({ queryKey: ["file", id] });
@@ -646,7 +665,7 @@ export function FilesTab({
         // verified and leave the default (unverified) view; advance the
         // selection exactly as a verify does.
         advanceAfter(fileIds);
-        refresh();
+        refresh("change");
         for (const id of fileIds) {
           queryClient.invalidateQueries({ queryKey: ["file", id] });
         }

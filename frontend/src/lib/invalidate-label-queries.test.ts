@@ -1,6 +1,10 @@
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { VERIFY_SETTLE_MS, invalidateAfterVerify } from "./invalidate-label-queries";
+import {
+  VERIFY_SETTLE_MS,
+  invalidateAfterDetectionAction,
+  invalidateAfterVerify,
+} from "./invalidate-label-queries";
 
 const PROJECT = "p1";
 
@@ -84,5 +88,41 @@ describe("invalidateAfterVerify", () => {
     expect(stale(client, ["events", PROJECT])).toBe(true);
     expect(fetched(fetches, ["event-filter-options", PROJECT])).toBe(1);
     expect(fetched(fetches, ["events", PROJECT])).toBe(1);
+  });
+});
+
+describe("invalidateAfterDetectionAction", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const keys = [
+    ["labels-progress", PROJECT],
+    ["cohorts", PROJECT],
+    ["label-counts", PROJECT, "file", {}],
+    ["statistics", PROJECT],
+    ["event-filter-options", PROJECT],
+    ["events", PROJECT],
+  ];
+  const fetched = (fetches: Map<string, number>, key: unknown[]) =>
+    fetches.get(JSON.stringify(key));
+
+  it("a verify waits for the clicks to stop, like the Detections tab", async () => {
+    const { client, fetches } = await clientWith(keys);
+    invalidateAfterDetectionAction(client, PROJECT, "verify", true);
+    invalidateAfterDetectionAction(client, PROJECT, "verify", true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetched(fetches, ["labels-progress", PROJECT])).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(VERIFY_SETTLE_MS);
+    expect(fetched(fetches, ["labels-progress", PROJECT])).toBe(2);
+    expect(fetched(fetches, ["label-counts", PROJECT, "file", {}])).toBe(2);
+    expect(fetched(fetches, ["event-filter-options", PROJECT])).toBe(1);
+  });
+
+  it("a change of label refreshes everything that lists labels at once", async () => {
+    const { client, fetches } = await clientWith(keys);
+    invalidateAfterDetectionAction(client, PROJECT, "change", false);
+    await vi.advanceTimersByTimeAsync(0);
+    for (const key of keys) expect(fetched(fetches, key)).toBe(2);
   });
 });

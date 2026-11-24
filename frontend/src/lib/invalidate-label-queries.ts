@@ -52,8 +52,9 @@ let verifySettleTimer: ReturnType<typeof setTimeout> | undefined;
  * (One rare case does change them: unverifying a box below the threshold
  * hides it, and with it a species that had no other box. Those lists
  * catch up on their next refetch.) A verify does move the progress bar,
- * the cohorts, and the label counts when the Verified filter is on (its default is "Unverified"). On a large
- * project each of those is a pass over every box, so they refetch once,
+ * the cohorts, and the label counts when the Verified filter is on (its
+ * default is "Unverified"). On a large project each of those is a pass
+ * over every box, so they refetch once,
  * `VERIFY_SETTLE_MS` after the last verify, instead of once per click.
  * The event-family queries only go stale: the Counts page refetches them
  * when it is next opened, and the Labels page has nothing to redraw.
@@ -75,6 +76,33 @@ export function invalidateAfterVerify(
       void queryClient.invalidateQueries({ queryKey: ["label-counts", projectId] });
     }
   }, VERIFY_SETTLE_MS);
+}
+
+/**
+ * Refresh the counts after an action on detections or files, by what it
+ * changed. A verify waits for the clicks to stop (`invalidateAfterVerify`).
+ * A change of label refreshes at once: it can add or remove a species, so
+ * the filter options, the label counts, the progress, the cohorts and the
+ * event queries all move. The event queries go first, so the filter
+ * options they include are already on their way when
+ * `invalidateLabelQueries` reaches them (its `cancelRefetch: false`).
+ *
+ * The caller still refreshes its own list or grid.
+ */
+export function invalidateAfterDetectionAction(
+  queryClient: QueryClient,
+  projectId: string,
+  kind: DetectionActionKind,
+  verifiedFilterOn: boolean,
+): void {
+  if (kind === "verify") {
+    invalidateAfterVerify(queryClient, projectId, verifiedFilterOn);
+    return;
+  }
+  void queryClient.invalidateQueries({ predicate: isEventFamilyQuery });
+  invalidateLabelQueries(queryClient);
+  void queryClient.invalidateQueries({ queryKey: ["labels-progress", projectId] });
+  void queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
 }
 
 /**
