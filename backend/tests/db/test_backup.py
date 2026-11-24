@@ -136,12 +136,16 @@ def test_startup_removes_unfinished_snapshots(tmp_settings: Settings) -> None:
     backups.mkdir()
     leftover = backups / f"addaxai-2026-11-21T120000Z.db{PARTIAL_SUFFIX}"
     leftover.write_bytes(b"half a database")
+    # SQLite's rollback journal of the copy that was cut off.
+    journal = backups / f"addaxai-2026-11-21T120000Z.db{PARTIAL_SUFFIX}-journal"
+    journal.write_bytes(b"journal")
     kept = backups / "addaxai-2026-11-20T120000Z.db"
     _make_sqlite(kept)
 
     remove_partial_snapshots(tmp_settings)
 
     assert not leftover.exists()
+    assert not journal.exists()
     assert kept.exists()
 
 

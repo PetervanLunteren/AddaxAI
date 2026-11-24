@@ -120,9 +120,11 @@ def remove_partial_snapshots(settings: Settings) -> None:
     """Delete snapshots a previous process left half-written.
 
     Called at startup, before any snapshot of this process begins, so it
-    never removes a copy that is still being written.
+    never removes a copy that is still being written. Matches SQLite's
+    `<name>.partial-journal` too, which an interrupted copy leaves next to
+    it. No finished backup has `.partial` in its name.
     """
-    for leftover in _backups_dir(settings).glob(f"*{PARTIAL_SUFFIX}"):
+    for leftover in _backups_dir(settings).glob(f"*{PARTIAL_SUFFIX}*"):
         try:
             leftover.unlink()
             logger.info(f"Removed unfinished backup {leftover.name}")
