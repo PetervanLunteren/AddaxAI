@@ -31,8 +31,9 @@ colour almost every time (the birthday problem). Only looking at which
 species are present avoids that. The cost is that colours are per
 project and can shift when a new species appears.
 
-This is the only implementation. The frontend fetches the map from
-``GET /api/projects/{id}/label-colors`` and the export reads it through
+This is the only implementation. The frontend reads the map from
+``label_colors`` in ``GET /api/events/filter-options`` and the export
+reads it through
 ``_visualisation_style.detection_color``, so the JPEG on disk always
 matches the grid on screen.
 """

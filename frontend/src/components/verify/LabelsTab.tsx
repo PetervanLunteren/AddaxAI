@@ -1108,7 +1108,7 @@ export function LabelsTab({
   //
   // Optimistically strips the relabelled detections from the local
   // sortResult (so the cohort card vanishes immediately) and
-  // invalidates the cohort + label-tree caches so the toolbar pill's
+  // invalidates the cohort and label caches so the toolbar pill's
   // count catches up.
   const relabelCohort = useCallback(
     async (cohort: CohortItem) => {

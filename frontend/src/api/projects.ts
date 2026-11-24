@@ -196,11 +196,6 @@ export const projectsApi = {
     ),
 
   /**
-   * Colour per species present in the project, keyed by label_taxonomy
-   * id and by lowercased label name. Assigned server-side so the
-   * annotated JPEG export matches the grid.
-   */
-  /**
    * The detector categories this project holds ("animal", "person",
    * "vehicle" on a camera trap run, "elasmobranch" on a SharkTrack one).
    * What the label picker offers beside the species.

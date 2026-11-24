@@ -36,7 +36,8 @@ Built in phase B, details under "Measured facts (2026-11-22, phase B baseline)":
    - **Found in step 4, for after the release:**
      - The similarity sort takes 46 to 50 s on Windows against 16 to 19 s on the Mac. The load uses the restored index (1 s); the time is the ordering step, 32 s against 9 s, which is FAISS and NumPy work, so look at how those are built or threaded in the Windows env. Event sort 26 to 36 s. No earlier Windows number to compare with.
      - Opening a project shows an empty page until `GET /api/projects/{id}/stats` returns (3.5 s on the Elliot seed on Windows): `ProjectIndexRoute` in `App.tsx` asks for all stats, trap nights included, only to choose between the dashboard and the process page.
-     - An interrupted backup leaves its `…partial-journal` file (1 KB) behind; the startup clean-up removes only the `.partial`.
+     - An interrupted backup leaves its `…partial-journal` file (1 KB) behind; the startup clean-up removes only the `.partial`. Fixed 2026-11-24: it removes both.
+     - The Files tab refetched `labels/progress` at once after every verify, and never the label counts or the filter options. Fixed 2026-11-24: it follows the rule of the Detections tab (`invalidateAfterDetectionAction`).
      - Dev only: in the browser the folder field commits every keystroke, so typing a path previews `/` first. Electron uses the folder dialog.
 5. **Release** with `/release-partner`. The notes say plainly what got faster and that the first start after the update takes longer once.
 6. **Drafts to Simon and Elliot** (drafts only, Peter sends): try the new version, say what still feels slow. For Simon also: is the AddaxAI folder on an internal disk or an external drive?

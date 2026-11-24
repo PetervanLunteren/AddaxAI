@@ -21,9 +21,9 @@ import {
 } from "../ui/dialog";
 
 interface LabelFilterModalProps {
-  /** Pre-built taxonomy tree from the label-tree endpoint. */
+  /** The label tree from `filter-options`, with the counts on its leaves. */
   preBuiltTree: TaxonomyNode[];
-  /** All leaf IDs from the label-tree endpoint. */
+  /** All leaf IDs of that tree. */
   allLeafIds: string[];
   /** Currently active label filter values. */
   selectedLabels: string[];

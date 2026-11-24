@@ -180,8 +180,8 @@ async def _daily_backup() -> None:
     every first launch of the day. The online backup API copies while the
     app reads and writes, and the snapshot is written under a temporary
     name, so quitting halfway leaves no half file in the ring buffer (the
-    next launch removes it before serving, and tries again). Throttled to one per UTC day,
-    so rapid restarts do not clobber the ring buffer.
+    next launch removes it before serving, and tries again). Throttled to
+    one per UTC day, so rapid restarts do not clobber the ring buffer.
     """
     from app.db.backup import live_db_path, ring_buffer_backup
 

@@ -52,7 +52,7 @@ logger.error("API call failed", { endpoint: "/api/projects", error: err.message 
 
 ## Numbers from a user's database
 
-When a user reports that the app is slow with a large database, send them `backend/scripts/addaxai-db-stats.py`. It only reads, and writes `addaxai-db-stats.txt` next to itself with numbers only: rows per table, `sqlite_stat1`, files and detections per numbered deployment, confidence buckets, embedding dimensions and the size of every table and index. No paths, no names, no species. On Windows the user runs it with one line:
+When a user reports that the app is slow with a large database, send them `backend/scripts/addaxai-db-stats.py`. It only reads, and writes `addaxai-db-stats.txt` next to itself with numbers only: rows per table, `sqlite_stat1`, files and detections per numbered deployment, the share of boxes at 0.2 or more, embedding dimensions and the size of every table and index. No paths, no names, no species. On Windows the user runs it with one line:
 
 ```
 "%USERPROFILE%\AddaxAI\envs\env-addaxai-base\python.exe" "%USERPROFILE%\Downloads\addaxai-db-stats\addaxai-db-stats.py"
@@ -210,7 +210,7 @@ Three things this must keep doing, all pinned in `tests/api/test_delete_cascade.
 
 Call `refresh_query_statistics()` from `db/base.py` instead. It runs `ANALYZE` and then deletes two rows from `sqlite_stat1`, the ones for `idx_files_source_video` and `idx_detections_track`. Without the first a project delete does not finish; without the second every verify scans every box (below).
 
-**When it runs.** After every analysis, embedding, postprocessing and package import job, and at launch only when a migration ran or `sqlite_stat1` is empty. `ANALYZE` reads the whole database: 34 s on a 4.6 GB one, which used to hold up every launch for statistics that had not changed. A launch without one still deletes the `idx_files_source_video` row, which is free and catches one an older version left behind. When a job dies before its closing `ANALYZE`, the statistics stay as they were until the next job finishes. That gives a slower plan at worst, never a wrong result.
+**When it runs.** After every analysis, embedding, postprocessing and package import job, and at launch only when a migration ran or `sqlite_stat1` is empty. `ANALYZE` reads the whole database: 34 s on a 4.6 GB one, which used to hold up every launch for statistics that had not changed. A launch without one still deletes the rows of `_UNUSABLE_STAT_INDEXES` (`idx_files_source_video`, `idx_detections_track`), which is free and catches one an older version left behind. When a job dies before its closing `ANALYZE`, the statistics stay as they were until the next job finishes. That gives a slower plan at worst, never a wrong result.
 
 `files.source_video_id` is the schema's only self-referencing foreign key: a frame row points at the video it was extracted from, `ON DELETE CASCADE`. So SQLite consults `idx_files_source_video` once for every `files` row it deletes. `ANALYZE` writes a statistic for that index like every other, and because the column is NULL on every file that is not a video frame, the statistic reads `"382293 382293"`: any value matches the whole table. SQLite 3.45 believes it and stops using the index. The per-row cascade lookup becomes `Rewind`, a full scan of all 380,000 index entries, once per deleted row.
 

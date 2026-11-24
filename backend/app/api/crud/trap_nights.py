@@ -105,7 +105,7 @@ def _folder_spans_by_deployment(
     capture-bearing files are absent.
 
     This reads every capture file of the deployments, so it is the cost of
-    trap nights on a big project. Two choices keep it cheap:
+    trap nights on a big project. Three choices keep it cheap:
 
     - The day is read as text, the first 10 characters of
       `captured_at_local` (`2025-01-15 23:59:59.5` gives `2025-01-15`).

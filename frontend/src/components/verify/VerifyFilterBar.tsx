@@ -21,7 +21,7 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { eventsApi } from "../../api/events";
+import { eventsApi, type LabelCountUnit } from "../../api/events";
 import { projectsApi } from "../../api/projects";
 import { sitesApi } from "../../api/sites";
 import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
@@ -77,8 +77,8 @@ interface VerifyFilterBarProps {
   classificationModelId?: string | null;
   /** Project's counting_threshold; clamps the floor of the det slider. */
   detectionFloor?: number;
-  /** Which unit the label-tree counts are aggregated on. */
-  countBy?: "event" | "file" | "detection";
+  /** Which unit the label counts are aggregated on. */
+  countBy?: LabelCountUnit;
   /** Verified dropdown options; defaults to all / unverified / verified. */
   verificationOptions?: VerificationOption[];
   /** Whether the More popover renders the liked / flagged / empty
