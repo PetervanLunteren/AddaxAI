@@ -1,8 +1,56 @@
 # Fast with a large database
 
-Overarching plan, written 2026-11-20 after an investigation of the code, the query plans and how other tools handle the same problem. Nothing here is built. Each phase gets its own detailed plan in its own session; this file is the map they start from, so nobody has to redo the investigation.
+Overarching plan, written 2026-11-20 after an investigation of the code, the query plans and how other tools handle the same problem. Phase 0, phase A and most of phase B are built; "Status and next steps" below says where the work stands. Each phase gets its own detailed plan in its own session; this file is the map they start from, so nobody has to redo the investigation.
 
 The short version: the app is slow on a large database mainly because of its own habits, not because of the size. It opens a new database connection for every request, runs heavy queries where they block every other request, and does full-database work at every launch. Those are cheap to fix with standard practice (phase A). A second group is query plans that start from the whole database where they should start from the project (phase B). Deleting data does not make pages faster, it saves disk space and backup time, so a clean-up dialog and an archive option are features for later, not speed fixes.
+
+## Status and next steps (2026-11-24)
+
+**Start here in a new session.** Phase 0, phase A and the phase B fixes below are on `main`. Nothing of it is released yet; phase A and B go out together.
+
+Built in phase B, details under "Measured facts (2026-11-22, phase B baseline)":
+
+- A verify refreshes only what it changed, and no longer scans every box (2 to 7 s per click down to under 0.1 s).
+- `labels/stats`, the label-tree count and the Verification card start from the project and count in fewer passes.
+- The dashboard card and the Counts pill ask only for the two event numbers they show; the card fills in part by part.
+- The Labels sort starts without waiting for the embedding count.
+- The Files tab's "Sort by event" looks each file's event up once.
+- The label lists: one request for what exists (`filter-options`), one for the counts (`label-counts`). The filter dialog opens at once and says "counting…" until the counts are in.
+- Three duplicate indexes dropped (migration `b9c3d5e7f9a1`).
+
+### Next, in this order
+
+1. **Final measurement round.** Both seeds, the pages and clicks of "How we measure", on current `main`. One before-and-after table against the baselines of 11-20 and 11-22 under "Measured facts". It feeds the release notes and the notes to Simon and Elliot, and shows what is still slow.
+2. **The project list.** For every project it loads every file's capture time into Python to count trap nights (`crud/project.py`, `get_trap_nights` per project; `crud/trap_nights.py`, `compute_intervals_for_deployments`). 4.5 s on the Simon seed, 7 s on the Elliot seed, and Simon has 36 projects on a slow machine. Look at the fix first; do it only if it is simple and keeps the trap-night rule. Not yet investigated.
+3. **Decide from step 1, simple fixes only:** the dashboard cards of a big project (overview, animal photos, progress per label, the Labels bar; 15 to 25 s each, every one a pass over all boxes) and the info sheets of a big deployment or site (22 s and 10 s on "Large"; the two confidence averages can be one query).
+4. **The "not yet tested" pass, before any release:**
+   - **The first start after the update on a big database.** The release carries a migration, so the first start makes a pre-upgrade backup, migrates and runs a full `ANALYZE` before the app opens. Seconds on the dev Mac; on Simon's machine (6 to 12 times slower per row, 3.6 GB) an estimated one to a few minutes. Check what the user sees meanwhile, and say it in the release notes.
+   - **The folder-run save step.** Its label picker was rewired for the label lists (`useMediaOptions.ts`, `SaveShared.tsx`) and only the typecheck covers it. Click through one real folder run.
+   - **A project without embeddings.** The Labels sort start changed for it (`LabelsTab.tsx`, `emptyCauseUnknown`); never tried live.
+   - **Windows.** Everything was measured on the Mac. One upgrade run of the packaged build with a large database on the Windows machine (`/windows-linux-test-partner`); it covers the first point too.
+5. **Release** with `/release-partner`. The notes say plainly what got faster and that the first start after the update takes longer once.
+6. **Drafts to Simon and Elliot** (drafts only, Peter sends): try the new version, say what still feels slow. For Simon also: is the AddaxAI folder on an internal disk or an external drive?
+
+### Known and left as it is
+
+- One pass over all boxes of a 2.5M-box project still takes 10 to 15 s on a fast disk. Making a pass itself fast needs a project column on `detections`, rejected below as too large.
+- A count the browser has abandoned keeps running on the backend. How often that happens in normal use is not measured.
+- Files tab with a species filter: about 7 s per page on the Elliot seed, whatever the sort. The species filter is the cost.
+- The Files tab remembers its sort per browser, so one visit with "Sort by event" keeps a large project on the slower sort.
+- No server-side cache of the label lists (see the note under the phase B measured facts).
+- `SortSelector.tsx` says the random seed "lives in URL state"; on the Files tab it does not.
+
+### After this release: the features under "Later"
+
+Not speed fixes, and none of them is built. Each gets its own plan, after users have tried the faster version:
+
+- **Folder runs:** a new run for the same folder replaces the hidden duplicate.
+- **Clean-up dialog** ("Clean up database…"): legacy boxes, embeddings per project, duplicate folder runs, inactive projects, and compact. Simon's database makes the case: about a tenth of it is the same folders analysed again, and 13% of the file is free space only a compact gives back.
+- **Archive a project:** a bundle without media, the project deleted, a greyed-out card with restore.
+
+### Measuring in a new session
+
+The golden databases stay on the external SSD: `/Volumes/2TB-SSD/addaxai-speed/golden` (Simon shape) and `golden-elliot`. Everything else lived in the old session's scratchpad and is gone: rebuild the 3.11 venv and the `sqlite345` link as in "How we measure" (a few minutes), and write the SQL tracer again if statement timings are needed (described there). Only one database copy fits on the internal disk at a time.
 
 ## Why
 
