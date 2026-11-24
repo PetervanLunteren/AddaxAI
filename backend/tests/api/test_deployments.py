@@ -387,6 +387,24 @@ def test_deployment_info_no_classifications(client, db):
     assert data["mean_classification_confidence"] is None
 
 
+def test_deployment_info_classification_mean_skips_unclassified_boxes(client, db):
+    """Both means come from one query over the same boxes. The detection
+    mean covers every box that passes the threshold; the classification
+    mean only the ones with a `label_confidence`, which AVG gets by
+    skipping NULLs."""
+    project = make_project(db, counting_threshold=0.5)
+    site = make_site(db, project_id=project.id, name="Mixed")
+    dep = make_deployment(db, site_id=site.id)
+    f = make_file(db, deployment_id=dep.id, file_type="image", file_format="jpg")
+    make_detection(db, file_id=f.id, confidence=0.9, label_confidence=0.6)
+    make_detection(db, file_id=f.id, confidence=0.7)  # no label_confidence
+    make_detection(db, file_id=f.id, confidence=0.1, label_confidence=0.2)  # below
+    resp = client.get(f"/api/deployments/{dep.id}/info")
+    data = resp.json()
+    assert data["mean_detection_confidence"] == pytest.approx(0.8)
+    assert data["mean_classification_confidence"] == pytest.approx(0.6)
+
+
 def test_deployment_info_verified_below_threshold_is_counted(client, db):
     """A verified detection with confidence < threshold must still count
     in the mean because of the verified override rule."""

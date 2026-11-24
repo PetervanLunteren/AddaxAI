@@ -707,30 +707,24 @@ def get_deployment_info(db: Session, deployment_id: str):
     if trap_nights is not None and trap_nights > 0:
         rate = float(observation_count) / trap_nights * 100.0
 
-    # Mean confidences. Detection mean applies the threshold-with-verified
-    # filter (per CONVENTIONS.md). Classification mean uses the same
-    # filter plus `label_confidence IS NOT NULL` so we only average over
-    # detections that were actually classified.
+    # Mean confidences over the boxes that pass the threshold-with-verified
+    # filter (per CONVENTIONS.md), both in one pass: on a 900K deployment
+    # each pass is about 7 s. AVG skips NULLs, so the classification mean
+    # covers only the boxes that were actually classified, and is None
+    # when none were.
     threshold = _get_counting_threshold(db, project_id)
-    detection_q = _apply_threshold(
-        select(func.avg(Detection.confidence))
-        .join(File, Detection.file_id == File.id)
-        .where(File.deployment_id == deployment_id),
-        threshold,
-    )
-    mean_det = db.scalar(detection_q)
-    mean_detection_confidence = (
-        float(mean_det) if mean_det is not None else None
-    )
-
-    classification_q = _apply_threshold(
-        select(func.avg(Detection.label_confidence))
-        .join(File, Detection.file_id == File.id)
-        .where(File.deployment_id == deployment_id)
-        .where(Detection.label_confidence.isnot(None)),
-        threshold,
-    )
-    mean_cls = db.scalar(classification_q)
+    mean_det, mean_cls = db.execute(
+        _apply_threshold(
+            select(
+                func.avg(Detection.confidence),
+                func.avg(Detection.label_confidence),
+            )
+            .join(File, Detection.file_id == File.id)
+            .where(File.deployment_id == deployment_id),
+            threshold,
+        )
+    ).one()
+    mean_detection_confidence = float(mean_det) if mean_det is not None else None
     mean_classification_confidence = (
         float(mean_cls) if mean_cls is not None else None
     )
