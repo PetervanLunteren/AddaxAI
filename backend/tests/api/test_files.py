@@ -278,14 +278,6 @@ def test_label_tree_count_by_file_reads_a_video_on_its_best_frame(client, db):
     assert resp.json()["counts"].get(tax.id) == 1
 
 
-def test_label_counts_rejects_invalid_count_by(client, db):
-    p = make_project(db)
-    resp = client.get(
-        f"/api/events/label-counts?project_id={p.id}&count_by=bogus"
-    )
-    assert resp.status_code == 400
-
-
 def _bulk_verify(client, ids, verified=True):
     return client.post(
         "/api/files/bulk-verify", json={"file_ids": ids, "verified": verified}

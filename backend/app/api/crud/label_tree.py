@@ -15,6 +15,7 @@ The front end puts the counts on the leaves (`withCounts` in
 """
 
 from datetime import datetime
+from typing import Literal
 
 from sqlalchemy.orm import Session
 
@@ -28,13 +29,13 @@ from app.models.label_taxonomy import LabelTaxonomy
 logger = get_logger(__name__)
 
 LEVEL_ORDER = ["class", "order", "family", "genus"]
-COUNT_UNITS = ("event", "file", "detection")
+CountUnit = Literal["event", "file", "detection"]
 
 
 def count_labels_under_filters(
     db: Session,
     project_id: str,
-    count_by: str,
+    count_by: CountUnit,
     site_ids: list[str] | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
@@ -70,11 +71,9 @@ def count_labels_under_filters(
     from app.api.schemas.label import LabelFilters
     from app.services.label_service import count_detections_by_label
 
-    if count_by not in COUNT_UNITS:
-        raise ValueError(f"count_by must be one of {COUNT_UNITS}, not {count_by!r}")
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        return {}
+        raise ValueError(f"Project {project_id!r} not found")
     threshold = project.counting_threshold
 
     def _dt(value: str | None) -> datetime | None:

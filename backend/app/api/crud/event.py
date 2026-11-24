@@ -1364,7 +1364,9 @@ def get_filter_options(db: Session, project_id: str) -> dict:
     from app.api.crud.label_tree import build_label_filter_tree
 
     project = db.query(Project).filter(Project.id == project_id).first()
-    threshold = project.counting_threshold if project else 0.0
+    if not project:
+        raise ValueError(f"Project {project_id!r} not found")
+    threshold = project.counting_threshold
 
     scientific = func.coalesce(Detection.scientific_name, Detection.label)
     common = func.coalesce(Detection.common_name, Detection.label)

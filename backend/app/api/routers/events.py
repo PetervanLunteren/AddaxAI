@@ -160,6 +160,8 @@ def get_filter_options(
     """Everything about the labels a project has: which, their names,
     colours and filter tree, plus the event date range. One pass over the
     project's boxes; the counts under a page's filters are `label-counts`."""
+    if not db.query(Project.id).filter(Project.id == project_id).first():
+        raise HTTPException(status_code=404, detail="Project not found")
     _set_project_tz(db, project_id)
     return event_crud.get_filter_options(db, project_id)
 
@@ -167,9 +169,7 @@ def get_filter_options(
 @router.get("/label-counts", response_model=LabelCounts)
 def get_label_counts(
     project_id: str = Query(..., description="Project ID"),
-    count_by: str = Query(
-        ..., description="Count unit: 'event', 'file', or 'detection'"
-    ),
+    count_by: label_tree_crud.CountUnit = Query(..., description="Count unit"),
     site_ids: str | None = Query(None, description="Comma-separated site IDs"),
     date_from: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
     date_to: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
@@ -187,11 +187,8 @@ def get_label_counts(
     alone, under the page's other filters (the same parameters the list
     endpoints take). Keyed by taxonomy id; the tree they belong on comes
     with `filter-options`."""
-    if count_by not in label_tree_crud.COUNT_UNITS:
-        raise HTTPException(
-            status_code=400,
-            detail="count_by must be one of: event, file, detection",
-        )
+    if not db.query(Project.id).filter(Project.id == project_id).first():
+        raise HTTPException(status_code=404, detail="Project not found")
     counts = label_tree_crud.count_labels_under_filters(
         db,
         project_id,

@@ -278,7 +278,16 @@ def test_label_tree_endpoint(client, db):
 def test_label_counts_rejects_an_unknown_unit(client, db):
     p = make_project(db, classification_model_id=MODEL_ID)
     resp = client.get(f"/api/events/label-counts?project_id={p.id}&count_by=photo")
-    assert resp.status_code == 400
+    assert resp.status_code == 422
+
+
+def test_label_lists_answer_404_for_an_unknown_project(client):
+    """Not an empty answer, so a stale project id cannot pass for a
+    project without labels."""
+    resp = client.get("/api/events/filter-options?project_id=no-such-project")
+    assert resp.status_code == 404
+    resp = client.get("/api/events/label-counts?project_id=no-such-project&count_by=event")
+    assert resp.status_code == 404
 
 
 def test_label_tree_endpoint_with_data(client, db):
