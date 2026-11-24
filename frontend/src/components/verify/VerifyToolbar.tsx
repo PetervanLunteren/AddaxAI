@@ -100,8 +100,9 @@ export function VerifyToolbarIcon({
 }
 
 interface VerifyProgressPillProps {
-  /** 0 to 100. Bar width and the percentage label render from this. */
-  pct: number;
+  /** 0 to 100. Bar width and the percentage label render from this.
+   *  Null while the count is still out: an empty bar and "counting…". */
+  pct: number | null;
   /** Trailing text, e.g. "events verified" / "files verified". */
   label: string;
   /** Optional native tooltip explaining what population the % covers. */
@@ -113,7 +114,7 @@ export function VerifyProgressPill({
   label,
   title,
 }: VerifyProgressPillProps) {
-  const clamped = Math.max(0, Math.min(100, pct));
+  const clamped = pct === null ? 0 : Math.max(0, Math.min(100, pct));
   return (
     <div
       title={title}
@@ -125,7 +126,7 @@ export function VerifyProgressPill({
           style={{ width: `${clamped}%`, backgroundColor: "var(--primary-ink)" }}
         />
       </div>
-      {Math.round(clamped)}% {label}
+      {pct === null ? "counting…" : `${Math.round(clamped)}% ${label}`}
     </div>
   );
 }
