@@ -20,11 +20,11 @@ Built in phase B, details under "Measured facts (2026-11-22, phase B baseline)":
 
 ### Next, in this order
 
-1. **Final measurement round.** Both seeds, the pages and clicks of "How we measure", on current `main`. One before-and-after table against the baselines of 11-20 and 11-22 under "Measured facts". It feeds the release notes and the notes to Simon and Elliot, and shows what is still slow.
+1. **Final measurement round.** Done 2026-11-24, see "Measured facts (2026-11-24, final round)". It also found the sort worker on the Elliot seed slower and far more variable than on 11-22, cause not found; decide under step 3 whether that holds up the release.
 2. **The project list.** For every project it loads every file's capture time into Python to count trap nights (`crud/project.py`, `get_trap_nights` per project; `crud/trap_nights.py`, `compute_intervals_for_deployments`). 4.5 s on the Simon seed, 7 s on the Elliot seed, and Simon has 36 projects on a slow machine. Look at the fix first; do it only if it is simple and keeps the trap-night rule. Not yet investigated.
 3. **Decide from step 1, simple fixes only:** the dashboard cards of a big project (overview, animal photos, progress per label, the Labels bar; 15 to 25 s each, every one a pass over all boxes) and the info sheets of a big deployment or site (22 s and 10 s on "Large"; the two confidence averages can be one query).
 4. **The "not yet tested" pass, before any release:**
-   - **The first start after the update on a big database.** The release carries a migration, so the first start makes a pre-upgrade backup, migrates and runs a full `ANALYZE` before the app opens. Seconds on the dev Mac; on Simon's machine (6 to 12 times slower per row, 3.6 GB) an estimated one to a few minutes. Check what the user sees meanwhile, and say it in the release notes.
+   - **The first start after the update on a big database.** The release carries a migration, so the first start makes a pre-upgrade backup, migrates and runs a full `ANALYZE` before the app opens. On the dev Mac 19.6 s for the 4.6 GB Simon seed and 6.7 s for the 3.4 GB Elliot seed (final round); on Simon's machine (6 to 12 times slower per row, 3.6 GB) an estimated one to a few minutes. Check what the user sees meanwhile, and say it in the release notes.
    - **The folder-run save step.** Its label picker was rewired for the label lists (`useMediaOptions.ts`, `SaveShared.tsx`) and only the typecheck covers it. Click through one real folder run.
    - **A project without embeddings.** The Labels sort start changed for it (`LabelsTab.tsx`, `emptyCauseUnknown`); never tried live.
    - **Windows.** Everything was measured on the Mac. One upgrade run of the packaged build with a large database on the Windows machine (`/windows-linux-test-partner`); it covers the first point too.
@@ -35,7 +35,7 @@ Built in phase B, details under "Measured facts (2026-11-22, phase B baseline)":
 
 - One pass over all boxes of a 2.5M-box project still takes 10 to 15 s on a fast disk. Making a pass itself fast needs a project column on `detections`, rejected below as too large.
 - A count the browser has abandoned keeps running on the backend. How often that happens in normal use is not measured.
-- Files tab with a species filter: about 7 s per page on the Elliot seed, whatever the sort. The species filter is the cost.
+- Files tab with a species filter: 21 to 45 s per page on the Elliot seed in the final round (about 7 s on 11-23), the count and the page about half each. The species filter is the cost: an `EXISTS` over the boxes of every file.
 - The Files tab remembers its sort per browser, so one visit with "Sort by event" keeps a large project on the slower sort.
 - No server-side cache of the label lists (see the note under the phase B measured facts).
 - `SortSelector.tsx` says the random seed "lives in URL state"; on the Files tab it does not.
@@ -48,6 +48,12 @@ Built in phase B, details under "Measured facts (2026-11-22, phase B baseline)":
 ### Measuring in a new session
 
 The golden databases stay on the external SSD: `/Volumes/2TB-SSD/addaxai-speed/golden` (Simon shape) and `golden-elliot`. Everything else lived in the old session's scratchpad and is gone: rebuild the 3.11 venv and the `sqlite345` link as in "How we measure" (a few minutes), and write the SQL tracer again if statement timings are needed (described there). Only one database copy fits on the internal disk at a time.
+
+Three things learned in the final round:
+
+- **The golden copies are at migration `a8b2c4d6e8f0`**, so the first start on every copy migrates, backs up and runs `ANALYZE`. Restart once before measuring.
+- **Chrome freezes the tab between Claude's tool calls.** A streamed response, the sort, is then not read, so a sort timed in the browser can take minutes. Time the sort worker from a script that posts the page's body to `labels/sort` and reads the stream to its `result` line. In dev mode `await import('/src/lib/query-client.ts')` gives the page's own query client, and `isFetching()` tells when a page has settled.
+- **Delete `backups/.last-rolling-utc-date` between seeds**, or the second seed skips its daily backup.
 
 ## Why
 
@@ -352,6 +358,82 @@ What it shows:
   Identical answers on both seeds (labels, both name maps, colours, the whole tree, and the counts for all three units with and without "Unverified"; the slider limit unchanged at 0.3 on both). Elliot seed, each request alone: `filter-options` 55.8 s to 14.4 s, and it now also carries the colours (`label-colors` was 8.3 s) and the tree. In the app the Labels page opened with `filter-options` 15.4 s and `label-counts` 10.5 s, where it had `filter-options` 36.5 s, `label-tree` 28 s and `label-colors` 10.7 s. One pass is still 10 to 15 s on 2.5M boxes; making a pass itself fast needs a project column on `detections` (rejected above).
 - **Not built: a server-side cache of the label lists.** `PRAGMA data_version` would make it safe (tested on 3.45.1: it changes after every commit from any connection or process, never after a read). Left out because the test suite runs in one open transaction on an in-memory database, which the signal cannot see, so the cache would go untested; and after the split it would save one pass on later opens that the browser's five-minute cache mostly covers. The fallback if first opens are still too slow.
 - **Item 2 and 3 above measured to nothing, so they are left out.** Folding the count into the load with `count(*) OVER ()` was slower (17.8 s against 10.5 to 16 s), because the load alone walks the capture-time index and stops at the cap in about 2 s, while the window needs every row. One shared connection with a 64 MB cache gave 17 to 22 s against 17 to 19 s with four.
+
+## Measured facts (2026-11-24, final round)
+
+`main` at 3b474944, SQLite 3.45.1, both seeds copied fresh from the golden files, same procedure as before. "Cold" is the first load after a backend restart, "warm" two more loads without one. The earlier columns are the tables above, taken on other days; a drift of 5 to 15% between days was seen on 11-21, so only large differences count. A dash means not measured that day.
+
+**First start after the update** (the golden copies are one migration behind, so this is what a user gets):
+
+| | Simon seed (4.6 GB) | Elliot seed (3.4 GB) |
+|---|---|---|
+| Pre-upgrade backup | 6.0 s | 4.4 s |
+| Migration and `ANALYZE` | 13.4 s (`ANALYZE` 12.8 s) | 2.2 s (`ANALYZE` 2.1 s) |
+| Until `/health` answers | 19.6 s | 6.7 s |
+| In the background after it | daily backup 13.4 s, card pictures 13.3 s | card pictures under 1 s |
+| Every later start | 0.1 s | 0.1 s |
+
+**Simon seed** ("Large" 900K photos, "Small" 27K, species filter L. villosus):
+
+| What | 11-20 | 11-21 | 11-22 | Now, cold | Now, warm |
+|---|---|---|---|---|---|
+| Project list | 7.3 s | 4.5 s | 5.4 s | 4.6 s | 7.5 / 6.4 s |
+| "Large", Verification card | 204 s | 125 s | 86 s | 17.0 s | 16.4 / 14.6 s |
+| "Large", `labels/progress` | about 23 s | 23 s | 32 s | 20.8 s | 22.8 / 21.4 s |
+| "Large", animal photos / progress per label / overview | about 23 s each | 16 / - / 11 s | 25 / 25 / 24 s | 13.2 / 12.3 / 12.8 s | 13 to 16 / 14 to 16 / 11 s |
+| "Small", slowest dashboard request | 2.8 s | 2.3 s | 2.2 s | 1.0 s | 0.8 / 1.0 s |
+| Labels "Small", slowest request on open | 93 s | 34 s | 26 s | 1.9 s | 2.4 / 2.1 s |
+| Labels "Small", sort start to first crop | about 95 s after open | 33 s after open | 26 s after open | 6 s, starts at once | 6 / 5 s |
+| Same with the species filter | sort about 7 s | | | 2.7 s slowest, sort 6 s | 2.8 to 3.5 s, sort 7 s |
+| Deployment info "Small" / "Large" | 0.6 / 26.8 s | 0.3 / 23.5 s | 0.4 / 22 s | 0.5 / 20.4 s | 0.4 to 0.6 / 23.5 s |
+| Site info "Small" / "Large" | 0.1 / 9.6 s | 0.05 / 10.0 s | 0.1 / 9 s | 0.07 / 6.9 s | 0.1 / 7.2 to 7.7 s |
+| Verify in the grid, "Small" | | | `bulk-verify` 3.7 s, then 1.8 s and 0.7 s | `bulk-verify` 0.03 s, then `label-counts` 0.9 s and `labels/progress` 1.0 s | |
+| Verify in the detail view, "Small" | | | 5.8 s, a re-sort, `label-tree` 22 s | 0.03 s, then the same pair, 0.5 s | |
+| Filter change / relabel, "Small" | | | | `label-counts` 0.8 s and a 6 s re-sort / `bulk-relabel` 0.07 s, three refetches under 1 s | |
+| Longest `/health` wait during a reprocess of "Small" | | 45 s, then 0.76 s after phase A | | 1.7 s (job 60 s, `ANALYZE` 32 s of it) | |
+
+**Elliot seed** (one project, 1.27M photos, 2.57M boxes, species filter G. guatimalensis):
+
+| What | 11-22 | 11-24, label lists | Now, cold | Now, warm |
+|---|---|---|---|---|
+| Project list | 7.1 s | | 4.2 s | 5.5 / 6.9 s |
+| Dashboard, Verification card | 61 s | | 5.2 s | 8.7 / 12.2 s |
+| Dashboard, `labels/progress` | 22.5 s | | 14.1 s | 18.1 / 25.9 s |
+| Dashboard, animal photos / progress per label / overview | 16 / 15 / 15 s | | 7.9 / 7.6 / 12.0 s | 12 to 17 / 13 to 16 / 13 to 14 s |
+| Labels, open | `labels/stats` 38 s, `filter-options` 37 s, `label-tree` 28 s, sort starts at 38 s | `filter-options` 15.4 s, `label-counts` 10.5 s | `labels/progress` 20.3 s, `labels/stats` 19.8 s, `filter-options` 10.1 s, `label-counts` 9.4 s; sort starts at once | the same four, 13 to 37 s each |
+| Labels, open with the species filter | | | the same four, 10 to 30 s | the same four, 19 to 53 s |
+| Verify in the grid | `bulk-verify` 2.3 s, then `labels/progress` 17 s and `filter-options` 30 s | | `bulk-verify` 0.06 s, then `label-counts` 10.3 s and `labels/progress` 21.1 s | |
+| Verify in the detail view | 5.6 s, a re-sort, `label-tree` 31 s, `labels/progress` twice, `filter-options` 47 s, `label-colors` 10 s | | 0.01 s, then `label-counts` 8.4 s and `labels/progress` 19.3 s | |
+| Filter change / relabel | | | `label-counts` 10.2 s and a re-sort / `bulk-relabel` 0.07 s, then three refetches of 12 to 22 s | |
+| Sort worker alone, similarity / by event | 24 / 23 s | | 48 to 135 s / 29 to 90 s, see below | |
+| Files tab, per page alone: path / event sort / species filter | 0.5 to 0.6 s / 2.2 to 2.9 s / about 7 s (11-23) | | 0.5 to 3.2 s / 4.8 to 9.5 s / 21 to 45 s | |
+| Biggest deployment info / site info | 1.0 / 0.2 s | | 1.1 / 0.1 s | 0.7 to 0.9 / 0.2 s |
+
+Each count of the Elliot Labels page alone, through the tracer: `labels/progress` 20 s, `labels/stats` 18 s, `filter-options` 12.5 s, `label-counts` 9 s. In the page the four run at the same time and compete for the disk, and a request the previous page left behind keeps running, so the warm column is mostly that contention.
+
+What got faster, for the release notes:
+
+- **Starting the app** no longer waits for statistics or the daily backup: 41 s to 0.1 s. Only the first start after an update with a database change takes longer, once.
+- **Verifying and relabelling** answer at once (2 to 6 s each on a big project, now under 0.1 s). The counts update once the clicking stops, and a verify no longer re-sorts the page.
+- **The dashboard Verification card** of a big project: 204 s to 15 s on the Simon seed, 61 s to 5 to 12 s on the Elliot seed. The other cards no longer wait behind each other.
+- **A small project in a big database** is as fast as a small project: its Labels page from about 95 s to 6 s until the photos show.
+- **A big project's Labels page** starts sorting at once instead of after 38 s; on the Elliot seed the photos showed after about 30 s while the counts ran, and the counts fill in after 10 to 20 s.
+- **A job never freezes the app** (a reprocess left `/health` waiting 45 s; now at most 1.7 s).
+
+Still slow, with what the tracer shows (each request alone):
+
+- **Every pass over the boxes of a big project, 9 to 20 s.** `labels/progress` (two passes, 20 s), `labels/stats`, `filter-options`, `label-counts`, animal photos, progress per label, the Verification card (an `EXISTS` per event, 10 to 11 s). Every plan starts from the project; the cost is reading 2.5M rows. Making a pass itself cheaper needs a project column on `detections` (rejected below).
+- **Deployment info of a 900K deployment, 20 s.** 13.8 s of it are the two confidence averages, each a pass over the deployment's boxes; they differ only in `label_confidence IS NOT NULL` and fit in one pass. Site info does not compute them (7 s).
+- **Project list, 4 to 7 s.** About half is Python: bucketing every file path for trap nights (2.2 s on the Simon seed, 2.9 s on the Elliot seed). The SQL is a file count and an observation sum over all projects (1 to 2 s), plus loading every file's path and capture time (1 s). The overview card runs the same trap-night load.
+- **Files tab with a species filter on Elliot, 21 to 45 s.** The count and the page each run a correlated `EXISTS` over the boxes of every file of the project.
+- **The sort worker on the Elliot seed.** Similarity 48 to 135 s and event sort 29 to 90 s over six runs each, timed from a script to the stream's `result` line, with nothing else running; the worker run by hand took 77 and 82 s, and 38 and 51 s. On 11-22 a single run each gave 24 and 23 s, timed in the browser to the first crop. The similarity load spends 47 s in one statement and the event sort 26 s in the "has an embedding" pass. See below.
+
+Found on the way:
+
+- **The similarity load changed plan with migration `b9c3d5e7f9a1`.** The worker runs on the model env's SQLite 3.54.1. On the golden copy it walks `idx_files_captured_at_local` and stops at the cap; after the migration it reads every row of `detection_embeddings`, vectors included, and sorts them in a temporary B-tree. Same statistics, one index fewer. But putting `idx_detection_embeddings_detection` back on a copy restored the old plan and not the time (51 s), so the plan flip does not explain the slower sort. Unexplained so far; the spread between runs suggests the OS file cache (16 GB RAM, a 3.4 GB database and Chrome).
+- **Putting all three dropped indexes back made the backend slower on 3.45**, not faster: `labels/stats` 56 to 108 s against 27 to 30 s, `labels/progress` 64 to 76 s against 22 s. One run each, right after building the indexes, so indicative only; nothing points at the drop as a cost.
+- **A verify in the detail view on "Small" refetched the counts pair twice within a second.** On the Elliot seed once. Cause not looked at.
+- **The Files tab path sort is 3 s per page cold, 0.5 s warm** on the Elliot seed. The page sorts every file of the project in a temporary B-tree; on a warm cache that is cheap.
 
 ## Simon's database (2026-11-24)
 
