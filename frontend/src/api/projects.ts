@@ -17,6 +17,7 @@ import type {
   ProjectResponse,
   ProjectUpdate,
   ProjectWithStats,
+  TaxaMapping,
 } from "./types";
 
 // Re-export types for convenience
@@ -52,6 +53,7 @@ export interface ProjectDuplicatePayload {
   description?: string | null;
   classification_model_id?: string | null;
   excluded_classes: string[];
+  taxa_mapping?: TaxaMapping | null;
   country_code?: string | null;
   state_code?: string | null;
   copy_settings: boolean;

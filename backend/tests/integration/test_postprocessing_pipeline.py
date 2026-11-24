@@ -1138,6 +1138,7 @@ def test_every_frame_takes_the_species_its_track_voted_for(deployment_scaffold):
     project = MagicMock(
         event_smoothing=False, taxonomic_rollup=False, excluded_classes=[],
         classification_model_id=None, country_code=None, state_code=None,
+        taxa_mapping=None,
     )
 
     with patch("app.ml.postprocessing._find_classification_model_dir", return_value=None):

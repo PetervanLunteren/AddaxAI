@@ -21,7 +21,8 @@ from app.api.schemas.project import (
     ProjectUpdate,
 )
 from app.core.logging_config import get_logger
-from app.models import Deployment, Event, File, Project, Site
+from app.ml.taxa_mapping import clear_location, settle_project_taxa_mapping
+from app.models import Deployment, Event, File, LabelTaxonomy, Project, Site
 from app.models.deployment_queue import DeploymentQueue
 from app.models.event_observation import EventObservation
 
@@ -109,8 +110,11 @@ def create_project(db: Session, project: ProjectCreate) -> Project:
         independence_interval=project.independence_interval,
         mode=project.mode,
         folder_run_state=project.folder_run_state,
+        taxa_mapping=project.taxa_mapping.model_dump() if project.taxa_mapping else None,
     )
     db.add(db_project)
+    db.flush()  # assign db_project.id for the taxa list's taxonomy rows
+    settle_project_taxa_mapping(db, db_project)
     db.commit()
     db.refresh(db_project)
     return db_project
@@ -141,6 +145,7 @@ def duplicate_project(
         excluded_classes=list(params.excluded_classes or []),
         country_code=params.country_code,
         state_code=params.state_code,
+        taxa_mapping=params.taxa_mapping.model_dump() if params.taxa_mapping else None,
         mode=source.mode,
     )
     if params.copy_settings:
@@ -148,6 +153,7 @@ def duplicate_project(
             setattr(new_project, col, getattr(source, col))
     db.add(new_project)
     db.flush()  # assign new_project.id for the FK references below
+    settle_project_taxa_mapping(db, new_project)
 
     # Sites and deployments are independent. When deployments are copied
     # without sites the site_id_map stays empty, so the re-queued folders come
@@ -208,6 +214,7 @@ def update_project(db: Session, project_id: str, project: ProjectUpdate) -> Proj
 
     # Only update provided fields
     update_data = project.model_dump(exclude_unset=True)
+    list_and_model = (db_project.taxa_mapping, db_project.classification_model_id)
     for field, value in update_data.items():
         setattr(db_project, field, value)
 
@@ -227,6 +234,14 @@ def update_project(db: Session, project_id: str, project: ProjectUpdate) -> Proj
             db, db_project.classification_model_id, exclude_project_id=project_id
         )
 
+    # Only when the list or the model it is checked against changes, so a
+    # rename still works after the model was removed from disk. Compared by
+    # value: the settings form sends both on every save.
+    # A list project never keeps a country or exclusions, changed or not.
+    if (db_project.taxa_mapping, db_project.classification_model_id) != list_and_model:
+        settle_project_taxa_mapping(db, db_project)
+    elif db_project.taxa_mapping:
+        clear_location(db_project)
     db.commit()
     db.refresh(db_project)
     return db_project
@@ -266,6 +281,14 @@ def _purge_project_data(db: Session, project_id: str) -> list[tuple[str, int]]:
     )
 
 
+def _delete_taxa_list_rows(db: Session, project_id: str) -> None:
+    """A deleted project's taxa list rows. Nothing points at them once its
+    data is purged, and the label pickers would still list them."""
+    db.query(LabelTaxonomy).filter(LabelTaxonomy.project_id == project_id).delete(
+        synchronize_session=False
+    )
+
+
 def delete_project(db: Session, project_id: str) -> bool:
     """
     Delete a project.
@@ -279,6 +302,7 @@ def delete_project(db: Session, project_id: str) -> bool:
 
     started = time.time()
     removed = _purge_project_data(db, project_id)
+    _delete_taxa_list_rows(db, project_id)
     db.delete(db_project)
     db.commit()
     logger.info(
@@ -327,6 +351,7 @@ def delete_folder_run(db: Session, project_id: str) -> bool:
     )
 
     _purge_project_data(db, project_id)
+    _delete_taxa_list_rows(db, project_id)
     db.delete(db_project)
     db.commit()
 

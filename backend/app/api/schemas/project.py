@@ -26,6 +26,15 @@ ProjectMode = Literal["folder_run", "research"]
 MediaFilter = Literal["all", "images", "videos"]
 
 
+class TaxaMapping(BaseModel):
+    """A loaded taxa list (app.ml.taxa_mapping). The rows carry the two
+    columns AddaxAI uses; their names live in that module, so they are
+    checked there (check_rows), not spelled out as fields here."""
+
+    file_name: str = Field(..., min_length=1, max_length=255)
+    rows: list[dict[str, str]]
+
+
 def _validate_iana_timezone(value: str) -> str:
     """Reject anything not in the system's IANA tzdata database."""
     try:
@@ -56,6 +65,9 @@ class ProjectBase(BaseModel):
     )
     excluded_classes: list[str] = Field(
         default_factory=list, description="Species classes to exclude from classification"
+    )
+    taxa_mapping: TaxaMapping | None = Field(
+        None, description="Custom SpeciesNet taxa list, used instead of a country"
     )
 
     # Geographic location for geofence-enabled models
@@ -214,6 +226,7 @@ class ProjectDuplicate(BaseModel):
     description: str | None = Field(None, max_length=500)
     classification_model_id: str | None = None
     excluded_classes: list[str] = Field(default_factory=list)
+    taxa_mapping: TaxaMapping | None = None
     country_code: str | None = None
     state_code: str | None = None
     copy_settings: bool = True
@@ -235,6 +248,8 @@ class ProjectUpdate(BaseModel):
     classification_model_id: str | None = None
     embedding_model_id: str | None = None
     excluded_classes: list[str] | None = None
+    # Sent as null to remove the list; left out to keep it.
+    taxa_mapping: TaxaMapping | None = None
     country_code: str | None = None
     state_code: str | None = None
     timezone: str | None = Field(None, min_length=1, max_length=64)

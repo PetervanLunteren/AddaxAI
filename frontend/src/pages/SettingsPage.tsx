@@ -21,7 +21,11 @@ import {
   LabelSelectionField,
   useLabelSelectionCaption,
 } from "../components/taxonomy/LabelSelectionField";
-import { clearSpeciesSelection, toApiCountryCode } from "../lib/speciesSelection";
+import {
+  clearSpeciesSelection,
+  taxaMappingField,
+  toApiCountryCode,
+} from "../lib/speciesSelection";
 import { AnalysisSettingsRows } from "../components/settings/AnalysisSettingsRows";
 import { ApplySettingsModal } from "../components/settings/ApplySettingsModal";
 import {
@@ -128,6 +132,7 @@ const settingsSchema = z.object({
   classification_model_id: z.string().nullable(),
   embedding_model_id: z.string().optional().nullable(),
   excluded_classes: z.array(z.string()),
+  taxa_mapping: taxaMappingField,
   country_code: z.string().optional().nullable(),
   state_code: z.string().optional().nullable(),
   // Empty string means "Auto (derive from site location)".
@@ -231,6 +236,7 @@ export default function SettingsPage() {
       classification_model_id: null,
       embedding_model_id: "DINOV2-VITS14",
       excluded_classes: [],
+      taxa_mapping: null,
       country_code: null,
       state_code: null,
       timezone: "",
@@ -263,6 +269,7 @@ export default function SettingsPage() {
         classification_model_id: project.classification_model_id ?? null,
         embedding_model_id: project.embedding_model_id || "none",
         excluded_classes: project.excluded_classes || [],
+        taxa_mapping: project.taxa_mapping ?? null,
         country_code: project.country_code || null,
         state_code: project.state_code || null,
         timezone: project.timezone ?? "",
@@ -294,6 +301,7 @@ export default function SettingsPage() {
       ?.full_image_cls === true;
   const labelCaption = useLabelSelectionCaption(
     classificationModelId && classificationModelId !== "none" ? classificationModelId : "",
+    !!form.watch("taxa_mapping"),
   );
   const embeddingModelId = form.watch("embedding_model_id");
   const countryCode = form.watch("country_code");
@@ -674,6 +682,7 @@ export default function SettingsPage() {
         classification_model_id: project.classification_model_id ?? null,
         embedding_model_id: project.embedding_model_id || "none",
         excluded_classes: project.excluded_classes || [],
+        taxa_mapping: project.taxa_mapping ?? null,
         country_code: project.country_code || null,
         state_code: project.state_code || null,
         timezone: project.timezone ?? "",
@@ -993,6 +1002,10 @@ export default function SettingsPage() {
                         onLocationChange={(country, state) => {
                           form.setValue("country_code", country, { shouldDirty: true });
                           form.setValue("state_code", state, { shouldDirty: true });
+                        }}
+                        taxaMapping={form.watch("taxa_mapping")}
+                        onTaxaMappingChange={(mapping) => {
+                          form.setValue("taxa_mapping", mapping, { shouldDirty: true });
                         }}
                       />
                     </div>
