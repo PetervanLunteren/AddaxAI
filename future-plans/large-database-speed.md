@@ -29,6 +29,15 @@ Built in phase B, details under "Measured facts (2026-11-22, phase B baseline)":
    - **The folder-run save step.** Its label picker was rewired for the label lists (`useMediaOptions.ts`, `SaveShared.tsx`) and only the typecheck covers it. Click through one real folder run.
    - **A project without embeddings.** The Labels sort start changed for it (`LabelsTab.tsx`, `emptyCauseUnknown`); never tried live.
    - **Windows.** Everything was measured on the Mac. One upgrade run of the packaged build with a large database on the Windows machine (`/windows-linux-test-partner`); it covers the first point too.
+   - **Done 2026-11-24, all four pass.**
+     - Folder run (Mac sandbox, 40 ENA24 images, SpeciesNet): the save step's label picker lists exactly the labels in the database with their counts, refuses an empty selection, and the save wrote the expected tables and 40 copies sorted by species.
+     - No embeddings (Mac sandbox): the event sort fills the grid at once; similarity says "Sort by similarity needs embeddings", also on a fresh load.
+     - Windows (i9-12900KF, 32 GB, CI build of `main`, Elliot seed in a separate `ADDAXAI_USER_DATA_DIR`): splash, then "Still working…" (limit lowered to 3 s), then the app opened by itself 1 s after the backend was ready. First start 9.2 to 12.1 s (pre-upgrade backup 5.4 to 7.8 s, both migrations and `ANALYZE` 3.6 to 4.1 s), daily backup 4.6 to 6.8 s after it. A start killed in the middle of the pre-upgrade backup left a `.partial` that the next start removed. Requests alone: project list 4.7 s, overview 14.4 s, Verification card 2.9 s, `labels/progress` 13.2 s, `labels/stats` 14.1 s, `filter-options` 6.5 s, `label-counts` 6.4 s, deployment info 0.3 s, a Files page 0.9 s.
+   - **Found in step 4, for after the release:**
+     - The similarity sort takes 46 to 50 s on Windows against 16 to 19 s on the Mac. The load uses the restored index (1 s); the time is the ordering step, 32 s against 9 s, which is FAISS and NumPy work, so look at how those are built or threaded in the Windows env. Event sort 26 to 36 s. No earlier Windows number to compare with.
+     - Opening a project shows an empty page until `GET /api/projects/{id}/stats` returns (3.5 s on the Elliot seed on Windows): `ProjectIndexRoute` in `App.tsx` asks for all stats, trap nights included, only to choose between the dashboard and the process page.
+     - An interrupted backup leaves its `…partial-journal` file (1 KB) behind; the startup clean-up removes only the `.partial`.
+     - Dev only: in the browser the folder field commits every keystroke, so typing a path previews `/` first. Electron uses the folder dialog.
 5. **Release** with `/release-partner`. The notes say plainly what got faster and that the first start after the update takes longer once.
 6. **Drafts to Simon and Elliot** (drafts only, Peter sends): try the new version, say what still feels slow. For Simon also: is the AddaxAI folder on an internal disk or an external drive?
 
