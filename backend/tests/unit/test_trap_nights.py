@@ -70,6 +70,32 @@ def test_multi_folder_sums_each_range(db):
     assert compute_trap_nights_for_deployment(db, d.id) == 30
 
 
+def test_a_capture_counts_on_its_calendar_day(db):
+    """The day is the first 10 characters of `captured_at_local`, so the
+    last second of one day and midnight of the next are two days, and the
+    time of day never moves a capture to another day."""
+    p = make_project(db)
+    d = make_deployment(db, project_id=p.id, folder_path="/data/edge")
+    make_file(
+        db,
+        deployment_id=d.id,
+        file_path="/data/edge/img_001.jpg",
+        captured_at_local=datetime(2025, 1, 15, 23, 59, 59, 500000),
+    )
+    make_file(
+        db,
+        deployment_id=d.id,
+        file_path="/data/edge/img_002.jpg",
+        captured_at_local=datetime(2025, 1, 16, 0, 0, 0),
+    )
+    db.commit()
+
+    assert compute_trap_nights_for_deployment(db, d.id) == 2
+    assert compute_intervals_for_deployments(db, [d.id]) == {
+        d.id: [(date(2025, 1, 15), date(2025, 1, 16))]
+    }
+
+
 def test_empty_deployment_returns_none(db):
     """No files → None, so callers can distinguish 'not analysed yet' from
     'zero nights after clipping'."""

@@ -74,7 +74,7 @@ import os
 from collections import Counter, defaultdict
 from datetime import date, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import String, func, select
 from sqlalchemy.orm import Session
 
 from app.db.sql_params import iter_id_chunks
@@ -95,34 +95,70 @@ def _paired_deployment_ids(db: Session, deployment_ids: list[str]) -> set[str]:
     return paired
 
 
-def _bucket_dates(
-    rows: list[tuple[str, date]], *, paired_cameras: bool
-) -> dict[str, list[date]]:
-    """Capture dates per subfolder, or all in one bucket for paired cameras.
+def _folder_spans_by_deployment(
+    db: Session, deployment_ids: list[str]
+) -> dict[str, dict[str, tuple[date, date]]]:
+    """First and last capture day of every subfolder, per deployment.
 
-    `os.path.dirname`, not `Path(...).parent`: this runs once per file,
-    and on 480,000 files pathlib took 3.3 s of a 7.5 s request where
-    dirname takes 0.13 s. The keys are only compared with each other.
+    `{deployment_id: {folder: (first_day, last_day)}}`, with one bucket
+    `""` for a paired-cameras deployment. Deployments without
+    capture-bearing files are absent.
+
+    This reads every capture file of the deployments, so it is the cost of
+    trap nights on a big project. Two choices keep it cheap:
+
+    - The day is read as text, the first 10 characters of
+      `captured_at_local` (`2025-01-15 23:59:59.5` gives `2025-01-15`).
+      ISO day strings compare like dates, so first and last are kept as
+      text and only those become `date`s. Building a datetime per row was
+      half the time: 1.27M files took 3.4 s, now 1.7 s.
+    - `os.path.dirname`, not `Path(...).parent`: on 480,000 files pathlib
+      took 3.3 s of a 7.5 s request where dirname takes 0.13 s. The keys
+      are only compared with each other.
+    - The select runs on the session's connection, in the same
+      transaction. `db.execute` would send these 1.27M rows through the
+      ORM's result handling, which wraps nothing here and cost 0.8 s.
     """
-    by_folder: dict[str, list[date]] = defaultdict(list)
-    for file_path, captured_at in rows:
-        key = "" if paired_cameras else os.path.dirname(file_path)
-        by_folder[key].append(captured_at.date())
-    return by_folder
+    rows = db.connection().execute(
+        select(
+            File.deployment_id,
+            File.file_path,
+            func.substr(File.captured_at_local, 1, 10, type_=String),
+        )
+        .where(File.deployment_id.in_(deployment_ids))
+        .where(File.file_type.in_(("image", "video")))
+        .where(File.captured_at_local.isnot(None))
+    )
+    paired_ids = _paired_deployment_ids(db, deployment_ids)
+    spans: dict[str, dict[str, tuple[str, str]]] = defaultdict(dict)
+    dirname = os.path.dirname
+    for deployment_id, file_path, day in rows:
+        folders = spans[deployment_id]
+        key = "" if deployment_id in paired_ids else dirname(file_path)
+        span = folders.get(key)
+        if span is None:
+            folders[key] = (day, day)
+        elif day < span[0]:
+            folders[key] = (day, span[1])
+        elif day > span[1]:
+            folders[key] = (span[0], day)
+    return {
+        deployment_id: {
+            folder: (date.fromisoformat(first), date.fromisoformat(last))
+            for folder, (first, last) in folders.items()
+        }
+        for deployment_id, folders in spans.items()
+    }
 
 
 def _clip_interval(
-    dates: list[date],
+    span: tuple[date, date],
     clip_start: date | None,
     clip_end: date | None,
 ) -> tuple[date, date] | None:
-    """Inclusive [min, max] for a subfolder's dates, clamped to the clip
-    window. Returns None if the subfolder has no dates or the clip window
-    excludes everything."""
-    if not dates:
-        return None
-    mn = min(dates)
-    mx = max(dates)
+    """A subfolder's inclusive [first, last] day, clamped to the clip
+    window. Returns None if the clip window excludes everything."""
+    mn, mx = span
     if clip_start is not None:
         mn = max(mn, clip_start)
     if clip_end is not None:
@@ -166,8 +202,8 @@ def nights_per_day(intervals: list[tuple[date, date]]) -> Counter[date]:
     return nights
 
 
-def _intervals_from_folder_dates(
-    by_folder: dict[str, list[date]],
+def _intervals_from_folder_spans(
+    by_folder: dict[str, tuple[date, date]],
     clip_start: date | None,
     clip_end: date | None,
 ) -> list[tuple[date, date]]:
@@ -175,8 +211,8 @@ def _intervals_from_folder_dates(
     subfolder, with each parent folder's rollover chains joined. Two
     overlapping subfolders stay as two intervals."""
     by_parent: dict[str, list[tuple[date, date]]] = defaultdict(list)
-    for folder, dates in by_folder.items():
-        iv = _clip_interval(dates, clip_start, clip_end)
+    for folder, span in by_folder.items():
+        iv = _clip_interval(span, clip_start, clip_end)
         if iv is not None:
             by_parent[os.path.dirname(folder)].append(iv)
     return sorted(
@@ -199,19 +235,10 @@ def compute_trap_nights_for_deployment(
     Otherwise returns the sum of inclusive day counts over the camera
     sessions — see the module docstring for the algorithm.
     """
-    rows = db.execute(
-        select(File.file_path, File.captured_at_local)
-        .where(File.deployment_id == deployment_id)
-        .where(File.file_type.in_(("image", "video")))
-        .where(File.captured_at_local.isnot(None))
-    ).all()
-
-    if not rows:
+    by_folder = _folder_spans_by_deployment(db, [deployment_id]).get(deployment_id)
+    if not by_folder:
         return None
-
-    paired = deployment_id in _paired_deployment_ids(db, [deployment_id])
-    by_folder = _bucket_dates(rows, paired_cameras=paired)
-    intervals = _intervals_from_folder_dates(by_folder, clip_start, clip_end)
+    intervals = _intervals_from_folder_spans(by_folder, clip_start, clip_end)
     return _trap_nights_from_intervals(intervals)
 
 
@@ -239,26 +266,11 @@ def compute_intervals_for_deployments(
     if not deployment_ids:
         return {}
 
-    rows = db.execute(
-        select(File.deployment_id, File.file_path, File.captured_at_local)
-        .where(File.deployment_id.in_(deployment_ids))
-        .where(File.file_type.in_(("image", "video")))
-        .where(File.captured_at_local.isnot(None))
-    ).all()
-
-    rows_by_dep: dict[str, list[tuple[str, date]]] = defaultdict(list)
-    for deployment_id, file_path, captured_at in rows:
-        rows_by_dep[deployment_id].append((file_path, captured_at))
-    paired_ids = _paired_deployment_ids(db, list(rows_by_dep))
-
     result: dict[str, list[tuple[date, date]]] = {
         dep_id: [] for dep_id in deployment_ids
     }
-    for dep_id, dep_rows in rows_by_dep.items():
-        by_folder = _bucket_dates(dep_rows, paired_cameras=dep_id in paired_ids)
-        result[dep_id] = _intervals_from_folder_dates(
-            by_folder, clip_start, clip_end
-        )
+    for dep_id, by_folder in _folder_spans_by_deployment(db, deployment_ids).items():
+        result[dep_id] = _intervals_from_folder_spans(by_folder, clip_start, clip_end)
     return result
 
 
