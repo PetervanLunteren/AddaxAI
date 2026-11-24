@@ -63,7 +63,7 @@ Phase 0, phase A, phase B and each later feature is a large change. Before any c
 - **Seed script** in `backend/scripts/`, the generated database goes in the scratchpad, never in the repo. Simon's shape: about 1M image files, one huge deployment of about 900K next to a small 27K project and a few normal ones, detections stored down to 0.01, embeddings for the gated ones. Built through the normal models so the schema is always the current one.
 - **Slow-request log.** One middleware that logs every request over 1 s with its path and duration. It stays in the product: it is what makes the next report from a user readable.
 - **Check on SQLite 3.45.** The packaged backend carries 3.45.1 (inside CPython 3.11). The dev venv has 3.53 and the worker env 3.54, and plans differ between them. Timings and `EXPLAIN QUERY PLAN` that decide anything are taken on 3.45.
-- **Simon's real numbers.** Sent 2026-11-20: `backend/scripts/addaxai-db-stats.py` (see "Numbers from a user's database" in `DEVELOPERS.md`). Waiting for his `addaxai-db-stats.txt`. When it arrives, compare it with the same script's output on the seeded database and correct the seed defaults where they differ. Needed before phase B. Elliot got the same script and sent his on 2026-11-21 (see the addition under phase B).
+- **Simon's real numbers.** Sent 2026-11-20: `backend/scripts/addaxai-db-stats.py` (see "Numbers from a user's database" in `DEVELOPERS.md`). He sent his `addaxai-db-stats.txt` on 2026-11-24, after most of phase B; see "Simon's database (2026-11-24)" under the measured facts. The seed was kept as it is: his real shape is milder than it. Elliot got the same script and sent his on 2026-11-21 (see the addition under phase B).
 
 **Built (2026-11-20):** the seed script (`backend/scripts/seed_large_image_database.py`), the slow-request log plus a duration line for every startup step and every `ANALYZE` (see "Logging & Debugging" in `DEVELOPERS.md`), and the 3.45 runtime described under "How we measure". The baseline is under "Measured facts".
 
@@ -149,7 +149,7 @@ The numbers are under "Measured facts (2026-11-21, after phase A)".
 - **One big project** (Elliot's complaint: 1.27M photos and 2.57M boxes in one project, 58 deployments of 2K to 35K photos, 20K events). The query is right, but counting the project's own rows takes long however it is planned. His pain is a lag after every click on the Labels page: verifying, scrolling through blanks, changing a filter. Two steps, in this order:
   1. **Fewer counts per click.** Measure first what one verify and one filter change on the Labels page request. If a click refetches the project-wide totals (`labels/progress`, `labels/stats`, `label-tree`), refetch only what the click changed, or once the user stops clicking. Probably the biggest gain for this case, and mostly front-end.
   2. **Cheaper counts.** Merge counts that read the same rows into one pass, and check that the indexes cover them. Counter tables stay rejected unless both steps fall short.
-- **Seed.** Add an "Elliot shape" next to the current one: one project, 58 deployments of 2K to 35K photos, about two boxes per photo with 21% at 0.2 or higher, few large events (about 62 photos each), ViT-S embeddings. His `addaxai-db-stats.txt` (v7.16, Windows, 3.8 GB) is the source. Simon's numbers are still to come.
+- **Seed.** Add an "Elliot shape" next to the current one: one project, 58 deployments of 2K to 35K photos, about two boxes per photo with 21% at 0.2 or higher, few large events (about 62 photos each), ViT-S embeddings. His `addaxai-db-stats.txt` (v7.16, Windows, 3.8 GB) is the source. Simon's numbers came on 2026-11-24 and did not change the seed (see "Simon's database (2026-11-24)").
   **Built (2026-11-22):** `--shape elliot` copies each of his 58 deployments (photos, boxes, share at 0.2 or more), about 270 species weighted 1/rank, events of about 62 photos, no legacy tail. Full scale gave 1,271,059 photos, 2,568,006 boxes, 763,734 embeddings and 20,669 events (his: 1,271,059, 2,571,682, 772,337, 20,555), 3.4 GB, in 20 minutes. Golden copy: `/Volumes/2TB-SSD/addaxai-speed/golden-elliot`.
 - **Measuring.** "How we measure" gets the Labels page clicks: the time from a verify, a scroll through blanks and a filter change until the page is settled, on both shapes.
 
@@ -330,10 +330,34 @@ What it shows:
 - **Not built: a server-side cache of the label lists.** `PRAGMA data_version` would make it safe (tested on 3.45.1: it changes after every commit from any connection or process, never after a read). Left out because the test suite runs in one open transaction on an in-memory database, which the signal cannot see, so the cache would go untested; and after the split it would save one pass on later opens that the browser's five-minute cache mostly covers. The fallback if first opens are still too slow.
 - **Item 2 and 3 above measured to nothing, so they are left out.** Folding the count into the load with `count(*) OVER ()` was slower (17.8 s against 10.5 to 16 s), because the load alone walks the capture-time index and stops at the cap in about 2 s, while the window needs every row. One shared connection with a 64 MB cache gave 17 to 22 s against 17 to 19 s with four.
 
+## Simon's database (2026-11-24)
+
+From his `addaxai-db-stats.txt` (SQLite 3.54 on Windows, schema `f769a2f4166a`, so a version from about 10 November, not 7.2.1). He did not say which pages hurt most.
+
+| | Simon, real | "Simon" seed |
+|---|---|---|
+| File size | 3.6 GB | 4.6 GB |
+| Photos | 1.40M | 0.99M |
+| Boxes | 1.44M, about 1 per photo | 2.8M, about 3 per photo |
+| Boxes at 0.2 or more | 36% | 21% |
+| Embeddings | 563K (ViT-S 507K, ViT-B 52K, ViT-L 4K) | 1.48M, ViT-S |
+| Events | 28K, about 50 photos each | 329K, about 3 photos each |
+| Projects | 36, of which 16 folder runs; 33 deployments, 3 sites | 5 projects, 10 deployments |
+| Largest deployments | 291K, 200K, 190K, 144K, 139K, 102K photos, each its own project | one of 900K |
+
+What it shows:
+
+- **The 900K deployment is gone.** He has split it, as advised in October, into projects of one deployment each. "A small project next to a big one" still applies, less extremely: the biggest is about a fifth of the database. The seed stays the harder test, so it was not changed.
+- **His machine reads about 6 to 12 times slower per row than Elliot's.** The script's per-deployment counts took 97 s and 202 s on his database against 17 s and 29 s on Elliot's, which has more boxes. A pass over one of his big projects can take a minute or more. Fewer passes per page and per click, the point of phase B, matter more for him than the seed's timings suggest.
+- **About a tenth of the database is the same folders analysed again.** Four deployments are identical (24,419 photos, 30,113 boxes each), three more are (9,999 photos), and three pairs more. 13% of the file (121K pages, about 500 MB) is free space left by deletes, which only a compact gives back. Both are what the clean-up dialog under "Later" is for; neither is a speed fix.
+- **Events of about 50 photos** confirm the time-lapse cameras of his October report. That is `future-plans/sequences-and-independence.md`, not this plan.
+- **His `idx_detections_track` statistic is a real one** (`1441894 1139`): he has videos and 1,266 tracks. Dropping it after `ANALYZE` (`_UNUSABLE_STAT_INDEXES`) leaves the planner assuming a selective index, which is what that index is on his data.
+
 ## Open questions
 
 - How long `ANALYZE`, the backup and the first dashboard load take. Answered 2026-11-20: 34 s, 7 s and 23 s (Verification card 204 s). See the baseline under "Measured facts".
-- Whether Simon's `sqlite_stat1` gives the plans we saw on the backup copy.
+- Whether Simon's `sqlite_stat1` gives the plans we saw on the backup copy. Answered 2026-11-24: his statistics are milder than the seed's (one deployment per project, a label matches 2.8K boxes on average), so the wrong-start plans of the seed are less likely on his database.
+- Whether Simon's AddaxAI folder is on an internal disk. His per-row speed suggests it is not. Ask him after the release.
 - Whether the partial-index idea for `idx_files_source_video` holds on 3.45, including for the cascade lookup.
 - Whether the three duplicate indexes are really unused by cascades.
 - What module-level engine needs from the test setup and from the Electron e2e sandbox. Answered 2026-11-21: the engine is rebuilt when the database URL changes, which is what `tests/db/conftest.py` needs. The e2e suite starts its own backend process, so it is unaffected.
