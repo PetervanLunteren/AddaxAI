@@ -73,13 +73,14 @@ def test_the_chain_drops_the_covered_indexes(engine) -> None:
     its lookups and its foreign-key cascade (migration b9c3d5e7f9a1).
 
     `schema_problems` only reports what the models lack, so it would stay
-    quiet if a later migration created one of them again.
+    quiet if a later migration created one of them again. The third index
+    that migration dropped, `idx_detection_embeddings_detection`, came back
+    in c4e6a8b0d2f3; the models declare it, so `schema_problems` guards it.
     """
     upgrade_to_head()
     inspector = inspect(engine)
     for table, name in (
         ("files", "idx_files_deployment"),
-        ("detection_embeddings", "idx_detection_embeddings_detection"),
         ("event_files", "idx_event_files_event"),
     ):
         assert name not in {i["name"] for i in inspector.get_indexes(table)}

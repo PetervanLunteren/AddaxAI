@@ -16,15 +16,15 @@ Built in phase B, details under "Measured facts (2026-11-22, phase B baseline)":
 - The Labels sort starts without waiting for the embedding count.
 - The Files tab's "Sort by event" looks each file's event up once.
 - The label lists: one request for what exists (`filter-options`), one for the counts (`label-counts`). The filter dialog opens at once and says "counting…" until the counts are in.
-- Three duplicate indexes dropped (migration `b9c3d5e7f9a1`).
+- Two duplicate indexes dropped (migration `b9c3d5e7f9a1`). It dropped a third, `idx_detection_embeddings_detection`, which `c4e6a8b0d2f3` restores: the sort worker needs it.
 
 ### Next, in this order
 
-1. **Final measurement round.** Done 2026-11-24, see "Measured facts (2026-11-24, final round)". It also found the sort worker on the Elliot seed slower and far more variable than on 11-22, cause not found; decide under step 3 whether that holds up the release.
+1. **Final measurement round.** Done 2026-11-24, see "Measured facts (2026-11-24, final round)". It also found the similarity sort on the Elliot seed about 30 s slower than on 11-22. The cause was the index drop of `b9c3d5e7f9a1`; `c4e6a8b0d2f3` restores the index (see "Found on the way" there).
 2. **The project list.** For every project it loads every file's capture time into Python to count trap nights (`crud/project.py`, `get_trap_nights` per project; `crud/trap_nights.py`, `compute_intervals_for_deployments`). 4.5 s on the Simon seed, 7 s on the Elliot seed, and Simon has 36 projects on a slow machine. Look at the fix first; do it only if it is simple and keeps the trap-night rule. Not yet investigated.
 3. **Decide from step 1, simple fixes only:** the dashboard cards of a big project (overview, animal photos, progress per label, the Labels bar; 15 to 25 s each, every one a pass over all boxes) and the info sheets of a big deployment or site (22 s and 10 s on "Large"; the two confidence averages can be one query).
 4. **The "not yet tested" pass, before any release:**
-   - **The first start after the update on a big database.** The release carries a migration, so the first start makes a pre-upgrade backup, migrates and runs a full `ANALYZE` before the app opens. On the dev Mac 19.6 s for the 4.6 GB Simon seed and 6.7 s for the 3.4 GB Elliot seed (final round); on Simon's machine (6 to 12 times slower per row, 3.6 GB) an estimated one to a few minutes. Check what the user sees meanwhile, and say it in the release notes.
+   - **The first start after the update on a big database.** The release carries a migration, so the first start makes a pre-upgrade backup, migrates and runs a full `ANALYZE` before the app opens. On the dev Mac 19.6 s for the 4.6 GB Simon seed and 6.7 s for the 3.4 GB Elliot seed (final round), and 13.4 s and 13.9 s with `c4e6a8b0d2f3`, which builds an index over all embeddings; on Simon's machine (6 to 12 times slower per row, 3.6 GB) an estimated one to a few minutes. Check what the user sees meanwhile, and say it in the release notes.
    - **The folder-run save step.** Its label picker was rewired for the label lists (`useMediaOptions.ts`, `SaveShared.tsx`) and only the typecheck covers it. Click through one real folder run.
    - **A project without embeddings.** The Labels sort start changed for it (`LabelsTab.tsx`, `emptyCauseUnknown`); never tried live.
    - **Windows.** Everything was measured on the Mac. One upgrade run of the packaged build with a large database on the Windows machine (`/windows-linux-test-partner`); it covers the first point too.
@@ -326,7 +326,7 @@ What it shows:
 **After the decided fixes (same day, Elliot seed):**
 
 - **A verify refreshes only what it changed, once the clicks stop** (`invalidateAfterVerify` in `frontend/src/lib/invalidate-label-queries.ts`). Three quick verifies in the grid: one `labels/progress` (20 s) and one `label-tree` (29 s), where each verify used to refetch `labels/progress` (17 s) and `filter-options` (30 s). Two verifies in the detail view: the same pair once, with no re-sort, no `filter-options`, no `label-colors`. The label tree is now refreshed after a verify when the Verified filter is on; before, the grid left its counts stale.
-- **The three duplicate indexes are dropped** (migration `b9c3d5e7f9a1`). On 3.45 the cascades seek the longer index, and deleting a 27K-photo project took 2.5 s with and without them.
+- **The three duplicate indexes are dropped** (migration `b9c3d5e7f9a1`). On 3.45 the cascades seek the longer index, and deleting a 27K-photo project took 2.5 s with and without them. One of them, `idx_detection_embeddings_detection`, came back on 2026-11-24 (`c4e6a8b0d2f3`): the sort worker needs it (see the final round).
 - **A verify no longer scans every box.** `bulk-verify` looked its boxes up with `id IN (...) OR track_id IN (...)`, and 3.45 answered with `SCAN detections` because `track_id` is NULL on every image box, so its `sqlite_stat1` row read "any value matches the whole table". The row is now dropped after every `ANALYZE`, like the one for `idx_files_source_video`. Elliot seed: 2.3 to 6.8 s per verify, now 0.02 to 0.09 s.
 - **Three more fixes, timed old against new on the same requests** (each twice; same answers):
 
@@ -426,12 +426,28 @@ Still slow, with what the tracer shows (each request alone):
 - **Deployment info of a 900K deployment, 20 s.** 13.8 s of it are the two confidence averages, each a pass over the deployment's boxes; they differ only in `label_confidence IS NOT NULL` and fit in one pass. Site info does not compute them (7 s).
 - **Project list, 4 to 7 s.** About half is Python: bucketing every file path for trap nights (2.2 s on the Simon seed, 2.9 s on the Elliot seed). The SQL is a file count and an observation sum over all projects (1 to 2 s), plus loading every file's path and capture time (1 s). The overview card runs the same trap-night load.
 - **Files tab with a species filter on Elliot, 21 to 45 s.** The count and the page each run a correlated `EXISTS` over the boxes of every file of the project.
-- **The sort worker on the Elliot seed.** Similarity 48 to 135 s and event sort 29 to 90 s over six runs each, timed from a script to the stream's `result` line, with nothing else running; the worker run by hand took 77 and 82 s, and 38 and 51 s. On 11-22 a single run each gave 24 and 23 s, timed in the browser to the first crop. The similarity load spends 47 s in one statement and the event sort 26 s in the "has an embedding" pass. See below.
+- **The sort worker on the Elliot seed.** Similarity 48 to 135 s and event sort 29 to 90 s over six runs each, timed from a script to the stream's `result` line, with nothing else running; the worker run by hand took 77 and 82 s, and 38 and 51 s. On 11-22 a single run each gave 24 and 23 s, timed in the browser to the first crop. The similarity load spends 47 s in one statement and the event sort 26 s in the "has an embedding" pass. The similarity part of this was the index drop, fixed by `c4e6a8b0d2f3`; see below.
 
 Found on the way:
 
-- **The similarity load changed plan with migration `b9c3d5e7f9a1`.** The worker runs on the model env's SQLite 3.54.1. On the golden copy it walks `idx_files_captured_at_local` and stops at the cap; after the migration it reads every row of `detection_embeddings`, vectors included, and sorts them in a temporary B-tree. Same statistics, one index fewer. But putting `idx_detection_embeddings_detection` back on a copy restored the old plan and not the time (51 s), so the plan flip does not explain the slower sort. Unexplained so far; the spread between runs suggests the OS file cache (16 GB RAM, a 3.4 GB database and Chrome).
-- **Putting all three dropped indexes back made the backend slower on 3.45**, not faster: `labels/stats` 56 to 108 s against 27 to 30 s, `labels/progress` 64 to 76 s against 22 s. One run each, right after building the indexes, so indicative only; nothing points at the drop as a cost.
+- **The similarity sort lost 30 s to migration `b9c3d5e7f9a1`.** The worker runs on the model env's SQLite 3.54.1. Before the migration it walks `idx_files_captured_at_local` and stops at the cap; after it, it reads every row of `detection_embeddings`, vectors included, and sorts them all in a temporary B-tree. Same statistics, one index fewer. Found with the worker run alone, outside the app, in a 2x2 of the 11-22 script and the current one on the Elliot golden copy before and after the migration, two rounds, interleaved:
+
+  | | 11-22 script | Current script |
+  |---|---|---|
+  | Before the migration | 35 / 39 s | 44 / 42 s |
+  | After the migration | 67 / 62 s | 68 / 64 s |
+
+  The whole difference is the load step: 3 to 4 s before, 31 to 35 s after. With only `idx_detection_embeddings_detection` added back the sort took 25 and 24 s; those two ran back to back on one warm copy, not interleaved with a second 3.4 GB copy, so they compare with 11-22 rather than with the grid. `c4e6a8b0d2f3` restores the index. Checked the same day on fresh golden copies with both migrations, the sort worker timed from a script, twice each:
+
+  | | Similarity | Event sort |
+  |---|---|---|
+  | Elliot seed | 16 / 19 s (load step about 1 s) | 19 / 19 s |
+  | Elliot seed, species filter | 14 / 11 s | 4.5 / 3.8 s |
+  | Simon seed, "Small" | 6.3 / 5.9 s | 2.8 / 2.7 s |
+  | Simon seed, "Small", species filter | 2.7 s (once) | |
+
+  The similarity load plan on 3.54 is back to `SCAN f USING INDEX idx_files_captured_at_local`. The event sort took 36 to 38 s in all four cells of the 2x2, so the migration does not touch it; why it is slower than the single 23 s run of 11-22 is not known.
+- **An earlier check in the running app pointed the wrong way.** Adding the three indexes back to the copy the backend had open gave a similarity sort of 51 s and made the backend slower (`labels/stats` 56 to 108 s). That run came right after building the indexes and is not comparable; the 2x2 above replaces it.
 - **A verify in the detail view on "Small" refetched the counts pair twice within a second.** On the Elliot seed once. Cause not looked at.
 - **The Files tab path sort is 3 s per page cold, 0.5 s warm** on the Elliot seed. The page sorts every file of the project in a temporary B-tree; on a warm cache that is cheap.
 

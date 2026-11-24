@@ -57,6 +57,12 @@ class DetectionEmbedding(Base):
             "embedding_model_id",
             unique=True,
         ),
+        # Looks like a duplicate of the one above, and is not: without it
+        # the sort worker's SQLite (3.54) loads the similarity sort by
+        # scanning and sorting every embedding, 30 s more on a 2.5M-box
+        # project. Dropped in b9c3d5e7f9a1, restored in c4e6a8b0d2f3.
+        # Keep it.
+        Index("idx_detection_embeddings_detection", "detection_id"),
         # Child key of the NO ACTION FK to jobs. Deleting a project deletes
         # its jobs, and each job delete has to prove no embedding still
         # references it; unindexed that is a full scan of this table per job.
