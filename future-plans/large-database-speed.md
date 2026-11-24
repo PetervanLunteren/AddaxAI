@@ -2,7 +2,7 @@
 
 Overarching plan, written 2026-11-20 after an investigation of the code, the query plans and how other tools handle the same problem. Phase 0, phase A and most of phase B are built; "Status and next steps" below says where the work stands. Each phase gets its own detailed plan in its own session; this file is the map they start from, so nobody has to redo the investigation.
 
-The short version: the app is slow on a large database mainly because of its own habits, not because of the size. It opens a new database connection for every request, runs heavy queries where they block every other request, and does full-database work at every launch. Those are cheap to fix with standard practice (phase A). A second group is query plans that start from the whole database where they should start from the project (phase B). Deleting data does not make pages faster, it saves disk space and backup time, so a clean-up dialog and an archive option are features for later, not speed fixes.
+The short version: the app is slow on a large database mainly because of its own habits, not because of the size. It opens a new database connection for every request, runs heavy queries where they block every other request, and does full-database work at every launch. Those are cheap to fix with standard practice (phase A). A second group is query plans that start from the whole database where they should start from the project (phase B). Deleting data does not make a project's own pages faster, it saves disk space and backup time and shortens the project list, so a clean-up dialog and an archive option are not part of this plan. They are in `TODO.md` under "Nice to haves" (CLEAN UP DATABASE, ARCHIVE A PROJECT), with their design.
 
 ## Status and next steps (2026-11-24)
 
@@ -40,13 +40,10 @@ Built in phase B, details under "Measured facts (2026-11-22, phase B baseline)":
 - No server-side cache of the label lists (see the note under the phase B measured facts).
 - `SortSelector.tsx` says the random seed "lives in URL state"; on the Files tab it does not.
 
-### After this release: the features under "Later"
+### After this release
 
-Not speed fixes, and none of them is built. Each gets its own plan, after users have tried the faster version:
-
-- **Folder runs:** a new run for the same folder replaces the hidden duplicate.
-- **Clean-up dialog** ("Clean up database…"): legacy boxes, embeddings per project, duplicate folder runs, inactive projects, and compact. Simon's database makes the case: about a tenth of it is the same folders analysed again, and 13% of the file is free space only a compact gives back.
-- **Archive a project:** a bundle without media, the project deleted, a greyed-out card with restore.
+- **Folder runs** (under "Later" below): a new run for the same folder replaces the hidden duplicate. Small, its own plan.
+- **Clean up database** and **Archive a project** moved to `TODO.md` under "Nice to haves" on 2026-11-24, with their design. They save disk space and backup time, not page speed.
 
 ### Measuring in a new session
 
@@ -201,39 +198,17 @@ The numbers are under "Measured facts (2026-11-21, after phase A)".
   **Built (2026-11-22):** `--shape elliot` copies each of his 58 deployments (photos, boxes, share at 0.2 or more), about 270 species weighted 1/rank, events of about 62 photos, no legacy tail. Full scale gave 1,271,059 photos, 2,568,006 boxes, 763,734 embeddings and 20,669 events (his: 1,271,059, 2,571,682, 772,337, 20,555), 3.4 GB, in 20 minutes. Golden copy: `/Volumes/2TB-SSD/addaxai-speed/golden-elliot`.
 - **Measuring.** "How we measure" gets the Labels page clicks: the time from a verify, a scroll through blanks and a filter change until the page is settled, on both shapes.
 
-## Later: features
+## Later: folder runs
 
-Neither is a speed fix once A and B are in. Both wait until users have tried the faster version.
-
-### Folder runs (small, can go with either release)
+Not a speed fix. Small, can go with any release.
 
 A folder run is a hidden project with all its data, kept forever, no cap (`routers/folder_runs.py:524-560`). When several runs point at the same folder only the newest is listed, so the older ones are invisible and cannot be deleted (`:603-609`, `:386-387`). `delete_folder_run` also leaves the job rows.
 
 - **Decided:** a new run for the same folder replaces the hidden duplicate.
-- **Decided:** existing hidden duplicates are not deleted automatically. The clean-up dialog lists them.
+- **Decided:** existing hidden duplicates are not deleted automatically. The clean-up dialog (CLEAN UP DATABASE in `TODO.md`) lists them.
 - **Rejected:** keeping only the last ten runs. It deletes data without the user noticing.
 
-### Clean-up dialog
-
-"Clean up database…" in the File menu under Back up and Restore (`electron/src/main.ts:1191-1216`, add to `SETUP_GATED_MENU_IDS`). Pattern from `docker system df`, macOS Storage and Thunderbird: show what can be reclaimed, confirm, back up, act. Sold as a way to save space and backup time. No "X% faster" claim, because we cannot honestly make one.
-
-| Candidate | Verdict |
-|---|---|
-| Boxes below the project threshold | **Never.** The threshold is applied at read time (`threshold_or_verified`), users can lower it later, and exports and the reprocess matcher need the rows. Deleting them is the design that caused the phantom reprocess errors. |
-| Rejected and false-detection rows | **Never.** They record a human judgement; undo and `addaxai-detections.csv` depend on them. |
-| Legacy boxes between 0.005 and 0.01 | Yes. No screen reaches them; 19% of rows in one measured database. |
-| Embeddings, per project | Yes. They can be rebuilt, and they are the largest per-row cost (about 3.9 KB each on disk with ViT-L, measured). |
-| Folder runs, including the hidden duplicates | Yes, listed with size and date, chosen by the user. |
-| Projects that have been inactive for a while | Listed with size and last use, so the user can delete them here (or archive them, once that exists). Never suggested for deletion on age alone. |
-| Compact (VACUUM) | Required, or nothing above shrinks the file. The live database is never vacuumed today and has `auto_vacuum=NONE`, so every delete leaves free pages in the file and in each backup. Minutes on a 4 GB file, needs up to twice the size in free disk space, runs with the app locked and progress shown. |
-
-Sizes come from `dbstat` and `PRAGMA freelist_count`. The packaged SQLite (3.45.1, macOS build checked 2026-11-20) has no `dbstat` compiled in, so the backend cannot ask it for sizes. The dialog needs another source, for example the `env-addaxai-base` interpreter (3.54), which has it. Everything goes through the normal delete code (`purge_deployment_data`), never an ad-hoc script.
-
-### Archive a project
-
-Built on project bundles (`services/project_package.py`), which already carry detections, verifications, embeddings, events, observations and tracks by id, and already migrate an older bundle forward on a temporary copy at import. Archive = write a bundle without media to an archive folder, delete the project, compact, show a greyed-out card with a restore option. Migration happens at restore, the way Lightroom and Camelot do it; migrating every archive at update time breaks when one sits on an unplugged drive.
-
-Gaps to close first: the audit log, the deployment queue, job details and a custom project picture are not carried; label rows are matched to local ones on import; `shortcut_labels` after a label remap is unchecked.
+The clean-up dialog and the project archive were worked out here on 2026-11-20 and moved to `TODO.md` under "Nice to haves" on 2026-11-24.
 
 ## What we rejected (so nobody rebuilds it)
 
@@ -397,7 +372,7 @@ What it shows:
 
 - **The 900K deployment is gone.** He has split it, as advised in October, into projects of one deployment each. "A small project next to a big one" still applies, less extremely: the biggest is about a fifth of the database. The seed stays the harder test, so it was not changed.
 - **His machine reads about 6 to 12 times slower per row than Elliot's.** The script's per-deployment counts took 97 s and 202 s on his database against 17 s and 29 s on Elliot's, which has more boxes. A pass over one of his big projects can take a minute or more. Fewer passes per page and per click, the point of phase B, matter more for him than the seed's timings suggest.
-- **About a tenth of the database is the same folders analysed again.** Four deployments are identical (24,419 photos, 30,113 boxes each), three more are (9,999 photos), and three pairs more. 13% of the file (121K pages, about 500 MB) is free space left by deletes, which only a compact gives back. Both are what the clean-up dialog under "Later" is for; neither is a speed fix.
+- **About a tenth of the database is the same folders analysed again.** Four deployments are identical (24,419 photos, 30,113 boxes each), three more are (9,999 photos), and three pairs more. 13% of the file (121K pages, about 500 MB) is free space left by deletes, which only a compact gives back. Both are what CLEAN UP DATABASE in `TODO.md` is for; neither is a speed fix.
 - **Events of about 50 photos** confirm the time-lapse cameras of his October report. That is `future-plans/sequences-and-independence.md`, not this plan.
 - **His `idx_detections_track` statistic is a real one** (`1441894 1139`): he has videos and 1,266 tracks. Dropping it after `ANALYZE` (`_UNUSABLE_STAT_INDEXES`) leaves the planner assuming a selective index, which is what that index is on his data.
 
@@ -421,15 +396,11 @@ What it shows:
 - Partial indexes: https://www.sqlite.org/partialindex.html
 - WAL and long readers: https://www.sqlite.org/wal.html
 - Online backup: https://www.sqlite.org/backup.html
-- VACUUM and auto_vacuum: https://www.sqlite.org/lang_vacuum.html
-- `dbstat`: https://www.sqlite.org/dbstat.html
 - Keyset paging with row values: https://www.sqlite.org/rowvalue.html#scrolling_window_queries
 - ATTACH limits: https://www.sqlite.org/lang_attach.html, https://www.sqlite.org/limits.html
 - B-tree depth: https://use-the-index-luke.com/sql/anatomy/the-tree
 - Maintenance when idle, never at start: Firefox https://searchfox.org/mozilla-central/source/storage/VacuumManager.cpp, Jellyfin https://jellyfin.org/docs/general/server/tasks
 - Separate files for rebuildable data and a cleaning tool: digiKam https://docs.digikam.org/en/maintenance_tools/maintenance_database.html
-- Archive by export, migrate on open: Lightroom https://helpx.adobe.com/lightroom-classic/desktop/manage-catalogs-and-files/create-catalogs.html, Camelot https://camelot-project.readthedocs.io/en/latest/datasets.html
-- Show reclaimable space, then act: https://docs.docker.com/reference/cli/docker/system/df/
 
 ## Key files
 
@@ -442,6 +413,5 @@ What it shows:
 - `backend/app/api/crud/file.py`, `crud/event.py`, `crud/statistics.py`: the heavy aggregates
 - `backend/app/api/routers/folder_runs.py`, `crud/project.py`: folder runs and their delete
 - `backend/app/api/crud/deployment.py`: `purge_deployment_data`
-- `backend/app/services/project_package.py`: bundles, the base for archive
 - `electron/src/main.ts`: `/health` polling, the app menu
-- `DEVELOPERS.md`: "Deleting analysis data", "Never run a bare ANALYZE", "Database backups", "Datetime conventions", "Project packages"
+- `DEVELOPERS.md`: "Deleting analysis data", "Never run a bare ANALYZE", "Database backups", "Datetime conventions"
