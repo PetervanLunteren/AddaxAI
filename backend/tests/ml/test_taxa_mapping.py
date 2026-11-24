@@ -59,8 +59,9 @@ def test_taxa_are_keyed_the_way_megadetector_keys_them(taxa):
 
 
 def test_a_good_file_loads_lowercased_with_the_note_columns_dropped(taxa):
+    # Starts with a byte order mark, as Excel's "CSV UTF-8" writes it.
     text = _csv(
-        "﻿input_latin,output_name,input_common,output_alt_name",
+        "\ufeffinput_latin,output_name,input_common,output_alt_name",
         "Aepyceros, Impala ,impala species,aepyceros melampus",
         "",
         "accipitridae,bird of prey,,",

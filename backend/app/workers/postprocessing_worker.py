@@ -96,7 +96,9 @@ async def process_postprocessing_job(job_id: str) -> None:
         job_crud.update_job_status(db, job_id, "running")
         await ws_manager.send_progress(job_id, "Starting postprocessing...", 0.0)
 
-        smoothing_enabled = (
+        # Rollup, the taxa list and smoothing together: the label cleanup
+        # steps of docs/understanding/label-cleanup.md.
+        label_cleanup_enabled = (
             project.event_smoothing
             or project.taxonomic_rollup
             or bool(project.taxa_mapping)
@@ -228,7 +230,7 @@ async def process_postprocessing_job(job_id: str) -> None:
                     )
                     excluded_tax_ids = {r[0] for r in exc_rows}
 
-                if smoothing_enabled:
+                if label_cleanup_enabled:
                     # Heavy: subprocess + rollup. Run off-loop so the
                     # progress frame we just emitted actually flushes
                     # to the client.
@@ -352,9 +354,9 @@ async def process_postprocessing_job(job_id: str) -> None:
         # Report completion
         # "folders", not "deployments": the same modal renders this line for
         # the folder-run flow, which has no deployments. And "Settings
-        # applied" rather than naming smoothing: `smoothing_enabled` is true
-        # whenever rollup is on, so the old line claimed smoothing on
-        # projects that have it switched off.
+        # applied" rather than naming smoothing: `label_cleanup_enabled` is
+        # also true with rollup or a taxa list alone, so a line naming
+        # smoothing claimed it on projects that have it switched off.
         n_skipped = sum(entry["count"] for entry in skipped.values())
         done = total - n_skipped
         if done == 0:

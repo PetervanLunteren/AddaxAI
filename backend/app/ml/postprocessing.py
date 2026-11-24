@@ -40,7 +40,7 @@ from app.utils.subprocess_env import clean_python_env
 logger = get_logger(__name__)
 
 
-def compute_postprocessing_settings_hash(project) -> str:
+def compute_postprocessing_settings_hash(project: Project) -> str:
     """
     Compute SHA-256 hash of the project's postprocessing-relevant settings.
 
@@ -149,7 +149,7 @@ def build_smoother_input(
     return smoother_input
 
 
-def _find_classification_model_dir(project, db: Session) -> Path | None:
+def _find_classification_model_dir(project: Project, db: Session) -> Path | None:
     """
     Find the classification model directory for taxonomy.csv lookup.
 
@@ -189,7 +189,7 @@ def _get_ml_python_path() -> Path:
     return env_manager.get_python("env-addaxai-base")
 
 
-def _ensure_7_token_descriptions(md_results: dict, project, db: Session) -> bool:
+def _ensure_7_token_descriptions(md_results: dict, project: Project, db: Session) -> bool:
     """
     Ensure classification_category_descriptions are in 7-token format.
 
@@ -323,7 +323,7 @@ def _run_ml_script(
 
 def apply_taxa_mapping(
     md_results: dict,
-    project,
+    project: Project,
     cls_model_dir: Path | None,
     job_id: str | None,
 ) -> dict:
@@ -356,7 +356,7 @@ def apply_taxa_mapping(
         )
 
 
-def add_taxa_list_ancestor_rows(md_results: dict, project, db: Session) -> None:
+def add_taxa_list_ancestor_rows(md_results: dict, project: Project, db: Session) -> None:
     """
     Give a label_taxonomy row to every label the taxa list produced that is
     not one of its own: a prediction can stop at a parent of a listed

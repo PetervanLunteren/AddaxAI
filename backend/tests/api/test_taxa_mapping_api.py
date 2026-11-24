@@ -7,7 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.ml.taxa_mapping import RETIRED
+from app.api.schemas.project import TaxaRow
+from app.ml.taxa_mapping import LABEL, LATIN, RETIRED
 from app.ml.taxonomy_db import (
     batch_resolve_taxonomy_ids,
     populate_taxonomy_from_csv,
@@ -162,6 +163,26 @@ def test_a_tampered_list_is_refused_on_save(client, db, model_id):
     assert resp.status_code == 422
     db.expire_all()
     assert client.get(f"/api/projects/{project.id}").json()["country_code"] == "KEN"
+
+
+def test_a_row_with_other_keys_is_refused_at_the_door(client, db, model_id):
+    project = make_project(db, classification_model_id=model_id, country_code="KEN")
+    db.commit()
+    other_keys = [{"taxon": "aepyceros", "name": "impala"}]
+
+    resp = client.patch(
+        f"/api/projects/{project.id}", json={"taxa_mapping": _mapping(other_keys)}
+    )
+    # FastAPI's own validation error, before any taxa list code runs.
+    assert resp.status_code == 422
+    assert any(error["loc"][-1] == LATIN for error in resp.json()["detail"])
+    db.expire_all()
+    assert client.get(f"/api/projects/{project.id}").json()["country_code"] == "KEN"
+
+
+def test_the_schema_row_has_the_stored_keys():
+    """The API row and the stored row cannot drift apart."""
+    assert set(TaxaRow.model_fields) == {LATIN, LABEL}
 
 
 def test_create_with_a_list(client, model_id):

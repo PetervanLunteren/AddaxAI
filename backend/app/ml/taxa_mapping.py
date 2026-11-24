@@ -30,6 +30,7 @@ from app.ml.taxonomic_rollup import (
     format_common_name,
     format_scientific_name_from_taxonomy_row,
 )
+from app.models import Project
 
 logger = get_logger(__name__)
 
@@ -166,7 +167,7 @@ def parse_taxa_list(text: str, taxa: dict[str, dict[str, str]]) -> list[dict[str
     label is the label that ends up on the detections. Rows without a
     Latin name are skipped.
     """
-    reader = csv.DictReader(io.StringIO(text.lstrip("﻿")))
+    reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")))
     columns = [c.strip() for c in reader.fieldnames or []]
     fmt = next((f for f in FORMATS if f[0] in columns), None)
     if fmt is None:
@@ -191,13 +192,10 @@ def parse_taxa_list(text: str, taxa: dict[str, dict[str, str]]) -> list[dict[str
     return rows
 
 
-def normalize_rows(rows: Iterable[dict]) -> list[dict[str, str]]:
-    """Keep the two keys of a stored row, stripped and lowercased."""
+def normalize_rows(rows: Iterable[dict[str, str]]) -> list[dict[str, str]]:
+    """Strip and lowercase the two keys of each stored row."""
     return [
-        {
-            LATIN: (row.get(LATIN) or "").strip().lower(),
-            LABEL: (row.get(LABEL) or "").strip().lower(),
-        }
+        {LATIN: row[LATIN].strip().lower(), LABEL: row[LABEL].strip().lower()}
         for row in rows
     ]
 
@@ -260,14 +258,14 @@ def taxa_for_model(model_id: str | None) -> dict[str, dict[str, str]]:
     return load_speciesnet_taxa(str(path))
 
 
-def clear_location(project) -> None:
+def clear_location(project: Project) -> None:
     """A taxa list replaces the country: no country, state or exclusions."""
     project.country_code = None
     project.state_code = None
     project.excluded_classes = []
 
 
-def settle_project_taxa_mapping(db: Session, project) -> None:
+def settle_project_taxa_mapping(db: Session, project: Project) -> None:
     """
     Hold the rule of a project with a taxa list, before it is committed:
     no country and no exclusions (otherwise the export would still filter
@@ -288,7 +286,7 @@ def settle_project_taxa_mapping(db: Session, project) -> None:
     relink_taxa_list_labels(db, project, labels)
 
 
-def relink_taxa_list_labels(db: Session, project, labels: list[str]) -> None:
+def relink_taxa_list_labels(db: Session, project: Project, labels: list[str]) -> None:
     """
     Drop the project's rows that the current list (and model) no longer
     has, and relink the project's detections on every label a list row

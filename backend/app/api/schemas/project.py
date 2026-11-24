@@ -26,13 +26,20 @@ ProjectMode = Literal["folder_run", "research"]
 MediaFilter = Literal["all", "images", "videos"]
 
 
+class TaxaRow(BaseModel):
+    """One row of a taxa list: a SpeciesNet taxon and the label it gets.
+    The field names are the stored keys (LATIN, LABEL in app.ml.taxa_mapping)."""
+
+    latin: str
+    label: str
+
+
 class TaxaMapping(BaseModel):
-    """A loaded taxa list (app.ml.taxa_mapping). The rows carry the two
-    columns AddaxAI uses; their names live in that module, so they are
-    checked there (check_rows), not spelled out as fields here."""
+    """A loaded taxa list (app.ml.taxa_mapping), checked against the
+    project's model there (check_rows)."""
 
     file_name: str = Field(..., min_length=1, max_length=255)
-    rows: list[dict[str, str]]
+    rows: list[TaxaRow]
 
 
 def _validate_iana_timezone(value: str) -> str:
