@@ -451,7 +451,8 @@ function LabelFilterRow({
         }}
         open={open}
         onOpenChange={setOpen}
-        countUnit={labelTree.count_unit}
+        countUnit="file"
+        countsLoading={form.labelCountsLoading}
       />
     </SettingRow>
   );

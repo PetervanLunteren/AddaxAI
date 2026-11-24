@@ -23,7 +23,7 @@ from app.ml.postprocessing import (
     update_database_from_smoothed_results,
 )
 from app.models import Detection, File
-from tests.conftest import make_file
+from tests.conftest import label_tree, make_file
 
 from .conftest import build_detection_json, create_tiny_jpeg, create_video_frames, write_json
 
@@ -512,7 +512,6 @@ def test_a_box_left_unclassified_keeps_its_animal_row_and_stays_filterable(
     grid and counted in the tab but missing from the tree and from
     "Select all". A user with 733 such boxes read that as "no Animal
     option" and had no way to find them."""
-    from app.api.crud.label_tree import build_label_filter_tree
     from app.ml.taxonomy_db import ensure_builtin_labels
 
     s = deployment_scaffold
@@ -533,7 +532,7 @@ def test_a_box_left_unclassified_keeps_its_animal_row_and_stays_filterable(
         assert det.label_taxonomy_id == animal_row
         assert det.common_name == "Animal"
 
-    tree = build_label_filter_tree(s["project"].id, db, count_by="detection")
+    tree = label_tree(db, s["project"].id)
     assert animal_row in tree["all_leaf_ids"]
 
 

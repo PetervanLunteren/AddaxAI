@@ -184,22 +184,9 @@ class EventVerificationStats(BaseModel):
     verified_detections: int
 
 
-class EventFilterOptions(BaseModel):
-    """Available filter options for a project's events."""
-
-    labels: list[str]
-    date_range: DateRange | None
-    label_event_counts: dict[str, int]
-    scientific_labels: dict[str, str] | None = None
-    common_labels: dict[str, str] | None = None
-    # Lowest classification confidence in the project; the filter bars'
-    # data-driven clamp for the classification range slider. None when
-    # no classifications exist yet.
-    min_label_confidence: float | None = None
-
-
 class LabelTreeNode(BaseModel):
-    """A node in the label filter tree."""
+    """A node in the label filter tree. Shape only: the counts arrive
+    separately (`LabelCounts`) and the front end puts them on the leaves."""
 
     id: str
     name: str
@@ -207,14 +194,38 @@ class LabelTreeNode(BaseModel):
     children: list["LabelTreeNode"]
     selected: bool
     annotation: str | None = None
-    count: int | None = None
+    # Leaves under a parent; None on a leaf.
     child_count: int | None = None
 
 
-class LabelTreeResponse(BaseModel):
-    """Response for the label filter tree endpoint."""
+class LabelTree(BaseModel):
+    """The label filter tree: every label the project has, nested by rank."""
 
     tree: list[LabelTreeNode]
     all_leaf_ids: list[str]
-    label_event_counts: dict[str, int]
-    count_unit: str
+
+
+class EventFilterOptions(BaseModel):
+    """Everything about the labels a project has, in one pass over its
+    boxes. Changes only when labels change, so the pages share it."""
+
+    labels: list[str]
+    date_range: DateRange | None
+    scientific_labels: dict[str, str] | None = None
+    common_labels: dict[str, str] | None = None
+    # Lowest classification score among the labels' boxes; the filter
+    # bars' clamp for the classification range slider. None when nothing
+    # is classified yet.
+    min_label_confidence: float | None = None
+    # Colour per label, keyed by taxonomy id and lowercased name
+    # (`crud/label_colors.py`).
+    label_colors: dict[str, str]
+    # None when the project has no labels: the filter shows a flat list.
+    label_tree: LabelTree | None
+
+
+class LabelCounts(BaseModel):
+    """How many of each label a page would show under its filters, keyed
+    by taxonomy id. A label that is missing counts 0."""
+
+    counts: dict[str, int]

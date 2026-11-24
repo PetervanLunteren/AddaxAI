@@ -1,11 +1,12 @@
-"""Tests for the /api/events/label-tree endpoint and build_label_filter_tree."""
+"""Tests for the label filter tree (in `filter-options`) and its counts (`label-counts`)."""
 
 from datetime import datetime
 
-from app.api.crud.label_tree import build_label_filter_tree
 from app.ml.taxonomy_db import link_detections_to_taxonomy
 from app.models.label_taxonomy import LabelTaxonomy
 from tests.conftest import (
+    label_counts,
+    label_tree,
     make_deployment,
     make_detection,
     make_event_with_files,
@@ -94,7 +95,7 @@ def test_build_tree_with_labels_and_rollups(db):
     link_detections_to_taxonomy(p.id, db)
     db.expire_all()
 
-    result = build_label_filter_tree(p.id, db)
+    result = label_tree(db, p.id)
     assert result is not None
     assert "tree" in result
     assert "all_leaf_ids" in result
@@ -144,7 +145,7 @@ def test_build_tree_with_labels_and_rollups(db):
 def test_build_tree_no_model_no_detections(db):
     """Returns None when project has no model and no detections."""
     p = make_project(db, classification_model_id=None)
-    result = build_label_filter_tree(p.id, db)
+    result = label_tree(db, p.id)
     assert result is None
 
 
@@ -177,7 +178,7 @@ def test_build_tree_detection_only(db):
             category=cat,
         )
 
-    result = build_label_filter_tree(p.id, db)
+    result = label_tree(db, p.id)
     assert result is not None
     assert {n["name"] for n in result["tree"]} == {"Animal", "Person", "Vehicle"}
 
@@ -191,7 +192,7 @@ def test_build_tree_detection_only(db):
 def test_build_tree_no_detections(db):
     """Returns None when project has no detections."""
     p = make_project(db, classification_model_id=MODEL_ID)
-    result = build_label_filter_tree(p.id, db)
+    result = label_tree(db, p.id)
     assert result is None
 
 
@@ -199,29 +200,30 @@ def test_build_tree_no_taxonomy_rows(db):
     """Detections without taxonomy links don't appear in the tree."""
     p = _setup_project_with_detections(db, ["leopard"])
     # Don't add any taxonomy rows and don't link
-    result = build_label_filter_tree(p.id, db)
+    result = label_tree(db, p.id)
     # No linked detections, so tree should be None
     assert result is None
 
 
 def test_build_tree_with_event_counts(db):
-    """Event counts appear in the label_event_counts dict."""
+    """Events per label, keyed by taxonomy id."""
     p = _setup_project_with_detections(db, ["leopard", "leopard", "lion"])
-    _add_taxonomy(db, "leopard", "species",
-                  taxon_class="mammalia", taxon_order="carnivora",
-                  taxon_family="felidae", taxon_genus="panthera", taxon_species="pardus")
-    _add_taxonomy(db, "lion", "species",
-                  taxon_class="mammalia", taxon_order="carnivora",
-                  taxon_family="felidae", taxon_genus="panthera", taxon_species="leo")
+    leopard = _add_taxonomy(db, "leopard", "species",
+                            taxon_class="mammalia", taxon_order="carnivora",
+                            taxon_family="felidae", taxon_genus="panthera",
+                            taxon_species="pardus")
+    lion = _add_taxonomy(db, "lion", "species",
+                         taxon_class="mammalia", taxon_order="carnivora",
+                         taxon_family="felidae", taxon_genus="panthera",
+                         taxon_species="leo")
 
     link_detections_to_taxonomy(p.id, db)
     db.expire_all()
 
-    result = build_label_filter_tree(p.id, db)
-    assert result is not None
-    counts = result["label_event_counts"]
-    assert counts["leopard"] >= 1
-    assert counts["lion"] >= 1
+    assert label_tree(db, p.id) is not None
+    counts = label_counts(db, p.id, "event")
+    assert counts[leopard.id] == 2
+    assert counts[lion.id] == 1
 
 
 def test_unmatched_label_in_other(db):
@@ -237,7 +239,7 @@ def test_unmatched_label_in_other(db):
     link_detections_to_taxonomy(p.id, db)
     db.expire_all()
 
-    result = build_label_filter_tree(p.id, db)
+    result = label_tree(db, p.id)
     assert result is not None
     # Only leopard should appear (linked), blank has no taxonomy
     assert leopard_tax.id in result["all_leaf_ids"]
@@ -262,16 +264,26 @@ def test_filter_by_taxonomy_id(client, db):
 
 
 def test_label_tree_endpoint(client, db):
-    """The /label-tree endpoint returns tree or null."""
+    """`filter-options` carries the tree, null without labels, and
+    `label-counts` answers an empty map."""
     p = make_project(db, classification_model_id=MODEL_ID)
-    resp = client.get(f"/api/events/label-tree?project_id={p.id}")
+    resp = client.get(f"/api/events/filter-options?project_id={p.id}")
     assert resp.status_code == 200
-    # No detections -> null
-    assert resp.json() is None
+    assert resp.json()["label_tree"] is None
+    resp = client.get(f"/api/events/label-counts?project_id={p.id}&count_by=event")
+    assert resp.status_code == 200
+    assert resp.json() == {"counts": {}}
+
+
+def test_label_counts_rejects_an_unknown_unit(client, db):
+    p = make_project(db, classification_model_id=MODEL_ID)
+    resp = client.get(f"/api/events/label-counts?project_id={p.id}&count_by=photo")
+    assert resp.status_code == 400
 
 
 def test_label_tree_endpoint_with_data(client, db):
-    """The /label-tree endpoint returns tree when data exists."""
+    """The tree in `filter-options` and its counts in `label-counts`, by
+    taxonomy id. No count travels with the tree."""
     p = _setup_project_with_detections(db, ["leopard"])
     leopard_tax = _add_taxonomy(
         db, "leopard", "species",
@@ -281,18 +293,19 @@ def test_label_tree_endpoint_with_data(client, db):
     link_detections_to_taxonomy(p.id, db)
     db.expire_all()
 
-    resp = client.get(f"/api/events/label-tree?project_id={p.id}")
+    resp = client.get(f"/api/events/filter-options?project_id={p.id}")
     assert resp.status_code == 200
-    data = resp.json()
+    data = resp.json()["label_tree"]
     assert data is not None
-    assert "tree" in data
-    assert "all_leaf_ids" in data
     assert leopard_tax.id in data["all_leaf_ids"]
-    assert data["count_unit"] == "event"
+    leaf = next(n for n in _walk(data["tree"]) if n["id"] == leopard_tax.id)
+    assert "count" not in leaf
+    resp = client.get(f"/api/events/label-counts?project_id={p.id}&count_by=event")
+    assert resp.json() == {"counts": {leopard_tax.id: 1}}
 
 
 def test_leaf_has_structured_fields(db):
-    """Label leaf nodes have annotation and count fields."""
+    """Label leaf nodes have annotation fields, parents their leaf count."""
     p = _setup_project_with_detections(db, ["leopard"])
     leopard_tax = _add_taxonomy(
         db, "leopard", "species",
@@ -302,7 +315,7 @@ def test_leaf_has_structured_fields(db):
     link_detections_to_taxonomy(p.id, db)
     db.expire_all()
 
-    result = build_label_filter_tree(p.id, db)
+    result = label_tree(db, p.id)
     assert result is not None
 
     def find_node(nodes, target_id):
@@ -318,13 +331,11 @@ def test_leaf_has_structured_fields(db):
     assert leaf is not None
     assert leaf["name"] == "P. pardus"
     assert leaf["annotation"] == "leopard"
-    assert leaf["count"] >= 1
+    assert label_counts(db, p.id)[leopard_tax.id] == 1
 
-    # Parent should have child_count and count
     mammalia = find_node(result["tree"], "class:mammalia")
     assert mammalia is not None
-    assert mammalia.get("child_count") is not None
-    assert mammalia.get("count") is not None
+    assert mammalia["child_count"] == 1
 
 
 def test_rollup_leaf_annotation_falls_back_to_the_rank(db):
@@ -341,7 +352,7 @@ def test_rollup_leaf_annotation_falls_back_to_the_rank(db):
     link_detections_to_taxonomy(p.id, db)
     db.expire_all()
 
-    result = build_label_filter_tree(p.id, db)
+    result = label_tree(db, p.id)
     assert result is not None
 
     def find_node(nodes, target_id):
@@ -381,7 +392,7 @@ def test_rollup_leaf_annotation_disambiguates_collisions(db):
     link_detections_to_taxonomy(p.id, db)
     db.expire_all()
 
-    result = build_label_filter_tree(p.id, db)
+    result = label_tree(db, p.id)
     assert result is not None
 
     def find_node(nodes, target_id):
@@ -457,8 +468,7 @@ def test_video_counts_one_card_per_track(db):
     p = make_project(db, classification_model_id=MODEL_ID)
     _f, tax = _video_with_frames(db, p, [0, 10, 20])
 
-    result = build_label_filter_tree(p.id, db, count_by="detection")
-    assert result["label_event_counts"]["deer"] == 1
+    assert label_counts(db, p.id, "detection") == {tax.id: 1}
 
 
 def test_untracked_only_label_leaves_the_tree(db):
@@ -483,10 +493,8 @@ def test_untracked_only_label_leaves_the_tree(db):
     )
     db.flush()
 
-    result = build_label_filter_tree(p.id, db, count_by="detection")
-    # Counts are keyed by label name; leaf ids by taxonomy id.
-    assert result["label_event_counts"]["deer"] == 1
-    assert "chimpanzee" not in result["label_event_counts"]
+    result = label_tree(db, p.id)
+    assert label_counts(db, p.id, "detection") == {_tax.id: 1}
     assert ghost.id not in result["all_leaf_ids"]
 
 
@@ -512,8 +520,8 @@ def test_verified_untracked_label_still_leaves_the_tree(db):
     )
     db.flush()
 
-    result = build_label_filter_tree(p.id, db, count_by="detection")
-    assert "serval" not in result["label_event_counts"]
+    result = label_tree(db, p.id)
+    assert serval.id not in label_counts(db, p.id, "detection")
     assert serval.id not in result["all_leaf_ids"]
 
 
@@ -536,8 +544,8 @@ def test_a_card_off_the_cover_frame_is_listed(db):
     )
     db.flush()
 
-    result = build_label_filter_tree(p.id, db, count_by="detection")
-    assert result["label_event_counts"]["serval"] == 1
+    result = label_tree(db, p.id)
+    assert label_counts(db, p.id, "detection")[serval.id] == 1
     assert serval.id in result["all_leaf_ids"]
 
 
@@ -558,8 +566,7 @@ def test_image_detections_are_never_gated(db):
         )
     db.flush()
 
-    result = build_label_filter_tree(p.id, db, count_by="detection")
-    assert result["label_event_counts"]["fox"] == 3
+    assert label_counts(db, p.id, "detection") == {tax.id: 3}
 
 
 # ---------------------------------------------------------------------------
@@ -598,7 +605,7 @@ def test_unranked_branch_is_named_no_taxonomy(db):
     )
     db.flush()
 
-    result = build_label_filter_tree(p.id, db, count_by="detection")
+    result = label_tree(db, p.id)
     names = [n["name"] for n in result["tree"]]
     assert NO_TAXONOMY in names
     assert "Other" not in names
@@ -632,7 +639,7 @@ def test_two_rank_less_rows_sharing_a_name_stay_separate(db):
     )
     db.flush()
 
-    result = build_label_filter_tree(p.id, db, count_by="detection")
+    result = label_tree(db, p.id)
 
     # Both rows are reachable as their own filter value.
     assert builtin.id in result["all_leaf_ids"]
@@ -646,10 +653,11 @@ def test_two_rank_less_rows_sharing_a_name_stay_separate(db):
         **roots,
         **{leaf["id"]: leaf for node in result["tree"] for leaf in node["children"]},
     }
-    # Each leaf carries its own count, not the sum of both (which would
-    # be 4 on either leaf).
-    assert leaves[builtin.id]["count"] == 3
-    assert leaves[rollup.id]["count"] == 1
+    # Each row has its own count, not the sum of both (which would be 4
+    # on either leaf).
+    counts = label_counts(db, p.id, "detection")
+    assert counts[builtin.id] == 3
+    assert counts[rollup.id] == 1
     # And they are tellable apart, because the leaf is named for its own
     # scientific name rather than the name the two rows share.
     assert leaves[builtin.id]["name"] == "Animal"
@@ -657,6 +665,12 @@ def test_two_rank_less_rows_sharing_a_name_stay_separate(db):
 
 
 # --- variant rank ---
+
+
+def _walk(nodes):
+    for node in nodes:
+        yield node
+        yield from _walk(node["children"])
 
 
 def _find_child(nodes, name):
@@ -699,7 +713,7 @@ def test_variants_nest_under_a_species_node(db):
     )
     link_detections_to_taxonomy(p.id, db)
 
-    result = build_label_filter_tree(p.id, db)
+    result = label_tree(db, p.id)
     assert result is not None
 
     mammalia = _find_child(result["tree"], "Mammalia")
@@ -716,12 +730,13 @@ def test_variants_nest_under_a_species_node(db):
     species_node = _find_child(vulpes["children"], "V. vulpes")
     assert species_node["children"]
     assert species_node["child_count"] == 2
-    assert species_node["count"] == 2
+    counts = label_counts(db, p.id)
+    assert counts[adult.id] + counts[juvenile.id] == 2
 
     adult_leaf = _find_child(species_node["children"], "Adult")
     assert adult_leaf["id"] == adult.id
     assert adult_leaf["annotation"] == "red fox adult"
-    assert adult_leaf["count"] == 1
+    assert counts[adult.id] == 1
     juvenile_leaf = _find_child(species_node["children"], "Juvenile")
     assert juvenile_leaf["id"] == juvenile.id
 
@@ -737,15 +752,17 @@ def test_variant_tree_counts_by_detection(db):
     )
     link_detections_to_taxonomy(p.id, db)
 
-    result = build_label_filter_tree(p.id, db, count_by="detection")
+    result = label_tree(db, p.id)
     assert result is not None
     mammalia = _find_child(result["tree"], "Mammalia")
     carnivora = _find_child(mammalia["children"], "Carnivora")
     canidae = _find_child(carnivora["children"], "Canidae")
     vulpes = _find_child(canidae["children"], "Vulpes")
     species_node = _find_child(vulpes["children"], "V. vulpes")
-    assert species_node["count"] == 3
-    assert _find_child(species_node["children"], "Adult")["count"] == 2
+    assert {c["id"] for c in species_node["children"]} == {adult.id, juvenile.id}
+    counts = label_counts(db, p.id, "detection")
+    assert counts[adult.id] + counts[juvenile.id] == 3
+    assert counts[adult.id] == 2
 
 
 def test_species_level_row_nests_inside_its_variant_species_node(db):
@@ -763,7 +780,7 @@ def test_species_level_row_nests_inside_its_variant_species_node(db):
     )
     link_detections_to_taxonomy(p.id, db)
 
-    result = build_label_filter_tree(p.id, db)
+    result = label_tree(db, p.id)
     assert result is not None
     mammalia = _find_child(result["tree"], "Mammalia")
     carnivora = _find_child(mammalia["children"], "Carnivora")

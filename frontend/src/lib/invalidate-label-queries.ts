@@ -2,17 +2,22 @@
  * Refetch everything that describes "which labels exist in this project"
  * after a relabel or a custom label edit.
  *
- * The label tree, the species colour map and the dashboard statistics
- * all derive from the set of present species, so they go stale together.
- * One helper so no call site can refresh one and forget the others.
+ * The filter options (labels, names, colours, the filter tree), the label
+ * counts and the dashboard statistics all derive from the set of present
+ * species, so they go stale together. One helper so no call site can
+ * refresh one and forget the others.
+ *
+ * `cancelRefetch: false`: a caller that also refreshes the event queries
+ * has already started the filter options, after the same write. Starting
+ * them again would make the backend read the project's boxes twice.
  */
 
 import type { Query, QueryClient } from "@tanstack/react-query";
 
 export function invalidateLabelQueries(queryClient: QueryClient): void {
-  void queryClient.invalidateQueries({ queryKey: ["label-tree"] });
-  void queryClient.invalidateQueries({ queryKey: ["label-colors"] });
-  void queryClient.invalidateQueries({ queryKey: ["statistics"] });
+  for (const key of ["event-filter-options", "label-counts", "statistics"]) {
+    void queryClient.invalidateQueries({ queryKey: [key] }, { cancelRefetch: false });
+  }
 }
 
 /**
@@ -42,12 +47,12 @@ let verifySettleTimer: ReturnType<typeof setTimeout> | undefined;
 /**
  * Refresh what a verify or unverify changes, once the clicks stop.
  *
- * A verify moves no box into or out of a species, so the species colours,
- * the dashboard statistics and the filter options are not refetched. (One
- * rare case does change them: unverifying a box below the threshold hides
- * it, and with it a species that had no other box. Those lists catch up
- * on their next refetch.) A verify does move the progress bar, the cohorts, and the label tree's counts
- * when the Verified filter is on (its default is "Unverified"). On a large
+ * A verify moves no box into or out of a species, so the filter options
+ * (labels, colours, tree) and the dashboard statistics are not refetched.
+ * (One rare case does change them: unverifying a box below the threshold
+ * hides it, and with it a species that had no other box. Those lists
+ * catch up on their next refetch.) A verify does move the progress bar,
+ * the cohorts, and the label counts when the Verified filter is on (its default is "Unverified"). On a large
  * project each of those is a pass over every box, so they refetch once,
  * `VERIFY_SETTLE_MS` after the last verify, instead of once per click.
  * The event-family queries only go stale: the Counts page refetches them
@@ -67,7 +72,7 @@ export function invalidateAfterVerify(
     void queryClient.invalidateQueries({ queryKey: ["labels-progress", projectId] });
     void queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
     if (verifiedFilterOn) {
-      void queryClient.invalidateQueries({ queryKey: ["label-tree", projectId] });
+      void queryClient.invalidateQueries({ queryKey: ["label-counts", projectId] });
     }
   }, VERIFY_SETTLE_MS);
 }

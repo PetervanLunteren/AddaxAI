@@ -33,6 +33,8 @@ interface LabelFilterModalProps {
   onOpenChange: (open: boolean) => void;
   /** Count unit label, e.g. "event" or "detection". */
   countUnit?: string;
+  /** The counts have not arrived yet; the tree says "counting…". */
+  countsLoading?: boolean;
 }
 
 export function LabelFilterModal({
@@ -43,6 +45,7 @@ export function LabelFilterModal({
   open,
   onOpenChange,
   countUnit,
+  countsLoading,
 }: LabelFilterModalProps) {
   // Working copy — initialized from props each time the modal opens
   const [workingSet, setWorkingSet] = useState<Set<string>>(new Set());
@@ -95,6 +98,7 @@ export function LabelFilterModal({
             fillHeight
             emptyMessage="No labels with observations"
             countUnit={countUnit ?? "event"}
+            countsLoading={countsLoading}
           />
         </div>
 

@@ -185,14 +185,11 @@ def test_label_tree_count_by_file(client, db):
     db.commit()
 
     resp = client.get(
-        f"/api/events/label-tree?project_id={p.id}&count_by=file"
+        f"/api/events/label-counts?project_id={p.id}&count_by=file"
     )
     assert resp.status_code == 200
-    body = resp.json()
     # Two distinct files; three detections.
-    counts = body["label_event_counts"]
-    assert counts.get("wolf") == 2
-    assert body["count_unit"] == "file"
+    assert resp.json()["counts"].get(tax.id) == 2
 
 
 def test_a_video_whose_cover_is_gone_is_shown_from_its_decoded_frame(
@@ -274,17 +271,17 @@ def test_label_tree_count_by_file_reads_a_video_on_its_best_frame(client, db):
     db.commit()
 
     resp = client.get(
-        f"/api/events/label-tree?project_id={p.id}&count_by=file"
+        f"/api/events/label-counts?project_id={p.id}&count_by=file"
     )
     assert resp.status_code == 200
     # The image only: the video's wolf is not on its best frame.
-    assert resp.json()["label_event_counts"].get("wolf") == 1
+    assert resp.json()["counts"].get(tax.id) == 1
 
 
-def test_label_tree_rejects_invalid_count_by(client, db):
+def test_label_counts_rejects_invalid_count_by(client, db):
     p = make_project(db)
     resp = client.get(
-        f"/api/events/label-tree?project_id={p.id}&count_by=bogus"
+        f"/api/events/label-counts?project_id={p.id}&count_by=bogus"
     )
     assert resp.status_code == 400
 

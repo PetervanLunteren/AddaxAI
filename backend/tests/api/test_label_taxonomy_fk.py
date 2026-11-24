@@ -2,10 +2,10 @@
 
 from datetime import datetime
 
-from app.api.crud.label_tree import build_label_filter_tree
 from app.ml.taxonomy_db import link_detections_to_taxonomy
 from app.models.label_taxonomy import LabelTaxonomy
 from tests.conftest import (
+    label_tree,
     make_deployment,
     make_detection,
     make_event_with_files,
@@ -75,7 +75,7 @@ def test_label_tree_uses_fk_linked_detections(db):
     link_detections_to_taxonomy(p.id, db)
     db.expire_all()
 
-    result = build_label_filter_tree(p.id, db)
+    result = label_tree(db, p.id)
     assert result is not None
     # Leaf IDs are now taxonomy UUIDs
     assert leopard_tax.id in result["all_leaf_ids"]
@@ -97,7 +97,7 @@ def test_label_tree_mixed_linked_and_unlinked(db):
     link_detections_to_taxonomy(p.id, db)
     db.expire_all()
 
-    result = build_label_filter_tree(p.id, db)
+    result = label_tree(db, p.id)
     assert result is not None
     # leopard resolved via FK
     assert leopard_tax.id in result["all_leaf_ids"]
@@ -117,7 +117,7 @@ def test_label_tree_all_linked(db):
     link_detections_to_taxonomy(p.id, db)
     db.expire_all()
 
-    result = build_label_filter_tree(p.id, db)
+    result = label_tree(db, p.id)
     assert result is not None
     assert leopard_tax.id in result["all_leaf_ids"]
 

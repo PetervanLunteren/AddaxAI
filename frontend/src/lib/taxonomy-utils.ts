@@ -43,6 +43,30 @@ export function pruneTaxonomyTree(
 }
 
 /**
+ * Put a page's label counts on a label tree that has none.
+ *
+ * Each leaf gets its count (0 when the counts do not mention it: the
+ * page's filters leave nothing of that label), each parent the sum of its
+ * leaves. The tree and its counts arrive separately because they change
+ * at different times: the tree when labels change, the counts with every
+ * filter. Returns a new tree; the input is not changed.
+ */
+export function withCounts(
+  tree: TaxonomyNode[],
+  counts: Record<string, number>,
+): TaxonomyNode[] {
+  const place = (node: TaxonomyNode): TaxonomyNode => {
+    if (!node.children || node.children.length === 0) {
+      return { ...node, count: counts[node.id] ?? 0 };
+    }
+    const children = node.children.map(place);
+    const count = children.reduce((sum, child) => sum + (child.count ?? 0), 0);
+    return { ...node, children, count };
+  };
+  return tree.map(place);
+}
+
+/**
  * Collect all leaf node IDs from a tree.
  * Used for "select all / clear all" and counter display.
  */

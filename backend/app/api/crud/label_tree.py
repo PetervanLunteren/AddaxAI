@@ -1,9 +1,17 @@
 """
-CRUD for building the label filter tree from the label_taxonomy table.
+The label filter, in two parts that change at different times.
 
-Returns a pre-built taxonomy tree containing only labels with actual detections,
-annotated with event counts. Replaces the frontend's two-query + client-side
-pruning approach.
+- **The tree** (`build_label_filter_tree`): which labels the project has,
+  nested by taxonomy. It changes only when labels change, so it travels
+  with the rest of what the project has in `GET /api/events/filter-options`.
+- **The counts** (`count_labels_under_filters`): how many of each label
+  the page would show under its active filters. They change with every
+  filter, so they are their own request, `GET /api/events/label-counts`.
+
+Keeping them apart is the point: a filter change costs one pass over the
+project's boxes for the counts, not a second one to rebuild the tree.
+The front end puts the counts on the leaves (`withCounts` in
+`lib/taxonomy-utils.ts`). A count never travels with the tree.
 """
 
 from datetime import datetime
@@ -20,12 +28,13 @@ from app.models.label_taxonomy import LabelTaxonomy
 logger = get_logger(__name__)
 
 LEVEL_ORDER = ["class", "order", "family", "genus"]
+COUNT_UNITS = ("event", "file", "detection")
 
 
-def build_label_filter_tree(
-    project_id: str,
+def count_labels_under_filters(
     db: Session,
-    count_by: str = "event",
+    project_id: str,
+    count_by: str,
     site_ids: list[str] | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
@@ -38,53 +47,41 @@ def build_label_filter_tree(
     max_confidence: float | None = None,
     min_label_confidence: float | None = None,
     max_label_confidence: float | None = None,
-) -> dict | None:
-    """
-    Build the label filter tree for a project from label_taxonomy + detections.
+) -> dict[str, int]:
+    """How many of each label the page would show if that label were
+    ticked alone, under every other filter of the page, the label filter
+    itself left out, as a faceted search does. Keyed by
+    ``label_taxonomy_id``; a label missing from the result counts 0.
 
-    The leaves are every label present in the project (`present_label_rows`,
-    the same query the species colours use). The count beside a leaf
-    follows every other filter of the page the tree is on: it is what that
-    page would show if the label were ticked alone, the label filter itself
-    left out, as a faceted search does. A label the filters leave nothing
-    of stays in the tree at 0, so a fully verified species is still there
-    to pick under "Unverified". Each page's count comes from that page's
-    own query (`count_detections_by_label`, `count_labels_files_by_label`,
-    `count_events_by_label`), so the tree cannot promise what the page
-    cannot show; this was the mismatch a tester hit with "20 detections"
-    beside an empty grid, all twenty verified under the Unverified filter.
+    Each page's count comes from that page's own query, so a number can
+    never promise what the page cannot show. That was the mismatch a
+    tester hit with "20 detections" beside an empty grid, all twenty
+    verified under the Unverified filter.
 
     Args:
-        count_by: "event" (default) counts distinct events per label (the
-                  Counts page); "file" distinct files (the Files tab);
-                  "detection" boxes (the Labels grid).
+        count_by: "event" counts distinct events (the Counts page), "file"
+            distinct files (the Files tab), "detection" boxes (the Labels
+            grid).
         site_ids, date_from, date_to, and the keyword filters: the page's
-                  active filters, in the list endpoints' vocabulary.
-
-    Returns:
-        Dict with tree, all_leaf_ids, label_event_counts, count_unit; or None if no taxonomy.
+            active filters, in the list endpoints' vocabulary.
     """
-    from app.api.crud.event import count_events_by_label, present_label_rows
+    from app.api.crud.event import count_events_by_label
     from app.api.crud.file import count_labels_files_by_label
     from app.api.schemas.label import LabelFilters
     from app.services.label_service import count_detections_by_label
 
+    if count_by not in COUNT_UNITS:
+        raise ValueError(f"count_by must be one of {COUNT_UNITS}, not {count_by!r}")
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        return None
-
+        return {}
     threshold = project.counting_threshold
-    present_ids = {
-        row[0] for row in present_label_rows(db, project_id, threshold)
-    }
-    if not present_ids:
-        return None
 
     def _dt(value: str | None) -> datetime | None:
         return datetime.fromisoformat(value) if value else None
 
     if count_by == "detection":
-        counts = count_detections_by_label(
+        return count_detections_by_label(
             db,
             project_id,
             LabelFilters(
@@ -105,8 +102,8 @@ def build_label_filter_tree(
                 ),
             ),
         )
-    elif count_by == "file":
-        counts = count_labels_files_by_label(
+    if count_by == "file":
+        return count_labels_files_by_label(
             db,
             project_id,
             # The Files tab never lowers its floor below the project
@@ -124,46 +121,46 @@ def build_label_filter_tree(
             min_label_confidence=min_label_confidence,
             max_label_confidence=max_label_confidence,
         )
-    else:
-        counts = count_events_by_label(
-            db,
-            project_id,
-            project_floor=threshold,
-            site_ids=site_ids,
-            date_from=_dt(date_from),
-            date_to=_dt(date_to),
-            verification=verification,
-            flagged=flagged,
-            favorited=favorited,
-            empty=empty,
-            min_confidence=min_confidence,
-            max_confidence=max_confidence,
-            min_label_confidence=min_label_confidence,
-            max_label_confidence=max_label_confidence,
-        )
-
-    taxonomy_id_counts = {tid: counts.get(tid, 0) for tid in present_ids}
-    detected_taxonomy_ids = present_ids
-
-    # Load taxonomy rows for all detected taxonomy IDs
-    taxonomy_rows_raw = (
-        db.query(LabelTaxonomy)
-        .filter(LabelTaxonomy.id.in_(detected_taxonomy_ids))
-        .all()
+    return count_events_by_label(
+        db,
+        project_id,
+        project_floor=threshold,
+        site_ids=site_ids,
+        date_from=_dt(date_from),
+        date_to=_dt(date_to),
+        verification=verification,
+        flagged=flagged,
+        favorited=favorited,
+        empty=empty,
+        min_confidence=min_confidence,
+        max_confidence=max_confidence,
+        min_label_confidence=min_label_confidence,
+        max_label_confidence=max_label_confidence,
     )
 
-    # Build name-based counts from taxonomy_id counts
-    # (needed for the tree builder which indexes by name)
-    label_event_counts: dict[str, int] = {}
-    tid_to_name: dict[str, str] = {}
-    for row in taxonomy_rows_raw:
-        tid_to_name[row.id] = row.name
-    for tid, count in taxonomy_id_counts.items():
-        name = tid_to_name.get(tid)
-        if name:
-            label_event_counts[name] = (
-                label_event_counts.get(name, 0) + count
-            )
+
+def build_label_filter_tree(db: Session, present_ids: set[str]) -> dict | None:
+    """The label filter tree for the labels a project has.
+
+    ``present_ids`` are the project's labels (`present_label_rows`, the
+    same set the species colours and the flat list use), so the filter
+    can never offer a label without a colour or the other way round.
+    Every one is a leaf, nested under its ranks. Leaves carry no count:
+    a label the filters leave nothing of is still there, at 0 once the
+    counts arrive, so a fully verified species can still be picked under
+    "Unverified".
+
+    Returns ``{"tree", "all_leaf_ids"}``, or None when the project has no
+    labels (the front end then shows the flat list).
+    """
+    if not present_ids:
+        return None
+
+    taxonomy_rows_raw = (
+        db.query(LabelTaxonomy)
+        .filter(LabelTaxonomy.id.in_(present_ids))
+        .all()
+    )
 
     # Rows with no taxonomy fields go under "No taxonomy" instead of root.
     #
@@ -174,7 +171,7 @@ def build_label_filter_tree(
     # the sum of both but whose id was whichever row the dict happened to
     # write last. Selecting that leaf then filtered on one of the two ids
     # while the count promised both. One leaf per row, keyed by id, is the
-    # only shape that cannot drift from the counts it was built from.
+    # only shape that cannot drift from the counts, which are keyed by id.
     #
     # Detector classes ("Animal", "Fish", "Person": the builtin rows a
     # box without a species points at) are leaves at the root, so
@@ -268,11 +265,6 @@ def build_label_filter_tree(
             if row.level == level_name:
                 break
 
-        # Add leaf node. Counted by taxonomy id, which is what the leaf
-        # is and what the count query grouped on; going via the name
-        # sums rows that share one (see the unranked note above).
-        count = taxonomy_id_counts.get(row.id, 0)
-
         # One rule for every rank, shared with the model taxonomy tree in
         # ml.taxonomy_parser: the leaf is named for the taxon and annotated
         # with the model's own label, or with the rank when the label is
@@ -290,10 +282,8 @@ def build_label_filter_tree(
             "id": leaf_id,
             "name": display,
             "annotation": format_leaf_annotation(row.name, display, row.level),
-            "count": count,
             "children": {},
             "is_leaf": True,
-            "_event_count": count,
         }
 
         if leaf_id not in current:
@@ -308,14 +298,11 @@ def build_label_filter_tree(
     # filter, so this one is never user-visible, and changing it would
     # break saved filter URLs for no gain.
     def _unranked_leaf(row: LabelTaxonomy) -> dict:
-        count = taxonomy_id_counts.get(row.id, 0)
         return {
             "id": row.id,
             "name": row.scientific_name or row.name.replace("_", " ").capitalize(),
-            "count": count,
             "children": {},
             "is_leaf": True,
-            "_event_count": count,
         }
 
     for row in class_rows:
@@ -330,7 +317,8 @@ def build_label_filter_tree(
             "is_leaf": False,
         }
 
-    # Convert to TaxonomyNode format with sorting and count annotation
+    # Convert to TaxonomyNode format, sorted: leaves first, then parents,
+    # each alphabetically.
     def _to_tree(nodes: dict, level: int) -> list[dict]:
         leaves = []
         parents = []
@@ -345,41 +333,25 @@ def build_label_filter_tree(
                 "selected": True,
             }
             if children:
-                # Annotate parent with descendant counts
-                leaf_count, event_total = _count_descendants(children)
-                tree_node["child_count"] = leaf_count
-                tree_node["count"] = event_total
+                tree_node["child_count"] = _count_leaves(children)
                 parents.append(tree_node)
             else:
-                tree_node["_event_count"] = node.get("_event_count", 0)
                 if "annotation" in node:
                     tree_node["annotation"] = node["annotation"]
-                if "count" in node:
-                    tree_node["count"] = node["count"]
                 leaves.append(tree_node)
 
-        # Sort: leaves first (alphabetically), then parents (alphabetically)
         leaves.sort(key=lambda n: n["name"].lower())
         parents.sort(key=lambda n: n["name"].lower())
         return leaves + parents
 
-    def _count_descendants(children: list[dict]) -> tuple[int, int]:
-        """Return (leaf_count, total_events) for a list of child nodes."""
-        leaf_count = 0
-        event_total = 0
-        for child in children:
-            if child["children"]:
-                lc, et = _count_descendants(child["children"])
-                leaf_count += lc
-                event_total += et
-            else:
-                leaf_count += 1
-                event_total += child.get("_event_count", 0)
-        return leaf_count, event_total
+    def _count_leaves(children: list[dict]) -> int:
+        return sum(
+            _count_leaves(child["children"]) if child["children"] else 1
+            for child in children
+        )
 
     tree = _to_tree(root, 1)
 
-    # Collect all leaf IDs
     all_leaf_ids: list[str] = []
 
     def _collect_leaves(nodes: list[dict]) -> None:
@@ -391,9 +363,4 @@ def build_label_filter_tree(
 
     _collect_leaves(tree)
 
-    return {
-        "tree": tree,
-        "all_leaf_ids": all_leaf_ids,
-        "label_event_counts": label_event_counts,
-        "count_unit": count_by,
-    }
+    return {"tree": tree, "all_leaf_ids": all_leaf_ids}

@@ -1311,91 +1311,95 @@ def get_event_verification_stats(
     }
 
 
+def _present_boxes(query, project_id: str, threshold: float):
+    """Narrow a query over `Detection` to the boxes that make a label
+    present in the project: labelled, at or above ``threshold`` or
+    verified, on the visible frame. The one definition, shared by
+    `present_label_rows` and the filter options."""
+    return (
+        query.join(File, File.id == Detection.file_id)
+        .join(Deployment, Deployment.id == File.deployment_id)
+        .filter(Deployment.project_id == project_id)
+        .filter(Detection.label_taxonomy_id.isnot(None))
+        .filter(threshold_or_verified(threshold))
+        # Same visible surface as the grid. Without it the label filter
+        # offers species that live only on frames the grid never renders,
+        # so picking one returns nothing.
+        .filter(on_visible_frame())
+    )
+
+
 def present_label_rows(
     db: Session, project_id: str, threshold: float, *columns
 ) -> list:
     """Distinct ``label_taxonomy_id`` values the project's grid can show.
 
-    The one definition of "species present in this project": labelled
-    detections at or above ``threshold`` or verified, on the visible
-    frame. The label filter list and the species colour map both read
-    it, so a species can never be offered as a filter without a colour
-    or the other way round. Extra ``columns`` ride along in the same
-    distinct query; the taxonomy id is always the first column.
+    The one definition of "species present in this project"
+    (`_present_boxes`). The label filter and the species colour map both
+    read it, so a species can never be offered as a filter without a
+    colour or the other way round. Extra ``columns`` ride along in the
+    same distinct query; the taxonomy id is always the first column.
     """
-    threshold_clause = threshold_or_verified(threshold)
     return (
-        db.query(Detection.label_taxonomy_id, *columns)
-        .join(File, File.id == Detection.file_id)
-        .join(Deployment, Deployment.id == File.deployment_id)
-        .filter(Deployment.project_id == project_id)
-        .filter(Detection.label_taxonomy_id.isnot(None))
-        .filter(threshold_clause)
-        # Same visible surface as the label tree this list stands in for
-        # (it is the fallback shown when a project has no taxonomy). Without
-        # it the flat list offers species that live only on frames the grid
-        # never renders, so picking one returns nothing.
-        .filter(on_visible_frame())
+        _present_boxes(
+            db.query(Detection.label_taxonomy_id, *columns), project_id, threshold
+        )
         .distinct()
         .all()
     )
 
 
 def get_filter_options(db: Session, project_id: str) -> dict:
-    """Get available filter options for a project (distinct labels, date range).
+    """Everything about the labels a project has, for the filter bars and
+    the species colours: which labels (with both names, the colour map
+    and the filter tree), the event date range, and the lowest
+    classification score among the labels' boxes.
 
-    Respects the project's detection threshold so only labels with
-    at least one visible detection appear as options.
+    One pass over the project's boxes. The counts per label under a
+    page's filters are a separate request (`label_tree.
+    count_labels_under_filters`), because they change with every filter
+    and this does not.
     """
+    from app.api.crud.label_colors import colors_for_labels
+    from app.api.crud.label_tree import build_label_filter_tree
+
     project = db.query(Project).filter(Project.id == project_id).first()
     threshold = project.counting_threshold if project else 0.0
 
-    # Threshold clause: confidence >= threshold OR verified
-    threshold_clause = threshold_or_verified(threshold)
-
-    # Distinct taxonomy IDs across threshold-passing detections
-    label_rows = present_label_rows(
-        db,
-        project_id,
-        threshold,
-        func.coalesce(Detection.scientific_name, Detection.label),
-        func.coalesce(Detection.common_name, Detection.label),
-    )
-    label_list = sorted([row[0] for row in label_rows if row[0]])
-
-    # Build name maps (taxonomy_id -> name), one per display preference.
-    scientific_labels: dict[str, str] = {}
-    common_labels: dict[str, str] = {}
-    for tid, sci, common in label_rows:
-        if not tid:
-            continue
-        if sci and tid not in scientific_labels:
-            scientific_labels[tid] = sci
-        if common and tid not in common_labels:
-            common_labels[tid] = common
-
-    # Count distinct events per taxonomy ID (threshold-filtered)
-    label_count_rows = (
-        db.query(
-            Detection.label_taxonomy_id,
-            func.count(func.distinct(Event.id)),
+    scientific = func.coalesce(Detection.scientific_name, Detection.label)
+    common = func.coalesce(Detection.common_name, Detection.label)
+    label_rows = (
+        _present_boxes(
+            db.query(
+                Detection.label_taxonomy_id,
+                scientific,
+                common,
+                func.min(Detection.label_confidence),
+            ),
+            project_id,
+            threshold,
         )
-        .join(File, File.id == Detection.file_id)
-        .join(event_files, event_files.c.file_id == File.id)
-        .join(Event, Event.id == event_files.c.event_id)
-        .join(Deployment, Deployment.id == Event.deployment_id)
-        .filter(Deployment.project_id == project_id)
-        .filter(Detection.label_taxonomy_id.isnot(None))
-        .filter(threshold_clause)
-        .filter(on_visible_frame())
-        .group_by(Detection.label_taxonomy_id)
+        .group_by(Detection.label_taxonomy_id, scientific, common)
         .all()
     )
-    label_event_counts = {
-        tid: count for tid, count in label_count_rows if tid
-    }
 
-    # Date range from events
+    # Name maps (taxonomy id -> name), one per display preference.
+    scientific_labels: dict[str, str] = {}
+    common_labels: dict[str, str] = {}
+    for tid, sci, com, _ in label_rows:
+        if sci and tid not in scientific_labels:
+            scientific_labels[tid] = sci
+        if com and tid not in common_labels:
+            common_labels[tid] = com
+    label_ids = sorted({row[0] for row in label_rows})
+
+    # The lowest classification score among the boxes the pages can show.
+    # The filter bars clamp the classification range slider there:
+    # dragging below it would select nothing. None when nothing is
+    # classified yet.
+    scores = [row[3] for row in label_rows if row[3] is not None]
+    min_label_confidence = min(scores) if scores else None
+
     date_row = (
         db.query(
             func.min(Event.event_start_local),
@@ -1405,32 +1409,18 @@ def get_filter_options(db: Session, project_id: str) -> dict:
         .filter(Deployment.project_id == project_id)
         .first()
     )
-
     date_range = None
     if date_row and date_row[0] and date_row[1]:
         date_range = {"min": date_row[0], "max": date_row[1]}
 
-    # Lowest classification confidence present in the project. The
-    # verify filter bars use it as the data-driven clamp for the
-    # classification range slider: dragging below it selects nothing,
-    # so the handle stops there with an explanatory callout. None when
-    # the project has no classifications yet.
-    min_label_confidence = (
-        db.query(func.min(Detection.label_confidence))
-        .join(File, File.id == Detection.file_id)
-        .join(Deployment, Deployment.id == File.deployment_id)
-        .filter(Deployment.project_id == project_id)
-        .filter(Detection.label_confidence.isnot(None))
-        .scalar()
-    )
-
     return {
-        "labels": label_list,
+        "labels": label_ids,
         "date_range": date_range,
-        "label_event_counts": label_event_counts,
         "scientific_labels": scientific_labels,
         "common_labels": common_labels,
         "min_label_confidence": min_label_confidence,
+        "label_colors": colors_for_labels(db, label_ids),
+        "label_tree": build_label_filter_tree(db, set(label_ids)),
     }
 
 

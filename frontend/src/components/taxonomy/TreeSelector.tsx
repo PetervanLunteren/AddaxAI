@@ -41,6 +41,9 @@ interface TreeSelectorProps {
   emptyMessage?: string;
   /** Count unit label, e.g. "event". Omit for settings tree (no item counts). */
   countUnit?: string;
+  /** The counts are still on their way: the tree can be used already,
+   *  and each leaf says "counting…" where its number goes. */
+  countsLoading?: boolean;
 }
 
 /** A flattened row representing one visible node in the tree. */
@@ -199,15 +202,19 @@ export function TreeSelector({
   fillHeight = false,
   emptyMessage = "No labels available",
   countUnit,
+  countsLoading = false,
 }: TreeSelectorProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Expand all nodes when tree loads
+  // Expand all nodes when a tree with other nodes loads. Keyed on the
+  // node ids, not the tree object: counts arriving for the same tree must
+  // not undo what the user folded.
+  const nodeIdsKey = useMemo(() => [...collectAllNodeIds(tree)].join("|"), [tree]);
   useEffect(() => {
     setExpandedNodes(collectAllNodeIds(tree));
-  }, [tree]);
+  }, [nodeIdsKey]); // eslint-disable-line react-hooks/exhaustive-deps -- `tree` changes with every count update; the ids are what matter
 
   // Filtered tree from search
   const filteredTree = useMemo(
@@ -328,13 +335,13 @@ export function TreeSelector({
     // another filter may hold a dead leaf, which is not a chosen category.
     const selectedCount = [...selectedIds].filter((id) => allLeafIds.has(id)).length;
     let text = `${selectedCount} of ${totalCategories} ${pluralize("category", totalCategories)} selected`;
-    if (countUnit) {
+    if (countUnit && !countsLoading) {
       const selectedItemCount = sumLeafCounts(tree, selectedIds);
       const totalItemCount = sumAllLeafCounts(tree);
       text += ` (${selectedItemCount} of ${totalItemCount} ${pluralize(countUnit, totalItemCount)})`;
     }
     return text;
-  }, [allLeafIds, selectedIds, mode, countUnit, tree]);
+  }, [allLeafIds, selectedIds, mode, countUnit, countsLoading, tree]);
 
   const selectLabel = mode === "exclusion" ? "Include all" : "Select all";
   const clearLabel = mode === "exclusion" ? "Exclude all" : "Clear all";
@@ -516,7 +523,12 @@ export function TreeSelector({
                           (<em>{node.annotation}</em>)
                         </>
                       )}
-                      {isLeaf && node.count != null && countUnit && (
+                      {isLeaf && countUnit && countsLoading && (
+                        <span className="ml-1 text-muted-foreground text-xs">
+                          (counting…)
+                        </span>
+                      )}
+                      {isLeaf && node.count != null && countUnit && !countsLoading && (
                         <span className="ml-1 text-muted-foreground text-xs">
                           ({node.count} {pluralize(countUnit, node.count)})
                         </span>

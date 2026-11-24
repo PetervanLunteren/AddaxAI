@@ -191,19 +191,16 @@ def test_palette_is_eighteen_distinct_colours():
     assert len(set(SPECIES_PALETTE)) == len(SPECIES_PALETTE) == 18
 
 
-def test_endpoint_returns_the_map(client, db):
+def test_the_filter_options_carry_the_map(client, db):
+    """The app reads the colours from `filter-options`, and the export
+    from `assign_label_colors`; both must be the same map."""
     rat, brown_rat, mouse, fox, blackbird = _rodents_and_others(db)
     project = _project_with(db, (rat, 0.9, False), (fox, 0.9, False))
 
-    resp = client.get(f"/api/projects/{project.id}/label-colors")
+    resp = client.get(f"/api/events/filter-options?project_id={project.id}")
 
     assert resp.status_code == 200
-    assert resp.json() == assign_label_colors(db, project.id)
-
-
-def test_endpoint_404_for_unknown_project(client):
-    resp = client.get("/api/projects/nope/label-colors")
-    assert resp.status_code == 404
+    assert resp.json()["label_colors"] == assign_label_colors(db, project.id)
 
 
 def test_a_detector_category_is_a_class_like_any_other(db):

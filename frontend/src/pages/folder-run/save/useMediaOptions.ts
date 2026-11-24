@@ -18,7 +18,8 @@ import { eventsApi } from "../../../api/events";
 import { exportApi } from "../../../api/export";
 import { projectsApi } from "../../../api/projects";
 import type { OutputPreview } from "../../../api/folder-runs";
-import type { LabelTreeResponse } from "../../../api/types";
+import type { LabelTree } from "../../../api/types";
+import { withCounts } from "../../../lib/taxonomy-utils";
 import {
   FILTER_DEBOUNCE_MS,
   useDebouncedValue,
@@ -67,9 +68,11 @@ export interface MediaFormHandles {
   /** The project can hold a person or a vehicle, the only things blur
    * touches. False on an underwater project: the row is hidden there. */
   canBlur: boolean;
-  /** The project's label tree for the label picker, or null when it
-   * has no taxonomy (the row is hidden). */
-  labelTree: LabelTreeResponse | null;
+  /** The project's label tree for the label picker, with its counts in
+   * files once they are in; null without labels (the row is hidden). */
+  labelTree: LabelTree | null;
+  /** The label tree's counts are still on their way. */
+  labelCountsLoading: boolean;
   /** Only a project with more than one deployment has something to
    * pick; a folder run has one and never shows the row. */
   showDeploymentPicker: boolean;
@@ -142,14 +145,7 @@ export function useMediaOptions({
     [storedAnonymise.enabled, canBlur],
   );
 
-  // Label tree counted by file so the picker reads "N files" per
-  // species. Project-wide: a species absent from the picked deployments
-  // simply yields no files.
-  const { data: labelTree } = useQuery({
-    queryKey: ["label-tree", projectId, "file"],
-    queryFn: () => eventsApi.getLabelTree(projectId, "file"),
-    enabled: !!projectId,
-  });
+
   // Same key as the picker itself, so the count costs no extra request.
   const { data: deployments } = useQuery({
     queryKey: ["deployments", projectId],
@@ -161,6 +157,23 @@ export function useMediaOptions({
     queryFn: () => eventsApi.getFilterOptions(projectId),
     enabled: !!projectId,
   });
+  // The label tree counted by file, so the picker reads "N files" per
+  // species. Project-wide: a species absent from the picked deployments
+  // simply yields no files.
+  const shape = filterOptions?.label_tree ?? null;
+  const { data: fileCounts } = useQuery({
+    queryKey: ["label-counts", projectId, "file"],
+    queryFn: () => eventsApi.getLabelCounts(projectId, "file"),
+    enabled: !!projectId && !!shape,
+  });
+  const labelTree = useMemo<LabelTree | null>(
+    () =>
+      shape && {
+        ...shape,
+        tree: fileCounts ? withCounts(shape.tree, fileCounts.counts) : shape.tree,
+      },
+    [shape, fileCounts],
+  );
 
   const allLabelIds = labelTree?.all_leaf_ids ?? [];
   const nothingInScope = computeNothingInScope(separate);
@@ -231,7 +244,8 @@ export function useMediaOptions({
     anonymise,
     setAnonymise,
     canBlur,
-    labelTree: labelTree ?? null,
+    labelTree,
+    labelCountsLoading: !fileCounts,
     showDeploymentPicker: (deployments?.length ?? 0) > 1,
     dateBounds: filterOptions?.date_range ?? null,
     nothingInScope,

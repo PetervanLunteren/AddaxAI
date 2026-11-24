@@ -4,6 +4,10 @@
 
 import { api } from "../lib/api-client";
 
+/** What the label counts count: the Counts page's events, the Files
+ *  tab's files, or the Labels grid's boxes. */
+export type LabelCountUnit = "event" | "file" | "detection";
+
 /** The filters a page is applying, for the label tree's counts. The
  *  same vocabulary as the list endpoints. */
 export interface LabelTreeScope {
@@ -29,7 +33,7 @@ import type {
   EventFilterOptions,
   EventCounts,
   EventVerificationStats,
-  LabelTreeResponse,
+  LabelCounts,
 } from "./types";
 
 /** Append filter params to a URLSearchParams instance. */
@@ -269,17 +273,17 @@ export const eventsApi = {
     );
   },
 
-  /** Get the label filter tree (pre-built from label_taxonomy table).
-   *  The count beside each label follows the page's active filters,
-   *  given as `scope`: it is what the page shows with that label ticked
-   *  alone. An "all" value is the same as leaving the filter out. */
-  getLabelTree: async (
+  /** How many of each label the page would show with that label ticked
+   *  alone, under its other filters given as `scope`. The tree they go
+   *  on comes with `getFilterOptions`. An "all" value is the same as
+   *  leaving the filter out. */
+  getLabelCounts: async (
     projectId: string,
-    countBy?: string,
+    countBy: LabelCountUnit,
     scope?: LabelTreeScope
-  ): Promise<LabelTreeResponse | null> => {
+  ): Promise<LabelCounts> => {
     const search = new URLSearchParams({ project_id: projectId });
-    if (countBy) search.set("count_by", countBy);
+    search.set("count_by", countBy);
     if (scope?.siteIds?.length) search.set("site_ids", scope.siteIds.join(","));
     if (scope?.dateFrom) search.set("date_from", scope.dateFrom);
     if (scope?.dateTo) search.set("date_to", scope.dateTo);
@@ -297,8 +301,8 @@ export const eventsApi = {
     range("max_confidence", scope?.maxConfidence);
     range("min_label_confidence", scope?.minLabelConfidence);
     range("max_label_confidence", scope?.maxLabelConfidence);
-    return api.get<LabelTreeResponse | null>(
-      `/api/events/label-tree?${search.toString()}`
+    return api.get<LabelCounts>(
+      `/api/events/label-counts?${search.toString()}`
     );
   },
 };

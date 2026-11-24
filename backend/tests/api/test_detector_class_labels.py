@@ -14,10 +14,11 @@ from unittest.mock import Mock
 import pytest
 
 from app.api.crud.event_observation import calculate_max_n_for_event
-from app.api.crud.label_tree import build_label_filter_tree
 from app.ml.taxonomy_db import builtin_label_ids
 from app.models import Detection, EventObservation
 from tests.conftest import (
+    label_counts,
+    label_tree,
     make_deployment,
     make_detection,
     make_event_with_files,
@@ -128,9 +129,11 @@ def test_a_fish_project_has_a_fish_leaf_at_the_root(db, fish_detector):
         make_detection(db, file_id=f.id, category="fish")
     db.flush()
 
-    tree = build_label_filter_tree(project.id, db, count_by="detection")
-    assert [(n["name"], n["count"]) for n in tree["tree"]] == [("Fish", 3)]
-    assert tree["all_leaf_ids"] == [builtin_label_ids(db)["fish"]]
+    tree = label_tree(db, project.id)
+    fish = builtin_label_ids(db)["fish"]
+    assert [n["name"] for n in tree["tree"]] == ["Fish"]
+    assert tree["all_leaf_ids"] == [fish]
+    assert label_counts(db, project.id, "detection") == {fish: 3}
 
 
 def test_adding_a_species_by_hand_gets_the_primary_class(client, db, fish_detector):

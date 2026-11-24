@@ -34,8 +34,7 @@ describe("invalidateAfterVerify", () => {
   const keys = [
     ["labels-progress", PROJECT],
     ["cohorts", PROJECT],
-    ["label-tree", PROJECT, "detection", {}],
-    ["label-colors", PROJECT],
+    ["label-counts", PROJECT, "detection", {}],
     ["statistics", PROJECT],
     ["event-filter-options", PROJECT],
     ["events", PROJECT],
@@ -58,22 +57,22 @@ describe("invalidateAfterVerify", () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(fetched(fetches, ["labels-progress", PROJECT])).toBe(2);
     expect(fetched(fetches, ["cohorts", PROJECT])).toBe(2);
-    expect(fetched(fetches, ["label-tree", PROJECT, "detection", {}])).toBe(2);
+    expect(fetched(fetches, ["label-counts", PROJECT, "detection", {}])).toBe(2);
   });
 
   it("leaves the species queries alone: a verify adds or removes no species", async () => {
     const { client, fetches } = await clientWith(keys);
     invalidateAfterVerify(client, PROJECT, true);
     await vi.advanceTimersByTimeAsync(VERIFY_SETTLE_MS);
-    expect(fetched(fetches, ["label-colors", PROJECT])).toBe(1);
+    expect(fetched(fetches, ["event-filter-options", PROJECT])).toBe(1);
     expect(fetched(fetches, ["statistics", PROJECT])).toBe(1);
   });
 
-  it("keeps the label tree when the Verified filter is off", async () => {
+  it("keeps the label counts when the Verified filter is off", async () => {
     const { client, fetches } = await clientWith(keys);
     invalidateAfterVerify(client, PROJECT, false);
     await vi.advanceTimersByTimeAsync(VERIFY_SETTLE_MS);
-    expect(fetched(fetches, ["label-tree", PROJECT, "detection", {}])).toBe(1);
+    expect(fetched(fetches, ["label-counts", PROJECT, "detection", {}])).toBe(1);
     expect(fetched(fetches, ["labels-progress", PROJECT])).toBe(2);
   });
 

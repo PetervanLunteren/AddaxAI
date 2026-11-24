@@ -28,7 +28,7 @@ from app.api.schemas.event import (
     EventWithFiles,
     GenerateEventsRequest,
     GenerateEventsResponse,
-    LabelTreeResponse,
+    LabelCounts,
 )
 from app.core.observation_attributes import Behavior, LifeStage, Sex
 from app.db.base import get_db
@@ -157,16 +157,18 @@ def get_filter_options(
     project_id: str = Query(..., description="Project ID"),
     db: Session = Depends(get_db),
 ):
-    """Get available filter options (distinct labels, date range) for a project."""
+    """Everything about the labels a project has: which, their names,
+    colours and filter tree, plus the event date range. One pass over the
+    project's boxes; the counts under a page's filters are `label-counts`."""
     _set_project_tz(db, project_id)
     return event_crud.get_filter_options(db, project_id)
 
 
-@router.get("/label-tree")
-def get_label_tree(
+@router.get("/label-counts", response_model=LabelCounts)
+def get_label_counts(
     project_id: str = Query(..., description="Project ID"),
     count_by: str = Query(
-        "event", description="Count unit: 'event', 'file', or 'detection'"
+        ..., description="Count unit: 'event', 'file', or 'detection'"
     ),
     site_ids: str | None = Query(None, description="Comma-separated site IDs"),
     date_from: str | None = Query(None, description="ISO date (YYYY-MM-DD)"),
@@ -180,25 +182,20 @@ def get_label_tree(
     min_label_confidence: float | None = Query(None, ge=0, le=1),
     max_label_confidence: float | None = Query(None, ge=0, le=1),
     db: Session = Depends(get_db),
-) -> LabelTreeResponse | None:
-    """
-    Get the label filter tree built from the label_taxonomy table.
-
-    Every label present in the project is a leaf; the count beside it
-    follows the page's active filters (the same parameters the list
-    endpoints take), the label filter itself left out, so the number is
-    what ticking that label alone would show. Returns null if no taxonomy
-    data is available (frontend falls back to flat list).
-    """
-    if count_by not in ("event", "file", "detection"):
+) -> LabelCounts:
+    """How many of each label the page would show with that label ticked
+    alone, under the page's other filters (the same parameters the list
+    endpoints take). Keyed by taxonomy id; the tree they belong on comes
+    with `filter-options`."""
+    if count_by not in label_tree_crud.COUNT_UNITS:
         raise HTTPException(
             status_code=400,
             detail="count_by must be one of: event, file, detection",
         )
-    result = label_tree_crud.build_label_filter_tree(
-        project_id,
+    counts = label_tree_crud.count_labels_under_filters(
         db,
-        count_by=count_by,
+        project_id,
+        count_by,
         site_ids=site_ids.split(",") if site_ids else None,
         date_from=date_from,
         date_to=date_to,
@@ -211,9 +208,7 @@ def get_label_tree(
         min_label_confidence=min_label_confidence,
         max_label_confidence=max_label_confidence,
     )
-    if result is None:
-        return None
-    return result
+    return LabelCounts(counts=counts)
 
 
 @router.get("", response_model=list[EventSummary])

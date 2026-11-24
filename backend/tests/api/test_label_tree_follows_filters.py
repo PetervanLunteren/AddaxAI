@@ -23,7 +23,6 @@ from sqlalchemy.orm import sessionmaker
 
 from app.api.crud import event as event_crud
 from app.api.crud import file as file_crud
-from app.api.crud.label_tree import build_label_filter_tree
 from app.api.schemas.label import LabelFilters
 from app.db.base import Base
 from app.models import File
@@ -31,6 +30,8 @@ from app.models.event import event_files
 from app.models.label_taxonomy import LabelTaxonomy
 from app.services.label_service import count_detections_by_label
 from tests.conftest import (
+    label_counts,
+    label_tree,
     make_deployment,
     make_detection,
     make_event_with_files,
@@ -61,19 +62,12 @@ def _taxon(db, name: str) -> LabelTaxonomy:
     return row
 
 
-def _leaf_counts(tree: dict) -> dict[str, int]:
-    """Leaf id -> count, walking the built tree."""
-    out: dict[str, int] = {}
-
-    def walk(nodes):
-        for n in nodes:
-            if n.get("children"):
-                walk(n["children"])
-            else:
-                out[n["id"]] = n["count"]
-
-    walk(tree["tree"])
-    return out
+def _leaf_counts(db, project_id: str, count_by: str, **filters) -> dict[str, int]:
+    """What the filter shows: a count for every leaf of the tree, 0 for a
+    label the filters leave nothing of."""
+    leaves = label_tree(db, project_id)["all_leaf_ids"]
+    counts = label_counts(db, project_id, count_by, **filters)
+    return {leaf: counts.get(leaf, 0) for leaf in leaves}
 
 
 def _seed(db):
@@ -120,14 +114,11 @@ def test_a_fully_verified_label_reads_zero_under_unverified_and_stays(db):
                        label_confidence=0.9, verified=True)
     db.commit()
 
-    unverified = build_label_filter_tree(
-        project.id, db, count_by="detection", verification="unverified"
-    )
-    everything = build_label_filter_tree(project.id, db, count_by="detection")
+    unverified = _leaf_counts(db, project.id, "detection", verification="unverified")
+    everything = _leaf_counts(db, project.id, "detection")
 
-    assert roo.id in unverified["all_leaf_ids"]
-    assert _leaf_counts(unverified)[roo.id] == 0
-    assert _leaf_counts(everything)[roo.id] == 20
+    assert unverified[roo.id] == 0
+    assert everything[roo.id] == 20
 
 
 def test_file_counts_match_the_files_tab(db):
@@ -138,28 +129,28 @@ def test_file_counts_match_the_files_tab(db):
         verification="unverified", flagged="not_flagged", min_confidence=0.1
     )
 
-    tree = build_label_filter_tree(project.id, db, count_by="file", **filters)
+    shown = _leaf_counts(db, project.id, "file", **filters)
 
-    for leaf, count in _leaf_counts(tree).items():
+    for leaf, count in shown.items():
         total, _, _ = file_crud.get_labels_files(
             db, project.id, floor=project.counting_threshold, labels=[leaf], **filters
         )
         assert count == total, leaf
-    assert _leaf_counts(tree) == {fox.id: 1, deer.id: 1}
+    assert shown == {fox.id: 1, deer.id: 1}
 
 
 def test_event_counts_match_the_counts_page(db):
     project, fox, deer = _seed(db)
     filters = dict(flagged="flagged")
 
-    tree = build_label_filter_tree(project.id, db, count_by="event", **filters)
+    shown = _leaf_counts(db, project.id, "event", **filters)
 
-    for leaf, count in _leaf_counts(tree).items():
+    for leaf, count in shown.items():
         assert count == event_crud.get_event_counts(
             db, project.id, labels=[leaf],
             project_floor=project.counting_threshold, **filters
         ).total, leaf
-    assert _leaf_counts(tree) == {fox.id: 3, deer.id: 0}
+    assert shown == {fox.id: 3, deer.id: 0}
 
 
 def test_show_only_empty_reads_zero_for_every_label(db):
@@ -167,8 +158,9 @@ def test_show_only_empty_reads_zero_for_every_label(db):
     (an empty event has no species), so the honest count is 0, not the
     number of empty events."""
     project, fox, deer = _seed(db)
-    tree = build_label_filter_tree(project.id, db, count_by="event", empty="show_only")
-    assert _leaf_counts(tree) == {fox.id: 0, deer.id: 0}
+    assert _leaf_counts(db, project.id, "event", empty="show_only") == {
+        fox.id: 0, deer.id: 0
+    }
 
 
 @pytest.fixture
@@ -216,12 +208,12 @@ def test_the_endpoint_takes_the_page_filters(client, db):
     project, fox, deer = _seed(db)
 
     resp = client.get(
-        f"/api/events/label-tree?project_id={project.id}"
+        f"/api/events/label-counts?project_id={project.id}"
         "&count_by=detection&verification=verified"
     )
 
     assert resp.status_code == 200
-    assert _leaf_counts(resp.json()) == {fox.id: 3, deer.id: 0}
+    assert resp.json() == {"counts": {fox.id: 3}}
 
 
 def test_a_one_day_range_reaches_the_grid(file_db):

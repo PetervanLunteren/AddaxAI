@@ -156,6 +156,17 @@ def assign_label_colors(db: Session, project_id: str) -> dict[str, str]:
         raise ValueError(f"Project {project_id!r} not found")
 
     threshold = project.counting_threshold
+    present_ids = [row[0] for row in present_label_rows(db, project_id, threshold)]
+    return colors_for_labels(db, present_ids)
+
+
+def colors_for_labels(db: Session, present_ids: list[str]) -> dict[str, str]:
+    """The colour map for a project whose present labels are known.
+
+    `assign_label_colors` without the lookup, for a caller that already
+    ran `present_label_rows` (the filter options), so the project's boxes
+    are read once for both.
+    """
     colors: dict[str, str] = {}
     # (sort key, every key the frontend or the export might look this
     # class up by). One list, so species and detector classes are ranked
@@ -163,7 +174,6 @@ def assign_label_colors(db: Session, project_id: str) -> dict[str, str]:
     # classes sort first, by name.
     ranked: list[tuple[tuple[str, ...], list[str]]] = []
 
-    present_ids = [row[0] for row in present_label_rows(db, project_id, threshold)]
     rows = (
         db.query(LabelTaxonomy).filter(LabelTaxonomy.id.in_(present_ids)).all()
         if present_ids

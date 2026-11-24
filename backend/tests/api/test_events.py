@@ -630,24 +630,32 @@ def test_event_verify_and_count_endpoints(client, db):
 
 def test_filter_options_reports_min_label_confidence(client, db):
     """The filter bars clamp the cls range slider at the lowest
-    classification confidence that exists; the endpoint reports it."""
+    classification confidence among the boxes the pages can show: at or
+    above the threshold, or verified. A box below the threshold is not
+    shown, so its score does not count; a verified one is, so it does."""
     from tests.conftest import make_deployment, make_detection, make_file, make_project
 
-    p = make_project(db)
+    p = make_project(db, counting_threshold=0.5)
     dep = make_deployment(db, project_id=p.id)
     f = make_file(db, deployment_id=dep.id, observation_type="animal")
-    make_detection(
-        db, file_id=f.id, category="animal", confidence=0.9,
-        label="dog", label_confidence=0.42,
-    )
-    make_detection(
-        db, file_id=f.id, category="animal", confidence=0.8,
-        label="cat", label_confidence=0.07,
-    )
+    dog = _taxonomy_row(db, "EUR-DF-v1-3", "dog")
+    cat = _taxonomy_row(db, "EUR-DF-v1-3", "cat")
 
-    resp = client.get(f"/api/events/filter-options?project_id={p.id}")
-    assert resp.status_code == 200
-    assert resp.json()["min_label_confidence"] == 0.07
+    def box(row, confidence, score, verified=False):
+        make_detection(
+            db, file_id=f.id, category="animal", confidence=confidence,
+            label=row.name, label_taxonomy_id=row.id, label_confidence=score,
+            verified=verified,
+        )
+
+    box(dog, 0.9, 0.42)
+    box(cat, 0.8, 0.30)
+    box(cat, 0.2, 0.05)  # below the threshold: not shown
+    url = f"/api/events/filter-options?project_id={p.id}"
+    assert client.get(url).json()["min_label_confidence"] == 0.30
+
+    box(dog, 0.2, 0.07, verified=True)  # below, but verified: shown
+    assert client.get(url).json()["min_label_confidence"] == 0.07
 
 
 def test_filter_options_min_label_confidence_null_when_unclassified(client, db):

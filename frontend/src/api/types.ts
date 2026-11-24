@@ -721,15 +721,22 @@ export interface EventFilterParams {
   seed?: number;
 }
 
+/** Everything about the labels a project has, in one request that
+ *  changes only when labels change, so every page shares it. */
 export interface EventFilterOptions {
   labels: string[];
   date_range: { min: string; max: string } | null;
-  label_event_counts: Record<string, number>;
   scientific_labels?: Record<string, string>;
   common_labels?: Record<string, string>;
-  /** Lowest classification confidence in the project, the data-driven
-   * clamp for the cls range slider. Null when nothing is classified. */
+  /** Lowest classification confidence among the labels' boxes, the
+   * data-driven clamp for the cls range slider. Null when nothing is
+   * classified. */
   min_label_confidence?: number | null;
+  /** Colour per label, keyed by taxonomy id and lowercased name. */
+  label_colors: Record<string, string>;
+  /** The label filter tree, without counts. Null when the project has
+   * no labels: the filter then shows a flat list. */
+  label_tree: LabelTree | null;
 }
 
 // MaxN frame reference
@@ -981,11 +988,17 @@ export interface TaxonomyResponse {
   all_classes: string[];
 }
 
-export interface LabelTreeResponse {
+/** Every label a project has, nested by rank. Its counts come
+ *  separately (`LabelCounts`) and go on with `withCounts`. */
+export interface LabelTree {
   tree: TaxonomyNode[];
   all_leaf_ids: string[];
-  label_event_counts: Record<string, number>;
-  count_unit: string;
+}
+
+/** How many of each label a page would show under its filters, keyed
+ *  by taxonomy id. A label that is missing counts 0. */
+export interface LabelCounts {
+  counts: Record<string, number>;
 }
 
 // Geofence types

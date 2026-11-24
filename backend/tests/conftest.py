@@ -289,6 +289,24 @@ def make_detection(
     return obj
 
 
+def label_tree(db: Session, project_id: str) -> dict | None:
+    """The project's label filter tree as `filter-options` serves it:
+    shape only, None when the project has no labels."""
+    from app.api.crud.event import get_filter_options
+
+    return get_filter_options(db, project_id)["label_tree"]
+
+
+def label_counts(
+    db: Session, project_id: str, count_by: str = "event", **filters
+) -> dict[str, int]:
+    """Count per taxonomy id under the page's filters, as `label-counts`
+    serves it. A label that is missing counts 0."""
+    from app.api.crud.label_tree import count_labels_under_filters
+
+    return count_labels_under_filters(db, project_id, count_by, **filters)
+
+
 def make_video_box(
     db: Session,
     *,

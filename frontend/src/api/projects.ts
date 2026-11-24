@@ -200,9 +200,6 @@ export const projectsApi = {
    * id and by lowercased label name. Assigned server-side so the
    * annotated JPEG export matches the grid.
    */
-  getLabelColors: (projectId: string) =>
-    api.get<Record<string, string>>(`/api/projects/${projectId}/label-colors`),
-
   /**
    * The detector categories this project holds ("animal", "person",
    * "vehicle" on a camera trap run, "elasmobranch" on a SharkTrack one).

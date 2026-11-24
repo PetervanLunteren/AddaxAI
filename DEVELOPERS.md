@@ -953,9 +953,9 @@ A class is whatever names the box: its species when a classifier named one, the 
 
 **Why not a hash of the label.** Until 2026-08-27 a label was hashed onto the brand gradient (teal to yellow). Hashing has no idea which other species are on screen, so with ten present species two of them land on the same or a neighbouring colour almost every time (the birthday problem), and the middle of that gradient is all olive, which a beta tester reported as "two shades of green on two rodents". `docs/guides/check-labels.mdx` promises the odd one out stands out by colour; only a scheme that looks at what is present can keep that promise.
 
-**One implementation.** The frontend fetches `GET /api/projects/{id}/label-colors` (`useLabelColors`, mounted in `AppLayout` and `FolderRunLayout`) and `getSpeciesColor` only looks the key up, by `label_taxonomy_id` or lowercased label name. The export gets the same map through `detection_color(label, category, colors)`. There used to be a byte-for-byte Python mirror of the TypeScript hash, pinned by a test; that is exactly the kind of drift a single implementation removes. Do not add a colour algorithm on the frontend.
+**One implementation.** The frontend reads the map from `label_colors` in `GET /api/events/filter-options` (`useLabelColors`, mounted in `AppLayout` and `FolderRunLayout`; `colors_for_labels` on the backend, from the labels that request has already found) and `getSpeciesColor` only looks the key up, by `label_taxonomy_id` or lowercased label name. The export gets the same map through `detection_color(label, category, colors)`. There used to be a byte-for-byte Python mirror of the TypeScript hash, pinned by a test; that is exactly the kind of drift a single implementation removes. Do not add a colour algorithm on the frontend.
 
-**Consequences to know.** Colours are per project, and a class that first appears through a relabel shifts the classes after it by one slot, so `invalidateLabelQueries` refetches the map together with the label tree on every relabel. A key the map does not know renders neutral grey on screen (visible, never plausible) and a deterministic palette pick in the export, which can only happen for something that passes the media threshold but not the counting threshold. Class 19 onwards wraps; that pairs a class with one eighteen ranks away, which is almost never a relative.
+**Consequences to know.** Colours are per project, and a class that first appears through a relabel shifts the classes after it by one slot, so `invalidateLabelQueries` refetches the filter options, which carry both the map and the label tree, on every relabel. A key the map does not know renders neutral grey on screen (visible, never plausible) and a deterministic palette pick in the export, which can only happen for something that passes the media threshold but not the counting threshold. Class 19 onwards wraps; that pairs a class with one eighteen ranks away, which is almost never a relative.
 
 **Eighteen, not twelve.** The palette grew on 2026-09-11, keeping the original twelve exactly where they were so no project's colours moved. The limit is not the number of colours the eye can tell apart but the palette's own recipe, a narrow chroma band over a few lightness steps, which is what stops it looking like a box of highlighters. Inside that recipe eighteen is free: every added colour is at least 16 CIEDE2000 from everything already there, so the closest pair is the same 16 it was at twelve, and the worst step between neighbouring ranks improved from 16 to 30 because the weak wrap from the last colour back to the first went away. Twenty would cost a little (closest pair 15.1) and rebuilding all of them from scratch scored worse on both counts. The real weak point is colour vision deficiency: two of the original twelve are already indistinguishable under deuteranopia, more colours makes that worse, and the pill's species name is what carries the meaning.
 
@@ -1555,16 +1555,12 @@ The detection worker runs this once per deployment. The postprocessing worker ru
 
 ### How the filter tree is built
 
-`build_label_filter_tree()` in `backend/app/api/crud/label_tree.py`:
+The filter comes in two parts, because they change at different times (`backend/app/api/crud/label_tree.py`):
 
-1. Queries which labels actually have detections in the project
-2. Joins against `label_taxonomy` to get taxonomy columns
-3. Builds the hierarchy: class > order > family > genus > species
-4. Annotates each leaf with detection or event counts
-5. Detector classes (builtin rows: Animal, Person, Fish) are leaves at the root; other labels without ranks go under the "No taxonomy" node
-6. Returns `null` if no taxonomy rows exist (frontend shows flat list)
+- **The tree**, `build_label_filter_tree()`: every label the project has (`present_label_rows`), joined to `label_taxonomy` and nested class > order > family > genus > species. Detector classes (builtin rows: Animal, Person, Fish) are leaves at the root; other labels without ranks go under the "No taxonomy" node. `null` when the project has no labels (the frontend shows a flat list). It changes only when labels change, so it travels in `GET /api/events/filter-options` with the names, the colours and the slider limit. That whole request is one pass over the project's boxes.
+- **The counts**, `count_labels_under_filters()`: per taxonomy id, what the page would show with that label ticked alone under its other filters, from the page's own count query (`count_by` = `event`, `file` or `detection`). `GET /api/events/label-counts`. A filter change refetches only this.
 
-Exposed via `GET /api/events/label-tree?project_id=<id>&count_by=<event|detection>`.
+The frontend joins them with `withCounts` (`lib/taxonomy-utils.ts`): a leaf the counts leave out reads 0 and cannot be ticked, a parent shows the sum of its leaves. **A count never travels with the tree.** When they did, every filter change and every verify rebuilt the tree too, one extra pass over every box, which on a 2.5M-box project was 12 to 15 s each (2026-11-24, `future-plans/large-database-speed.md`).
 
 ### The variant rank
 
@@ -1603,10 +1599,10 @@ All model-sourced entries (CSV, JSON, rollup) set `is_custom=False`. The flag ex
 | `backend/app/ml/taxonomy_db.py` | Population functions (CSV, JSON, rollup) |
 | `backend/app/ml/taxonomic_rollup.py` | Rollup algorithm (sums confidences up tree) |
 | `backend/app/ml/postprocessing.py` | Orchestrates rollup + calls `add_rollup_taxonomy_entry` |
-| `backend/app/api/crud/label_tree.py` | Builds the filter tree from `label_taxonomy` |
+| `backend/app/api/crud/label_tree.py` | The filter tree from `label_taxonomy`, and the counts per label under a page's filters |
 | `backend/app/ml/taxonomy_parser.py` | Parses CSV into a tree structure (used for validation, not DB) |
 | `backend/tests/ml/test_taxonomy_db.py` | Tests for all population functions |
-| `backend/tests/api/test_label_tree.py` | Tests for tree building + API endpoint |
+| `backend/tests/api/test_label_tree.py` | Tests for the tree and its counts |
 
 ### Rules
 
