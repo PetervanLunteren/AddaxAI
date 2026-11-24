@@ -417,31 +417,24 @@ def get_labels_files(
         order = [func.seeded_hash(File.id, seed).asc(), File.id.asc()]
     elif sort == "events":
         # Bursts contiguous: events newest first (as on the Detections
-        # tab), inside an event the files in shooting order. Correlated
-        # scalar subqueries rather than a join: a file in more than one
-        # event would duplicate rows under a join, and LIMIT 1 keeps the
-        # sort key single-valued. Files outside any event sort last.
-        event_id_sq = (
-            select(event_files.c.event_id)
-            .where(event_files.c.file_id == File.id)
-            .order_by(event_files.c.event_id)
-            .limit(1)
-            .correlate(File)
-            .scalar_subquery()
-        )
-        event_start_sq = (
-            select(Event.event_start_local)
-            .join(event_files, event_files.c.event_id == Event.id)
-            .where(event_files.c.file_id == File.id)
-            .order_by(event_files.c.event_id)
-            .limit(1)
-            .correlate(File)
-            .scalar_subquery()
-        )
+        # tab), inside an event the files in shooting order. Files outside
+        # any event sort last, so the joins are outer joins.
+        #
+        # A join, not a subquery per file: the sort key is needed for
+        # every file of the project on every page, and three correlated
+        # lookups per file made a page take 5 to 20 s on 1.27M photos
+        # (about 2.5 s now). It relies on a file being in at most one
+        # event, which event generation guarantees (it deletes and
+        # recreates a deployment's events and assigns each file once;
+        # `test_every_file_is_in_one_event_at_most`). A file in two
+        # events would be listed twice.
+        query = query.outerjoin(
+            event_files, event_files.c.file_id == File.id
+        ).outerjoin(Event, Event.id == event_files.c.event_id)
         order = [
-            event_start_sq.is_(None).asc(),
-            event_start_sq.desc(),
-            event_id_sq.asc(),
+            Event.event_start_local.is_(None).asc(),
+            Event.event_start_local.desc(),
+            Event.id.asc(),
             *file_time_order(newest_first=False),
         ]
     else:

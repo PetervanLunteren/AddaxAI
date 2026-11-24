@@ -158,6 +158,32 @@ def test_events_idempotent_regeneration(deployment_scaffold):
     assert events2[0].file_count == events1[0].file_count
 
 
+def test_every_file_is_in_one_event_at_most(deployment_scaffold):
+    """The Files tab's event sort joins files to their event, so a file in
+    two events would be listed twice (`get_labels_files`). Generation
+    assigns each file once, also when it runs again over the same files."""
+    from sqlalchemy import func, select
+
+    from app.models.event import event_files
+
+    s = deployment_scaffold
+    db = s["db"]
+    base = datetime(2024, 6, 15, 10, 0, 0)
+    # Two bursts more than the 30-minute interval apart: two events.
+    _load_images_with_timestamps(
+        s, [base, base + timedelta(minutes=1), base + timedelta(hours=3)]
+    )
+
+    for _ in range(2):
+        assert generate_events_for_project(db, s["project"].id) == 2
+        per_file = db.execute(
+            select(event_files.c.file_id, func.count())
+            .group_by(event_files.c.file_id)
+        ).all()
+        assert len(per_file) == 3
+        assert {n for _, n in per_file} == {1}
+
+
 def test_events_temporal_clustering(deployment_scaffold):
     """6 files in 2 clusters (3h apart) with independence_interval=1800 → 2 events."""
     s = deployment_scaffold

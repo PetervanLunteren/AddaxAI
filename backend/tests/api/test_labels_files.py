@@ -731,9 +731,18 @@ def test_event_sort_keeps_bursts_together(client, db):
     assert got["items"][1]["event_id"] == old_ev.id
     assert got["items"][3]["event_id"] is None
 
-    # `find` under the same sort: the correlated event subqueries must
-    # work as window order keys too, or the handoff position would
-    # disagree with the listing.
+    # `find` under the same sort: the event join must give the window
+    # the same order, or the handoff position would disagree with the
+    # listing.
     for want, fid in enumerate(ids):
         found = _files(client, p.id, sort="events", find=fid)
         assert found["find_index"] == want
+
+    # Pages are slices of that one order: every file once, none twice,
+    # and the total is the file count, not a count of joined rows.
+    paged = []
+    for skip in range(0, len(ids), 3):
+        page = _files(client, p.id, sort="events", skip=skip, limit=3)
+        assert page["total"] == len(ids)
+        paged += [i["id"] for i in page["items"]]
+    assert paged == ids
