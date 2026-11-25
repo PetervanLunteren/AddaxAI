@@ -18,16 +18,18 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
+from sqlalchemy import update
+from sqlalchemy.exc import OperationalError
+
 from app.api.crud import deployment as deployment_crud
 from app.api.crud import deployment_queue as queue_crud
 from app.api.crud import event as event_crud
 from app.api.crud import job as job_crud
 from app.api.crud import project as project_crud
-from app.api.schemas.job import JobUpdate
 from app.core.job_cancellation import JobCancelledError, clear_cancel
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
-from app.db.base import get_db, refresh_query_statistics
+from app.db.base import get_db, get_session_factory, refresh_query_statistics
 from app.ml import detection_checkpoint as ckpt
 from app.ml.detection import MD_OUTPUT_CONFIDENCE_THRESHOLD
 from app.ml.environment_manager import EnvironmentManager
@@ -37,7 +39,7 @@ from app.ml.json_pipeline import merge_json_files, run_classification_on_json
 from app.ml.manifest_manager import ManifestManager
 from app.ml.model_storage import ModelStorage
 from app.ml.track_filter import track_filter_for
-from app.models import Deployment
+from app.models import Deployment, Job
 from app.services.folder_scanner import walk_media_files
 from app.services.thumbnail_service import ensure_project_thumbnail
 from app.utils.fs_hidden import mkdir_hidden_addaxai
@@ -416,13 +418,12 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     # diagnostic ZIP) sees how far a run is. The socket stays
                     # the live channel; this is the durable one. Only upward:
                     # a phase that restarts its own count at 0 must not make
-                    # the row go back.
+                    # the row go back. Written once per whole percent, after
+                    # the socket frame, by `_write_job_percent`.
                     pct = int(overall_progress * 100)
-                    if pct > _row["pct"]:
+                    write_pct = pct > _row["pct"]
+                    if write_pct:
                         _row["pct"] = pct
-                        job_crud.update_job(
-                            db, job_id, JobUpdate(progress_current=pct, progress_total=100)
-                        )
                     data = _deployment_context(
                         _idx, total_entries, len(_vf), len(_if),
                         has_classifier=classification_model is not None,
@@ -443,6 +444,8 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                         phase_progress,
                         data,
                     )
+                    if write_pct:
+                        await asyncio.to_thread(_write_job_percent, job_id, pct)
 
                 # ============================================================
                 # PHASE 1: Video Detection (if videos exist)
@@ -1540,6 +1543,39 @@ async def process_deployment_analysis(job_id: str) -> None:
         await ws_manager.send_error(job_id, str(e))
 
 
+def _write_job_percent(job_id: str, pct: int) -> None:
+    """
+    Copy the run's overall percent onto the job row, in a session of its own.
+
+    The row is a copy for readers without the socket. The database load and
+    postprocessing threads hold SQLite's one write lock until they commit,
+    minutes on a large deployment, so this write can wait out the busy
+    timeout and fail. That may cost one tick, never the run. Written through
+    the worker's own session it did: the failed flush left that session
+    unusable, and a 191k-image run failed at the finish (2026-11-22).
+
+    Only upward, in SQL, because two writes waiting on the same lock can
+    land in either order.
+
+    One rule follows: the worker session must not hold a flushed,
+    uncommitted write while a progress callback is awaited, or this write
+    waits on the worker's own lock until the busy timeout.
+    """
+    db = get_session_factory()()
+    try:
+        db.execute(
+            update(Job)
+            .where(Job.id == job_id, Job.progress_current < pct)
+            .values(progress_current=pct, progress_total=100)
+        )
+        db.commit()
+    except OperationalError as e:
+        db.rollback()
+        logger.warning(f"Job {job_id}: progress {pct}% not written: {e}")
+    finally:
+        db.close()
+
+
 def _run_postprocessing_owned_session(
     deployment_id: str,
     project_id: str,
@@ -1572,7 +1608,6 @@ def _run_postprocessing_owned_session(
     The caller must `db.expire_all()` afterwards, because rows this
     commits are stale in its own session.
     """
-    from app.db.base import get_session_factory
     from app.ml.postprocessing import (
         run_postprocessing_for_deployment,
         update_database_from_smoothed_results,

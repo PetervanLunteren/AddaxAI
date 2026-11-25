@@ -71,6 +71,13 @@ def set_sqlite_pragma(dbapi_conn: Any, connection_record: Any) -> None:
     dbapi_conn.create_function("seeded_hash", 2, _seeded_hash, deterministic=True)
 
 
+# SQLite allows one writer at a time. Python's sqlite3 default gives up
+# after 5 s, which turns any slow write (a large delete, a bulk ingest)
+# into "database is locked" errors on every other request that happens to
+# write during it. Wait instead of failing. A module constant so a test
+# can lower it before the engine is built.
+BUSY_TIMEOUT_S = 30
+
 # One engine and one session factory per process, so connections are
 # pooled. A new engine per request meant a new SQLite connection per
 # request: the pragmas set again, the schema parsed again and an empty
@@ -99,12 +106,7 @@ def get_engine() -> Engine:
             settings.database_url,
             echo=settings.sql_echo,  # Verbose per-query logging; off by default
             future=True,  # Use SQLAlchemy 2.0 style
-            # SQLite allows one writer at a time. Python's sqlite3 default
-            # gives up after 5s, which turns any slow write (a large
-            # delete, a bulk ingest) into "database is locked" errors on
-            # every other request that happens to write during it. Wait
-            # instead of failing.
-            connect_args={"timeout": 30},
+            connect_args={"timeout": BUSY_TIMEOUT_S},
             # No cap on open connections. Five stay pooled; beyond that a
             # session gets its own connection, closed when it ends. The
             # default cap of 15 made the 16th concurrent session wait 30 s
