@@ -77,13 +77,6 @@ function appendFilterParams(
 }
 
 export const eventsApi = {
-  /** Generate or regenerate events for a project. */
-  generate: async (
-    projectId: string
-  ): Promise<{ event_count: number; message: string }> => {
-    return api.post("/api/events/generate", { project_id: projectId });
-  },
-
   /** List event summaries for a project with optional filters. */
   list: async (params: {
     project_id: string;

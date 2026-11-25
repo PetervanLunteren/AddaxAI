@@ -7,8 +7,7 @@
  *
  * Sort and search return an NDJSON event stream from the backend. Use
  * `sortStream` / `searchStream` if you want progress events; the plain
- * `sort` / `search` helpers drain the stream and return only the final
- * result.
+ * `search` helper drains the stream and returns only the final result.
  */
 
 import { api } from "../lib/api-client";
@@ -130,18 +129,6 @@ async function streamNdjson<T>(
 }
 
 export const labelsApi = {
-  /**
-   * Sort labels by visual similarity. Drains the NDJSON stream
-   * and returns only the final result. Use `sortStream` if you also
-   * need progress events.
-   */
-  sort: async (
-    projectId: string,
-    body: SortRequest,
-  ): Promise<SortResponse> => {
-    return labelsApi.sortStream(projectId, body, () => {});
-  },
-
   sortStream: async (
     projectId: string,
     body: SortRequest,

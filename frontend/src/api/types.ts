@@ -358,16 +358,6 @@ export interface BulkRelinkResponse {
   results: BulkRelinkResultItem[];
 }
 
-export interface SuggestRelinkTargetRequest {
-  missing_path: string;
-}
-
-export interface SuggestRelinkTargetResponse {
-  existing_parent: string | null;
-  suggested_path: string | null;
-  candidates: string[];
-}
-
 export interface GroupBrokenItem {
   id: string;
   folder_path: string;
@@ -471,27 +461,6 @@ export interface SplitResponse {
   message: string;
 }
 
-// Job types
-export type JobType =
-  | "deployment_analysis"
-  | "import"
-  | "ml_inference"
-  | "export"
-  | "event_computation"
-  | "postprocessing"
-  | "package_export"
-  | "package_import";
-
-export type JobStatus =
-  | "pending"
-  | "running"
-  | "completed"
-  | "failed"
-  | "cancelled";
-
-export type DetectionModel = "MD5A-0-0" | "MD5B-0-0";
-export type ClassificationModel = "EUR-DF-v1-3" | "NAM-ADS-v1" | "none";
-
 // ML Model Status
 export type ModelStatus = "ready" | "needs_weights" | "needs_env" | "needs_both";
 
@@ -510,18 +479,6 @@ export interface ModelPrepareResponse {
   task_id: string;
 }
 
-export interface DeploymentAnalysisPayload {
-  project_id: string;
-  folder_path: string;
-  detection_model: DetectionModel;
-  classification_model: ClassificationModel;
-}
-
-export interface JobCreate {
-  type: JobType;
-  payload: Record<string, unknown>;
-}
-
 export interface JobResponse {
   id: string;
   type: string;
@@ -534,12 +491,6 @@ export interface JobResponse {
   created_at_utc: string;
   started_at_utc: string | null;
   completed_at_utc: string | null;
-}
-
-export interface RunQueueResponse {
-  message: string;
-  jobs_started: number;
-  job_ids: string[];
 }
 
 // What a file is: the raw detector category of its strongest detection,
@@ -919,17 +870,6 @@ export interface DetectionUpdate {
   label?: string | null;
   label_confidence?: number | null;
 }
-
-// Model options for deployment analysis
-export const DETECTION_MODELS: DetectionModel[] = [
-  "MD5A-0-0",
-  "MD5B-0-0",
-];
-
-export const CLASSIFICATION_MODELS: ClassificationModel[] = [
-  "EUR-DF-v1-3",
-  "NAM-ADS-v1",
-];
 
 // Model Info types (for UI dropdowns)
 export interface ExampleImage {

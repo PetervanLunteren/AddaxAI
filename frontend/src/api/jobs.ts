@@ -7,10 +7,10 @@
  */
 
 import { api } from "../lib/api-client";
-import type { JobCreate, JobResponse, RunQueueResponse } from "./types";
+import type { JobResponse } from "./types";
 
 // Re-export types
-export type { JobCreate, JobResponse, RunQueueResponse };
+export type { JobResponse };
 
 export const jobsApi = {
   /**
@@ -26,30 +26,5 @@ export const jobsApi = {
     const endpoint = query ? `/api/jobs?${query}` : "/api/jobs";
 
     return api.get<JobResponse[]>(endpoint);
-  },
-
-  /**
-   * Create a new job (add to queue)
-   */
-  create: (data: JobCreate) => api.post<JobResponse>("/api/jobs", data),
-
-  /**
-   * Get job by ID
-   */
-  get: (id: string) => api.get<JobResponse>(`/api/jobs/${id}`),
-
-  /**
-   * Delete job (remove from queue)
-   */
-  delete: (id: string) => api.delete<void>(`/api/jobs/${id}`),
-
-  /**
-   * Trigger queue processing, optionally for a specific project
-   */
-  runQueue: (project_id?: string) => {
-    const endpoint = project_id
-      ? `/api/jobs/run-queue?project_id=${project_id}`
-      : "/api/jobs/run-queue";
-    return api.post<RunQueueResponse>(endpoint, {});
   },
 };

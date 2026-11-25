@@ -21,8 +21,6 @@ import type {
   SplitPreview,
   SplitPreviewTarget,
   SplitResponse,
-  SuggestRelinkTargetRequest,
-  SuggestRelinkTargetResponse,
 } from "./types";
 
 export type {
@@ -43,8 +41,6 @@ export type {
   SplitPreview,
   SplitPreviewTarget,
   SplitResponse,
-  SuggestRelinkTargetRequest,
-  SuggestRelinkTargetResponse,
 };
 
 export const deploymentsApi = {
@@ -58,11 +54,6 @@ export const deploymentsApi = {
     const qs = searchParams.toString();
     return api.get<DeploymentResponse[]>(`/api/deployments${qs ? `?${qs}` : ""}`);
   },
-
-  /**
-   * Get deployment by ID
-   */
-  get: (id: string) => api.get<DeploymentResponse>(`/api/deployments/${id}`),
 
   /**
    * Update deployment
@@ -113,16 +104,6 @@ export const deploymentsApi = {
    */
   bulkRelink: (data: BulkRelinkRequest) =>
     api.post<BulkRelinkResponse>("/api/deployments/bulk-relink", data),
-
-  /**
-   * Suggest a replacement folder for a missing deployment path by
-   * scanning siblings of its deepest existing ancestor.
-   */
-  suggestRelinkTarget: (data: SuggestRelinkTargetRequest) =>
-    api.post<SuggestRelinkTargetResponse>(
-      "/api/deployments/suggest-relink-target",
-      data
-    ),
 
   /**
    * Group a list of broken deployments by their deepest missing

@@ -58,11 +58,6 @@ export const detectionsApi = {
     return api.delete(`/api/detections/${id}`);
   },
 
-  /** Delete all detections for a file. */
-  deleteByFile: async (fileId: string): Promise<{ deleted_count: number }> => {
-    return api.delete(`/api/detections/by-file/${fileId}`);
-  },
-
   /** Verify or unverify detections. `before` is the undo snapshot.
    *  `expandTracks` false keeps the verdict on the ids given instead of
    *  spreading it over their whole track: what an opened track needs,
