@@ -46,12 +46,6 @@ export interface FolderRunCreate {
   name?: string;
   video_count?: number;
   image_count?: number;
-  /** "Discard and start over": when true and a folder-run project
-   * already points at this source folder, the existing project is
-   * cascade-deleted (DB rows + on-disk .addaxai cache) before the
-   * fresh one is created. Default false keeps the create-or-resume
-   * behaviour for callers that don't care. */
-  force_new?: boolean;
   /** Fill missing capture dates from each file's modification time.
    * Never overrides a real capture date. Defaults to false. */
   use_file_mtime_fallback?: boolean;

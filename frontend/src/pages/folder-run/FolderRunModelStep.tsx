@@ -425,16 +425,20 @@ export function FolderRunModelStep() {
     enabled: lookupReady,
     staleTime: 30_000,
   });
-  // A brand-new run that lands on a folder with a run already is that
-  // run: open it. Its own setup step knows whether it finished, failed
-  // or can continue from a checkpoint, so both entry paths (this page
-  // and Show recent runs) show one and the same notice and dialog.
-  // Staying here used to call a failed run "already analysed" and its
-  // Re-run went through force_new, which deleted the checkpoint.
+  // A folder with a run already is that run: open it, whether a
+  // brand-new run landed on it or the folder of an open run was changed
+  // to it. Its own setup step knows whether it finished, failed or can
+  // continue from a checkpoint, so every entry path (this page and Show
+  // recent runs) shows one and the same notice and dialog. Staying here
+  // used to delete that run on Start analysis, without a confirm.
+  // Always a replace: this page stays mounted across the move and keeps
+  // the picked folder, so a history entry for the run it was picked in
+  // would redirect again on Back.
+  const lookupIsOtherRun = !!lookupRun && lookupRun.id !== runId;
   useEffect(() => {
-    if (runId || !lookupRun || isLookingUp) return;
+    if (!lookupRun || isLookingUp || !lookupIsOtherRun) return;
     navigate(`/folder-runs/${lookupRun.id}/setup`, { replace: true });
-  }, [runId, lookupRun, isLookingUp, navigate]);
+  }, [runId, lookupRun, isLookingUp, lookupIsOtherRun, navigate]);
   // Recent runs: the caption link only appears when there is no folder
   // picked yet AND there is at least one previous run, so it never links to
   // an empty list. The dialog owns the resume / delete behaviour.
@@ -638,8 +642,8 @@ export function FolderRunModelStep() {
 
   /** Create a brand-new folder run. Used when there's no `runId` in
    * the URL (the `/folder-runs/new` path) and when the user changed
-   * the folder of an existing run to a different one (handled via
-   * `force_new` to discard any matching previous run). After create
+   * the folder of an existing run to one without a run (a folder that
+   * has a run opens that run, see the lookup redirect). After create
    * the page reroutes to the new run's `/model` URL and starts
    * analysis there. */
   const createRun = useMutation({
@@ -728,11 +732,6 @@ export function FolderRunModelStep() {
     navigate(`/folder-runs/${lookupRun.id}/${target}`);
   };
 
-  /** Re-run handler. The destructive path depends on whether the
-   * matched lookup is the user's current run or a different one:
-   * inside the same run we use the dedicated reset endpoint, for
-   * a different run we discard via force_new create. The user
-   * sees the same dialog and the same end state either way. */
   /** Remember the committed settings (everything but the folder path)
    * so the next brand-new run seeds from them. Called on every commit
    * path: start, create-new, re-run. */
@@ -771,37 +770,11 @@ export function FolderRunModelStep() {
   const confirmRerun = (keepCheckpoint: boolean) => {
     setNothingToRun(false);
     const closeDialog = () => setRerunOpen(false);
-    if (!lookupRun) {
-      closeDialog();
-      return;
-    }
     const data = form.getValues();
     persistLastUsed(data);
-    if (lookupRun.id === runId) {
-      rerunAnalysis.mutate(
-        { data, keepCheckpoint },
-        { onSettled: closeDialog },
-      );
-      return;
-    }
-    if (!folderPath || !scanResult) {
-      closeDialog();
-      return;
-    }
-    createRun.mutate(
-      {
-        data,
-        payload: {
-          source_folder: folderPath,
-          image_count: scanResult.image_count,
-          video_count: scanResult.video_count,
-          force_new: true,
-          use_file_mtime_fallback: useFileMtimeFallback,
-          datetime_offset_seconds: datetimeOffsetSeconds || null,
-        },
-      },
-      { onSettled: closeDialog },
-    );
+    // Always the open run: the dialog only opens from its own notice or
+    // its own Start button, and it resets through the dedicated endpoint.
+    rerunAnalysis.mutate({ data, keepCheckpoint }, { onSettled: closeDialog });
   };
 
   /** Submit dispatcher. The button label / action depend on the run
@@ -832,7 +805,6 @@ export function FolderRunModelStep() {
           source_folder: folderPath,
           image_count: scanResult.image_count,
           video_count: scanResult.video_count,
-          force_new: folderChanged,
           use_file_mtime_fallback: useFileMtimeFallback,
           datetime_offset_seconds: datetimeOffsetSeconds || null,
         },
@@ -899,30 +871,24 @@ export function FolderRunModelStep() {
     form.watch("detection_model_id") === lookupRun.detection_model_id &&
     form.watch("detection_image_size") === lookupRun.detection_image_size &&
     form.watch("detection_augment") === lookupRun.detection_augment;
-  const folderChanged =
-    !!runId && run?.queue_entry?.folder_path !== folderPath;
   const isMutating =
     startAnalysis.isPending ||
     createRun.isPending ||
     rerunAnalysis.isPending;
-  // The notice row collapses both legacy flows into one: same vocab
-  // (Skip / Re-run) for an in-progress terminal run AND for a brand
-  // new path that landed on an already-analysed folder. The Re-run
-  // handler routes to the right destructive mutation based on which
-  // case applies, but the user sees one consistent action area.
-  // Inside-the-current-run case additionally requires terminal state,
-  // otherwise mid-analysis chip back-nav would hide the Start button
-  // users need to kick the analysis off.
+  // The notice row (Skip / Re-run) is for the open run only, once it
+  // finished or failed: a folder with another run redirects to that run
+  // (see the lookup above), which then shows its own notice. Terminal
+  // state is required, otherwise mid-analysis chip back-nav would hide
+  // the Start button users need to kick the analysis off.
   const lookupIsCurrent = !!lookupRun && lookupRun.id === runId;
-  const showCompletedNotice =
-    !!lookupRun &&
-    !folderChanged &&
-    (lookupIsCurrent ? isTerminal : true);
+  const showCompletedNotice = lookupIsCurrent && isTerminal;
 
   const canStart =
     modelsReady &&
     folderReady &&
     !isLookingUp &&
+    // About to redirect to that run; never start from here.
+    !lookupIsOtherRun &&
     !showCompletedNotice &&
     !isMutating;
 

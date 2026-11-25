@@ -303,7 +303,7 @@ def test_folder_run_visible_when_listing_by_mode(client):
 
 
 # ---------------------------------------------------------------------
-# Lookup endpoint + force_new "Discard and start over" flow
+# Lookup endpoint + create-or-resume
 # ---------------------------------------------------------------------
 
 
@@ -449,53 +449,9 @@ def test_lookup_returns_zero_counts_for_freshly_picked_folder(client):
     assert body["verified_label_count"] == 0
 
 
-def test_create_force_new_replaces_existing_run(client):
-    """force_new=True on a folder with an existing run cascade-deletes
-    the previous project and returns a brand-new one — different id,
-    fresh state."""
-    first = client.post(
-        "/api/folder-runs",
-        json={"source_folder": "/tmp/replace-me"},
-    ).json()
-    first_id = first["project"]["id"]
-
-    second = client.post(
-        "/api/folder-runs",
-        json={
-            "source_folder": "/tmp/replace-me",
-            "force_new": True,
-        },
-    )
-    assert second.status_code == 201
-    second_id = second.json()["project"]["id"]
-    assert second_id != first_id
-
-    # The previous project is gone; loading it 404s.
-    assert client.get(f"/api/folder-runs/{first_id}").status_code == 404
-
-
-def test_create_force_new_with_no_existing_match_still_creates(client):
-    """force_new on a folder that has no previous run is harmless —
-    same as a regular create. Lets the frontend always pass the flag
-    after the user clicked "Discard and start over" without needing
-    to track whether the lookup actually found something."""
-    resp = client.post(
-        "/api/folder-runs",
-        json={
-            "source_folder": "/tmp/no-previous",
-            "force_new": True,
-        },
-    )
-    assert resp.status_code == 201
-    assert resp.json()["project"]["folder_run_state"]["source_folder"] == (
-        "/tmp/no-previous"
-    )
-
-
 def test_create_default_resumes_existing_run(client):
-    """Sanity: force_new defaults to False, so the legacy
-    create-or-resume behaviour is unchanged for callers that don't
-    pass the flag."""
+    """A create on a folder that has a run returns that run. Nothing
+    in a create can delete one: that takes the DELETE endpoint."""
     first = client.post(
         "/api/folder-runs",
         json={"source_folder": "/tmp/default-resume"},

@@ -103,13 +103,6 @@ class FolderRunCreate(BaseModel):
     `image_count` come from the same client-side folder scan that
     drives the deployment-queue create flow.
 
-    ``force_new`` is the "Discard and start over" path from the
-    folder-picker step: when set and an existing folder-run project
-    already points at ``source_folder``, the existing project is
-    cascade-deleted (DB rows + on-disk ``.addaxai`` cache) before the
-    fresh one is created. Default ``False`` keeps the legacy
-    create-or-resume behaviour: an existing run is returned as-is.
-
     ``use_file_mtime_fallback`` is the opt-in the user ticked in the
     folder scan when nothing in the folder carried a capture date. It
     matters here even though a folder run draws no charts: the exported
@@ -126,7 +119,6 @@ class FolderRunCreate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)
     video_count: int = Field(default=0, ge=0)
     image_count: int = Field(default=0, ge=0)
-    force_new: bool = False
     use_file_mtime_fallback: bool = False
     datetime_offset_seconds: int | None = None
 
@@ -482,22 +474,12 @@ def create_folder_run(
     project.
     """
     existing = _find_existing_run(db, payload.source_folder)
-    if existing is not None and not payload.force_new:
+    if existing is not None:
         logger.info(
             f"Resuming folder run: project_id={existing.id} "
             f"folder={payload.source_folder!r}"
         )
         return _load_run(db, existing.id)
-
-    if existing is not None and payload.force_new:
-        # "Discard and start over": cascade-delete the existing run +
-        # its on-disk .addaxai cache before creating fresh. The
-        # destructive confirm dialog on the frontend gates this path.
-        logger.info(
-            f"Discarding existing folder run: project_id={existing.id} "
-            f"folder={payload.source_folder!r}"
-        )
-        crud_project.delete_folder_run(db, existing.id)
 
     # Auto-named runs dedup transparently against any colliding project
     # in the DB (including research projects promoted out of an earlier
