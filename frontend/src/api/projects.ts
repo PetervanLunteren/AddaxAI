@@ -6,6 +6,8 @@
  * - Explicit operations
  */
 
+import { queryOptions } from "@tanstack/react-query";
+
 import { api } from "../lib/api-client";
 import type {
   CustomLabelResponse,
@@ -281,3 +283,17 @@ export const projectsApi = {
       `/api/projects/${id}/independent-observation-stats`
     ),
 };
+
+/**
+ * The project row under one key, so every reader and every invalidation
+ * agree. Two spellings, `["project", id]` and `["projects", id]`, used to
+ * hold the same row, and a threshold change refreshed only the plural: the
+ * Labels viewers kept drawing boxes at the old threshold while the backend
+ * judged at the new one (audit 1, 2026-11-21).
+ */
+export function projectQueryOptions(id: string) {
+  return queryOptions({
+    queryKey: ["projects", id],
+    queryFn: () => projectsApi.get(id),
+  });
+}

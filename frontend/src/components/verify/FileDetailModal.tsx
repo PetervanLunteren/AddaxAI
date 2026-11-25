@@ -112,7 +112,7 @@ import { toast } from "sonner";
 
 import { detectionsApi } from "../../api/detections";
 import { fileQueryOptions, filesApi } from "../../api/files";
-import { projectsApi } from "../../api/projects";
+import { projectQueryOptions } from "../../api/projects";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
 import {
   fileMaxNMarkers,
@@ -273,8 +273,7 @@ export function FileDetailModal({
   }, [item]);
 
   const { data: project } = useQuery({
-    queryKey: ["project", projectId],
-    queryFn: () => projectsApi.get(projectId),
+    ...projectQueryOptions(projectId),
   });
   const { options: labelOptions, isLoading: labelOptionsLoading } =
     useLabelOptions(project?.classification_model_id ?? null, projectId);

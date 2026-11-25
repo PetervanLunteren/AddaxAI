@@ -34,7 +34,7 @@ import {
 } from "lucide-react";
 import { eventsApi } from "../../api/events";
 import { warmFiles } from "./warm-files";
-import { projectsApi } from "../../api/projects";
+import { projectQueryOptions } from "../../api/projects";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -216,8 +216,7 @@ export function VerifyView({ projectId }: VerifyViewProps) {
 
   // Get project detection threshold
   const { data: project } = useQuery({
-    queryKey: ["project", projectId],
-    queryFn: () => projectsApi.get(projectId),
+    ...projectQueryOptions(projectId),
   });
   const detectionThreshold = project?.counting_threshold ?? 0;
 

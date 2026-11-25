@@ -20,7 +20,7 @@ import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
-import { projectsApi } from "../../api/projects";
+import { projectQueryOptions } from "../../api/projects";
 import { FilesTab } from "./FilesTab";
 import { LabelsTab } from "./LabelsTab";
 import { lblFiltersFromSearchParams } from "./labels-filters";
@@ -55,8 +55,7 @@ export function LabelsView({
 }: LabelsViewProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: project } = useQuery({
-    queryKey: ["project", projectId],
-    queryFn: () => projectsApi.get(projectId),
+    ...projectQueryOptions(projectId),
   });
 
   const mode: LabelsViewMode =

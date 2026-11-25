@@ -38,7 +38,7 @@ import { detectionsApi } from "../../api/detections";
 import { tracksApi } from "../../api/tracks";
 import type { TrackDetectionsResponse } from "../../api/types";
 import { trackFrameAsCard } from "../../lib/track-utils";
-import { projectsApi } from "../../api/projects";
+import { projectsApi, projectQueryOptions } from "../../api/projects";
 import { sitesApi } from "../../api/sites";
 import { scopeFilters, scopeText } from "../../lib/label-scope";
 import { Button } from "../ui/button";
@@ -484,8 +484,7 @@ export function LabelsTab({
     useLabelOptions(classificationModelId, projectId);
 
   const { data: project } = useQuery({
-    queryKey: ["project", projectId],
-    queryFn: () => projectsApi.get(projectId),
+    ...projectQueryOptions(projectId),
   });
 
   // The scope, sites and dates: what the suggestions pill, the review

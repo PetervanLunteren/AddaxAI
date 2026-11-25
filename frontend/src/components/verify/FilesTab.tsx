@@ -30,7 +30,7 @@ import { toast } from "sonner";
 import { detectionsApi } from "../../api/detections";
 import { fileQueryOptions, filesApi } from "../../api/files";
 import { labelsApi } from "../../api/labels";
-import { projectsApi } from "../../api/projects";
+import { projectQueryOptions } from "../../api/projects";
 import { useLabelOptions } from "../../hooks/useLabelOptions";
 import {
   shortcutSlotFromKey,
@@ -170,8 +170,7 @@ export function FilesTab({
   const [tileSize, setTileSize] = useTileSize();
 
   const { data: project } = useQuery({
-    queryKey: ["project", projectId],
-    queryFn: () => projectsApi.get(projectId),
+    ...projectQueryOptions(projectId),
   });
 
   const filters = useMemo(() => {

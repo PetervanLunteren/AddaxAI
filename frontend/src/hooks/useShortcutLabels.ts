@@ -17,8 +17,7 @@
 import { useCallback, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { projectsApi } from "../api/projects";
-import type { ProjectResponse } from "../api/types";
+import { projectsApi, projectQueryOptions } from "../api/projects";
 import type { LabelOption } from "./useLabelOptions";
 
 export type ShortcutLabels = Record<number, LabelOption>;
@@ -35,8 +34,7 @@ export function shortcutSlotFromKey(e: KeyboardEvent): number | null {
 export function useShortcutLabels(projectId: string) {
   const queryClient = useQueryClient();
   const { data: project } = useQuery({
-    queryKey: ["project", projectId],
-    queryFn: () => projectsApi.get(projectId),
+    ...projectQueryOptions(projectId),
   });
 
   const shortcutLabels = useMemo<ShortcutLabels>(() => {
@@ -51,7 +49,7 @@ export function useShortcutLabels(projectId: string) {
   const updateShortcutLabels = useCallback(
     (updater: (prev: ShortcutLabels) => ShortcutLabels) => {
       const next = updater(shortcutLabels);
-      queryClient.setQueryData<ProjectResponse>(["project", projectId], (p) =>
+      queryClient.setQueryData(projectQueryOptions(projectId).queryKey, (p) =>
         p ? { ...p, shortcut_labels: next } : p,
       );
       projectsApi.update(projectId, { shortcut_labels: next });

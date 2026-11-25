@@ -26,7 +26,7 @@ import { fileQueryOptions } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
 import { labelsApi } from "../../api/labels";
 import { eventsApi } from "../../api/events";
-import { projectsApi } from "../../api/projects";
+import { projectQueryOptions } from "../../api/projects";
 import { API_BASE_URL } from "../../lib/api-client";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
 import { frameImageUrl } from "../../lib/clip-frames";
@@ -350,8 +350,7 @@ export function DetectionDetailModal({
   // Project detection threshold for the context thumbnails' box overlay.
   // Shared query key with the rest of the app, so usually a cache hit.
   const { data: project } = useQuery({
-    queryKey: ["project", projectId],
-    queryFn: () => projectsApi.get(projectId),
+    ...projectQueryOptions(projectId),
     enabled: open,
   });
   const detectionThreshold = project?.counting_threshold ?? 0;

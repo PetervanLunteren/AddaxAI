@@ -22,7 +22,7 @@ import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { eventsApi, type LabelCountUnit } from "../../api/events";
-import { projectsApi } from "../../api/projects";
+import { projectQueryOptions } from "../../api/projects";
 import { sitesApi } from "../../api/sites";
 import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
 import { buildSiteOptions } from "../../lib/site-filter-options";
@@ -138,10 +138,9 @@ export function VerifyFilterBar({
 
   // Folder runs are a single deployment with no site, so the Sites
   // filter is meaningless there. Detect the mode from the project
-  // (deduped query — VerifyView already fetches it).
+  // (a cache read, VerifyView already fetches it).
   const { data: project } = useQuery({
-    queryKey: ["projects", projectId],
-    queryFn: () => projectsApi.get(projectId),
+    ...projectQueryOptions(projectId),
     enabled: !!projectId,
   });
   const showSites = project?.mode !== "folder_run";

@@ -40,7 +40,7 @@ import {
   Tally5,
   TrendingUp,
 } from "lucide-react";
-import { projectsApi } from "../../api/projects";
+import { projectQueryOptions } from "../../api/projects";
 import { useBrokenDeployments } from "../../hooks/useBrokenDeployments";
 import { cn } from "../../lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
@@ -84,8 +84,7 @@ export function Sidebar({ collapsed, onToggleCollapsed }: SidebarProps) {
   const brokenDeployments = useBrokenDeployments(projectId);
 
   const { data: project } = useQuery({
-    queryKey: ["projects", projectId],
-    queryFn: () => projectsApi.get(projectId!),
+    ...projectQueryOptions(projectId!),
     enabled: !!projectId,
   });
 

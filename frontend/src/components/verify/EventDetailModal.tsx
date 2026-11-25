@@ -42,7 +42,7 @@ import { ClipTimeline } from "./TrackTimeline";
 import { ApiError } from "../../lib/api-client";
 import { eventsApi } from "../../api/events";
 import { detectionsApi } from "../../api/detections";
-import { projectsApi } from "../../api/projects";
+import { projectQueryOptions } from "../../api/projects";
 import { basename } from "../../lib/path-utils";
 import { describeEventMedia } from "../../lib/event-media";
 import {
@@ -210,8 +210,7 @@ export function EventDetailModal({
 
   // Fetch project for detection threshold
   const { data: project } = useQuery({
-    queryKey: ["project", projectId],
-    queryFn: () => projectsApi.get(projectId!),
+    ...projectQueryOptions(projectId!),
     enabled: !!projectId,
   });
 

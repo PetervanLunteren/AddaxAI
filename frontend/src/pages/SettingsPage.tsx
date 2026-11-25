@@ -15,7 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as z from "zod";
 import { Save, RotateCcw, Undo2 } from "lucide-react";
 import { toast } from "sonner";
-import { projectsApi, type ProjectUpdate } from "../api/projects";
+import { projectsApi, projectQueryOptions, type ProjectUpdate } from "../api/projects";
 import { invalidateModelMetadata, modelsApi } from "../api/models";
 import {
   LabelSelectionField,
@@ -209,8 +209,7 @@ export default function SettingsPage() {
 
   // Fetch current project
   const { data: project, isLoading: projectLoading } = useQuery({
-    queryKey: ["projects", projectId],
-    queryFn: () => projectsApi.get(projectId!),
+    ...projectQueryOptions(projectId!),
     enabled: !!projectId,
   });
 

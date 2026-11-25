@@ -153,7 +153,7 @@ import {
   type FolderRunCreate,
 } from "../../api/folder-runs";
 import { invalidateModelMetadata, modelsApi } from "../../api/models";
-import { projectsApi } from "../../api/projects";
+import { projectsApi, projectQueryOptions } from "../../api/projects";
 
 import { useFolderRun } from "./FolderRunLayout";
 
@@ -617,11 +617,11 @@ export function FolderRunModelStep() {
       return resp;
     },
     onSuccess: (resp) => {
-      // Both keys hold this project (the filter bar reads the plural,
-      // the slot hook the singular), and the save above may have given
-      // the run inherited hotkey slots.
-      queryClient.invalidateQueries({ queryKey: ["projects", runId] });
-      queryClient.invalidateQueries({ queryKey: ["project", runId] });
+      // The save above may have given the run inherited hotkey slots.
+      // mutationFn throws without a run id, so it is set here.
+      queryClient.invalidateQueries({
+        queryKey: projectQueryOptions(runId!).queryKey,
+      });
       if (resp.jobs_started === 0 || resp.job_ids.length === 0) {
         // Nothing pending to process (e.g. the queue entry was already
         // consumed or is in a non-pending state). Surface it rather
@@ -702,11 +702,11 @@ export function FolderRunModelStep() {
       return resp;
     },
     onSuccess: (resp) => {
-      // Both keys hold this project (the filter bar reads the plural,
-      // the slot hook the singular), and the save above may have given
-      // the run inherited hotkey slots.
-      queryClient.invalidateQueries({ queryKey: ["projects", runId] });
-      queryClient.invalidateQueries({ queryKey: ["project", runId] });
+      // The save above may have given the run inherited hotkey slots.
+      // mutationFn throws without a run id, so it is set here.
+      queryClient.invalidateQueries({
+        queryKey: projectQueryOptions(runId!).queryKey,
+      });
       if (resp.jobs_started === 0 || resp.job_ids.length === 0) {
         setNothingToRun(true);
         return;

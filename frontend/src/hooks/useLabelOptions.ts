@@ -18,7 +18,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { modelsApi } from "../api/models";
-import { projectsApi } from "../api/projects";
+import { projectsApi, projectQueryOptions } from "../api/projects";
 import { resolveSpeciesName } from "../lib/species-name-mode";
 import { mappedLabels } from "../lib/speciesSelection";
 import { capitalize } from "../lib/utils";
@@ -140,8 +140,7 @@ export function useLabelOptions(
   // With one, the species are the list's own labels, not the 2,500
   // SpeciesNet classes the list maps onto them.
   const { data: project } = useQuery({
-    queryKey: ["project", projectId],
-    queryFn: () => projectsApi.get(projectId),
+    ...projectQueryOptions(projectId),
     enabled: !!projectId,
   });
   const taxaMapping = project?.taxa_mapping ?? null;

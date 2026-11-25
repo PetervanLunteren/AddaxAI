@@ -20,6 +20,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 import {
   folderRunsApi,
   type SaveOutputsRequest,
@@ -33,6 +34,19 @@ import {
   saveLastUsedSaveOutputs,
 } from "../../../lib/folderRunSettings";
 import { useMediaOptions, type MediaFormHandles } from "./useMediaOptions";
+
+/**
+ * The refresh after a saved threshold, shared by the slider's save and the
+ * save that runs when the step unmounts mid-drag. The backend recalculates
+ * MaxN and observation types on a threshold change, so every cached count
+ * and grid is stale: the Counts step one Back away included. Same refresh
+ * the Refine results slideout does after it applies a change.
+ */
+function refreshAfterThreshold(queryClient: QueryClient, runId: string): void {
+  invalidateProjectData(queryClient, runId);
+  void queryClient.invalidateQueries({ queryKey: ["folder-run", runId] });
+  void queryClient.invalidateQueries({ queryKey: ["media-preview"] });
+}
 
 export type { MediaFormHandles } from "./useMediaOptions";
 
@@ -141,15 +155,7 @@ export function useSaveOutputsForm({
     // instead of showing a value nothing was written for.
     onSettled: () => {
       setDraggedThreshold(null);
-      // The backend recalculates MaxN and observation types on a threshold
-      // change, so every cached count and grid is stale: the Counts step
-      // one Back away included. Same refresh the Refine results slideout
-      // does after it applies a change.
-      invalidateProjectData(queryClient, runId);
-      queryClient.invalidateQueries({ queryKey: ["folder-run", runId] });
-      queryClient.invalidateQueries({
-        queryKey: ["media-preview"],
-      });
+      refreshAfterThreshold(queryClient, runId);
     },
   });
 
@@ -201,12 +207,7 @@ export function useSaveOutputsForm({
       // the caches the rest of the app reads.
       projectsApi
         .update(runId, { counting_threshold: value })
-        .then(() => {
-          queryClient.invalidateQueries({ queryKey: ["folder-run", runId] });
-          queryClient.invalidateQueries({
-            queryKey: ["media-preview"],
-          });
-        })
+        .then(() => refreshAfterThreshold(queryClient, runId))
         .catch(() => {});
     };
   }, [runId, queryClient]);
