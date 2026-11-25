@@ -9,10 +9,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Index, Integer, String
+from sqlalchemy import Boolean, Float, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.db.types import UtcDateTime
 
 if TYPE_CHECKING:
     from .detection_embedding import DetectionEmbedding
@@ -107,7 +108,7 @@ class Detection(Base):
     # Detection-level verification
     verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     verified_at_utc: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        UtcDateTime, nullable=True
     )
 
     # Suggestions review: when True the user clicked "Dismiss" on the
@@ -123,7 +124,7 @@ class Detection(Base):
     )
 
     created_at_utc: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+        UtcDateTime, nullable=False, default=lambda: datetime.now(UTC)
     )
 
     # Relationships

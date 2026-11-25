@@ -16,7 +16,6 @@ from sqlalchemy import (
     JSON,
     Boolean,
     Date,
-    DateTime,
     Float,
     ForeignKey,
     Integer,
@@ -26,6 +25,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.db.types import UtcDateTime
 
 if TYPE_CHECKING:
     from .event import Event
@@ -78,7 +78,7 @@ class Deployment(Base):
         String(20), nullable=False, default="valid"
     )  # "valid", "needs_relink"
     last_validated_at_utc: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        UtcDateTime, nullable=True
     )  # When folder was last checked (UTC)
 
     # Deployment metadata. Dates are in the project's local camera timezone,
@@ -133,7 +133,7 @@ class Deployment(Base):
     warnings: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     created_at_utc: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+        UtcDateTime, nullable=False, default=lambda: datetime.now(UTC)
     )
 
     # Relationships

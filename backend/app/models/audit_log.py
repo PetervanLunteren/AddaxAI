@@ -9,10 +9,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import Literal
 
-from sqlalchemy import JSON, DateTime, Index, String
+from sqlalchemy import JSON, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.db.types import UtcDateTime
 
 AuditAction = Literal["create", "update", "delete"]
 
@@ -42,7 +43,7 @@ class AuditLog(Base):
         JSON, nullable=True
     )  # Before/after values
     created_at_utc: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+        UtcDateTime, nullable=False, default=lambda: datetime.now(UTC)
     )
 
     # Indexes

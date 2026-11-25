@@ -12,10 +12,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Index, String, UniqueConstraint
+from sqlalchemy import Boolean, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.db.types import UtcDateTime
 
 if TYPE_CHECKING:
     from .detection import Detection
@@ -61,7 +62,7 @@ class LabelTaxonomy(Base):
     )
     project_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at_utc: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+        UtcDateTime, nullable=False, default=lambda: datetime.now(UTC)
     )
 
     # Back-reference to detections linked via FK

@@ -11,10 +11,11 @@ never turn an answer into a wrong one.
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, String
+from sqlalchemy import Float, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.db.types import UtcDateTime
 
 
 class CalibrationAnswer(Base):
@@ -32,7 +33,7 @@ class CalibrationAnswer(Base):
     # "right", "wrong" or "unsure" (can't tell; stored, left out of the fit).
     answer: Mapped[str] = mapped_column(String(10), nullable=False)
     answered_at_utc: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+        UtcDateTime, nullable=False, default=lambda: datetime.now(UTC)
     )
 
     __table_args__ = (

@@ -9,10 +9,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.db.types import UtcDateTime
 
 if TYPE_CHECKING:
     from .project import Project
@@ -87,10 +88,10 @@ class DeploymentQueue(Base):
         String(20), nullable=False, default="pending"
     )  # pending, processing, completed, failed
     created_at_utc: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+        UtcDateTime, nullable=False, default=lambda: datetime.now(UTC)
     )
     processed_at_utc: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        UtcDateTime, nullable=True
     )
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Non-fatal warnings accumulated during ingest (e.g. files skipped

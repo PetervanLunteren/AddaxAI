@@ -16,6 +16,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql.schema import ForeignKey
 
 from app.db.base import Base
+from app.db.types import UtcDateTime
 
 if TYPE_CHECKING:
     from .deployment import Deployment
@@ -112,7 +113,7 @@ class File(Base):
         Boolean, nullable=False, server_default="0", default=False
     )
     verified_at_utc: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        UtcDateTime, nullable=True
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     favorited: Mapped[bool] = mapped_column(
@@ -125,11 +126,11 @@ class File(Base):
         Boolean, nullable=False, server_default="0", default=False
     )
     flagged_at_utc: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        UtcDateTime, nullable=True
     )
 
     created_at_utc: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+        UtcDateTime, nullable=False, default=lambda: datetime.now(UTC)
     )
 
     # Relationships
