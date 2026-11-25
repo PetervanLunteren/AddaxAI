@@ -335,6 +335,18 @@ def build_excluded_taxon_keys(
     )
 
 
+def _capped(score_sum: float) -> float:
+    """A summed score, never above 1.
+
+    Softmax scores sum to at most 1, so this changes nothing for them.
+    Sigmoid scores (multi-label heads such as NZS-WEK-v3-03) do not, and
+    a box with several likely classes summed to 1.05 on real images.
+    The sums are compared with the threshold uncapped; only the stored
+    score is capped.
+    """
+    return min(score_sum, 1.0)
+
+
 def rollup_single_detection(
     classifications: list[list],
     class_id_to_name: dict[str, str],
@@ -510,7 +522,7 @@ def rollup_single_detection(
             entry = level_entries[level][key]
             return {
                 "label": _format_rollup_label(level, entry, taxon_class_names),
-                "confidence": sums[key],
+                "confidence": _capped(sums[key]),
                 "level": level,
                 "taxon": entry[level],
                 "ancestors": entry,
@@ -527,7 +539,7 @@ def rollup_single_detection(
     if kingdom_sum > threshold:
         return {
             "label": "animal",
-            "confidence": kingdom_sum,
+            "confidence": _capped(kingdom_sum),
             "level": "kingdom",
             "taxon": "animal",
             "ancestors": {},

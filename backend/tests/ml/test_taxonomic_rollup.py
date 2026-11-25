@@ -181,6 +181,31 @@ def test_rollup_to_genus(taxonomy_lookup, class_id_to_name):
     assert result["confidence"] == pytest.approx(0.70, abs=0.01)
 
 
+def test_sigmoid_scores_summed_at_a_level_are_capped_at_one(
+    taxonomy_lookup, class_id_to_name,
+):
+    # Sigmoid scores need not sum to 1: leopard 0.60 + lion 0.55 =
+    # panthera 1.15. Stored as 1.0; the softmax case below 1 keeps its
+    # exact sum (test_rollup_to_genus).
+    classifications = [[0, 0.60], [1, 0.55], [3, 0.10]]
+    result = rollup_single_detection(classifications, class_id_to_name, taxonomy_lookup)
+    assert result is not None
+    assert result["label"] == "panthera"
+    assert result["confidence"] == 1.0
+
+
+def test_sigmoid_scores_summed_at_kingdom_are_capped_at_one(
+    taxonomy_lookup, class_id_to_name,
+):
+    # No level crosses 0.65 (mammalia 0.60, aves 0.50), so the kingdom
+    # fallback sums both: 1.10. Shape of NZ model box cam03 IMG_0018.
+    classifications = [[3, 0.60], [4, 0.50]]
+    result = rollup_single_detection(classifications, class_id_to_name, taxonomy_lookup)
+    assert result is not None
+    assert result["level"] == "kingdom"
+    assert result["confidence"] == 1.0
+
+
 def test_rollup_to_family(taxonomy_lookup, class_id_to_name):
     # leopard 0.25 + lion 0.20 + cheetah 0.25 = felidae 0.70 (>= 0.65)
     # genus: panthera = 0.45, acinonyx = 0.25 — neither crosses 0.65
