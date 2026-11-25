@@ -1,0 +1,44 @@
+---
+sidebar_position: 7
+title: Use your own taxa list
+---
+
+# Use your own taxa list
+
+SpeciesNet knows over 2,000 species and groups. A taxa list tells it which of them you work with and what you call them, so its labels match your own list: one "deer" for every deer species, and one "bird of prey" for hawks, eagles and owls. The list replaces the country filter and works with SpeciesNet only. How it changes the labels is on [how labels get cleaned up](../understanding/label-cleanup.md#4-your-species-selection).
+
+## Make the file
+
+The easiest way is Dan Morris's [SpeciesNet taxonomy mapping skill](https://github.com/agentmorris/agentmorrispublic/tree/main/skills/speciesnet-taxonomy-mapping), which runs in an AI agent such as Claude Code. Give it the labels you use and your country or region, and it writes the file. It puts the choices you should check in a notes column, for example when your list has leopard but no lion, so a lion would read "leopard". Read those notes before you use the file.
+
+To make it by hand, you need a .csv with two columns: `input_latin`, a taxon from SpeciesNet, and `output_name`, the label you want for it. Several rows can share a label.
+
+```csv
+input_latin,output_name
+aepyceros,impala
+cervidae,deer
+accipitridae,bird of prey
+strigiformes,bird of prey
+```
+
+Look up the taxa in [SpeciesNet's taxonomy file](https://github.com/google/cameratrapai/blob/main/data/model_package/taxonomy_release.txt). A species is genus and species (`panthera pardus`), anything higher is one word (`panthera`, `felidae`, `carnivora`, `mammalia`). Put each label at the highest level that does not also catch another label on your list. With only one deer on your list, `cervidae` is enough, and every deer reads "deer". With two deer you list each one at a lower level. People, vehicles and empty photos need no row, AddaxAI handles those itself.
+
+If you edit the file in Excel, save it as "CSV UTF-8". Commas and semicolons both work.
+
+## Load it
+
+You load the list where you would pick a country: when you create a project, in the project settings, or in a folder run.
+
+1. Open the dropdown with the countries.
+2. Pick "Custom taxa list (.csv)".
+3. Click "Choose .csv file" and pick your file.
+
+<img src="https://github.com/user-attachments/assets/9f729cfd-4cb4-43e3-8108-7631f077c3a1" alt="The Species selection field in the project settings with a taxa list loaded: the file name, 4 labels, and Change, Download, Remove and How to make one" style={{width: '100%', display: 'block', marginBottom: '1.25rem'}} />
+
+The field shows the file name and how many labels it has. If there are results already, their labels are updated when you save. Nothing is analysed again.
+
+A file loads completely or not at all. If a row names a taxon SpeciesNet doesn't know, has no label, or names a taxon twice, you get those rows by line number and your earlier choice stays. Fix the rows in the file and pick it again.
+
+## Change it later
+
+Download gives you back the file exactly as you loaded it, also months later or in a project you got from someone else. Edit it, then load it again with Change. Remove takes the list away, so you can pick a country or All labels instead. Labels you verified keep their name either way.
