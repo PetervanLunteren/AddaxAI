@@ -208,7 +208,11 @@ def _load_scope(
         return data
 
     for dep_id, intervals in intervals_by_dep.items():
-        data.nights[site_by_dep[dep_id]].update(nights_per_day(intervals))
+        # A site only gets an entry with effort behind it: the lookup alone
+        # would add one with 0 trap nights, which the species table then
+        # divides by.
+        if intervals:
+            data.nights[site_by_dep[dep_id]].update(nights_per_day(intervals))
 
     day_expr = func.strftime("%Y-%m-%d", Event.event_start_local)
     query = (

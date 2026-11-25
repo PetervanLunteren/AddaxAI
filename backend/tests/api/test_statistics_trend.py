@@ -315,6 +315,39 @@ def test_the_species_table_counts_a_site_with_a_single_night(db):
     assert week_2.n_sites == 3
 
 
+def test_a_site_without_effort_in_the_date_range_is_left_out_of_the_table(db):
+    """It used to get 0 trap nights, and the table divided by them."""
+    project = make_project(db)
+    site_a, site_b = (make_site(db, project_id=project.id, name=n) for n in "AB")
+    dep_a = _camera(db, project=project, site=site_a, first=_jan(1), last=_jan(14))
+    _camera(
+        db, project=project, site=site_b,
+        first=date(2024, 2, 1), last=date(2024, 2, 14),
+    )
+    _sighting(db, dep_a, _jan(3), 7)
+
+    (deer,) = rate_trend.get_species_rates(
+        db, project.id, date_from="2024-01-01", date_to="2024-01-31"
+    ).species
+
+    # Only A ran in January: 7 over 14 nights.
+    assert (deer.n_sites, deer.mean) == (1, pytest.approx(50))
+
+
+def test_a_site_whose_deployment_has_no_files_is_left_out_of_the_table(db):
+    project = make_project(db)
+    site_a, site_b = (make_site(db, project_id=project.id, name=n) for n in "AB")
+    dep_a = _camera(db, project=project, site=site_a, first=_jan(1), last=_jan(14))
+    make_deployment(
+        db, project_id=project.id, site_id=site_b.id, start_date_local=_jan(1)
+    )
+    _sighting(db, dep_a, _jan(3), 7)
+
+    (deer,) = rate_trend.get_species_rates(db, project.id).species
+
+    assert (deer.n_sites, deer.mean) == (1, pytest.approx(50))
+
+
 def test_observations_without_a_label_get_a_row_per_category(db):
     """A detector-only project has no labels. Person, vehicle and animal
     used to land in one "unknown" row with their counts added up."""
