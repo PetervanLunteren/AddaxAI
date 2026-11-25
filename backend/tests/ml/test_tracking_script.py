@@ -471,3 +471,26 @@ def test_the_detector_wrapper_tells_a_failure_from_an_empty_frame():
         {"file": "frame", "detections": None, "failure": "Failure inference"}
     )
     assert detector.detect(frame) is None
+
+
+def test_the_detector_hands_the_package_an_rgb_frame():
+    """ffmpeg pipes BGR, MegaDetector reads RGB. A frame with the channels
+    left as they are still detects, just worse, so only this test notices."""
+    seen = []
+
+    class _Package:
+        def generate_detections_one_image(self, image, **kw):
+            seen.append(image)
+            return {"file": "frame", "detections": [], "failure": None}
+
+    detector = object.__new__(ts._Detector)
+    detector.conf, detector.is_rfdetr = 0.01, False
+    detector.image_size, detector.augment = None, False
+    detector.detector = _Package()
+    frame = np.zeros((48, 64, 3), dtype=np.uint8)
+    frame[:, :] = (255, 0, 0)  # pure blue, in BGR
+
+    detector.detect(frame)
+
+    assert seen[0].mode == "RGB"
+    assert seen[0].getpixel((5, 5)) == (0, 0, 255)
