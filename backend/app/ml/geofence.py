@@ -31,9 +31,6 @@ from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# Known labels file pattern for SpeciesNet models
-LABELS_EXTENSION = ".labels.txt"
-
 
 def find_geofence_file(model_dir: Path) -> Path | None:
     """
@@ -375,60 +372,3 @@ def get_allowed_taxonomy_keys(
     return _get_allowed_taxonomy_keys_cached(
         str(geofence_path), country_code, state_code
     )
-
-
-def compute_excluded_class_ids(
-    model_dir: Path,
-    country_code: str,
-    state_code: str | None,
-    db,
-) -> list[str]:
-    """
-    Compute excluded_classes as taxonomy UUIDs for a country/state.
-
-    Resolves excluded label names to their LabelTaxonomy IDs.
-
-    Args:
-        model_dir: Path to model directory
-        country_code: ISO country code
-        state_code: Optional US state code
-        db: SQLAlchemy Session
-
-    Returns:
-        List of excluded taxonomy UUID strings
-    """
-    from app.models.label_taxonomy import LabelTaxonomy
-
-    excluded_names = compute_excluded_classes(
-        model_dir, country_code, state_code
-    )
-    if not excluded_names:
-        return []
-
-    rows = (
-        db.query(LabelTaxonomy.id)
-        .filter(LabelTaxonomy.name.in_(excluded_names))
-        .all()
-    )
-    return [r[0] for r in rows]
-
-
-def get_available_countries(model_dir: Path) -> list[str]:
-    """
-    Get all country codes that appear in any geofence entry.
-
-    Args:
-        model_dir: Path to model directory
-
-    Returns:
-        Sorted list of ISO country codes
-    """
-    geofence = load_geofence(model_dir)
-    if geofence is None:
-        return []
-
-    countries = set()
-    for entry in geofence.values():
-        countries.update(entry.get("allow", {}).keys())
-
-    return sorted(countries)

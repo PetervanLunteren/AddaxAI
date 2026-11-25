@@ -30,40 +30,12 @@ JobType = Literal[
 ]
 JobStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
 
-# Model options for deployment analysis (use model IDs from manifests)
-DetectionModel = Literal["MD5A-0-0", "MD5B-0-0"]
-ClassificationModel = Literal["EUR-DF-v1-3", "NAM-ADS-v1", "none"]
-
-
-class DeploymentAnalysisPayload(BaseModel):
-    """Payload for deployment_analysis job type."""
-
-    project_id: str = Field(..., description="ID of the project (site will be auto-created)")
-    folder_path: str = Field(..., description="Absolute path to deployment folder")
-    detection_model: DetectionModel = Field(..., description="Detection model to use")
-    classification_model: ClassificationModel = Field(
-        ..., description="Classification model to use (or 'none' for detection only)"
-    )
-
 
 class JobCreate(BaseModel):
     """Schema for creating a new job."""
 
     type: JobType = Field(..., description="Type of job")
     payload: dict = Field(..., description="Job-specific parameters")
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "type": "deployment_analysis",
-                "payload": {
-                    "project_id": "abc-123",
-                    "folder_path": "/Users/peter/camera-traps/site-a",
-                    "detection_model": "MD5A-0-0",
-                    "classification_model": "EUR-DF-v1-3",
-                },
-            }
-        }
 
 
 class JobUpdate(BaseModel):
@@ -93,11 +65,3 @@ class JobResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
-
-class RunQueueResponse(BaseModel):
-    """Response for running the job queue."""
-
-    message: str = Field(..., description="Status message")
-    jobs_started: int = Field(..., description="Number of jobs started")
-    job_ids: list[str] = Field(..., description="IDs of jobs that were started")

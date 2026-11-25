@@ -41,8 +41,6 @@ from app.api.schemas.deployment import (
     SplitPreviewResponse,
     SplitRequest,
     SplitResponse,
-    SuggestRelinkTargetRequest,
-    SuggestRelinkTargetResponse,
 )
 from app.core.logging_config import get_logger
 from app.core.media_types import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
@@ -359,99 +357,6 @@ def bulk_relink_deployments(
 # a replacement. 0.6 catches common renames like `foo` → `foo1` or
 # `foo_v2` while still rejecting completely unrelated siblings.
 _SUGGEST_SIMILARITY_THRESHOLD = 0.6
-
-
-@router.post("/suggest-relink-target", response_model=SuggestRelinkTargetResponse)
-def suggest_relink_target(
-    request: SuggestRelinkTargetRequest,
-) -> SuggestRelinkTargetResponse:
-    """
-    Suggest a replacement folder for a missing deployment path.
-
-    Walks up from `missing_path` until finding an ancestor that still
-    exists on disk. The *deepest-missing-ancestor* (the direct child
-    of that surviving parent, in the missing path) is what actually
-    got renamed — so we compare siblings of the surviving parent to
-    that name, not to the leaf of the missing path. If a close match
-    is found, we reconstruct the full suggestion by appending the
-    remaining sub-path.
-
-    Example: missing=/a/b/old_name/c/d, surviving parent=/a/b,
-    deepest-missing-ancestor=old_name, tail=c/d. If /a/b/new_name
-    exists and is similar to old_name, the suggestion becomes
-    /a/b/new_name/c/d.
-
-    Used by the bulk relink banner to pre-fill the "new folder" field
-    after a drive rename.
-    """
-    missing = Path(request.missing_path)
-    chain = [missing, *missing.parents]
-
-    # Walk up until we hit a surviving parent. Remember the index so
-    # we can identify the deepest-missing-ancestor (one level below).
-    surviving_index: int | None = None
-    for i, candidate in enumerate(chain):
-        if candidate.exists() and candidate.is_dir():
-            surviving_index = i
-            break
-
-    if surviving_index is None:
-        return SuggestRelinkTargetResponse()
-
-    surviving_parent = chain[surviving_index]
-
-    # If the missing path itself exists, there's nothing to suggest.
-    if surviving_index == 0:
-        return SuggestRelinkTargetResponse(existing_parent=str(surviving_parent))
-
-    deepest_missing = chain[surviving_index - 1]
-    missing_name = deepest_missing.name
-
-    try:
-        tail = missing.relative_to(deepest_missing)
-    except ValueError:
-        tail = Path("")
-
-    try:
-        siblings = [
-            p for p in surviving_parent.iterdir() if p.is_dir() and p.name != missing_name
-        ]
-    except (PermissionError, OSError):
-        return SuggestRelinkTargetResponse(existing_parent=str(surviving_parent))
-
-    # Rank siblings by name similarity to the deepest-missing-ancestor.
-    scored = sorted(
-        (
-            (
-                difflib.SequenceMatcher(None, missing_name, p.name).ratio(),
-                p,
-            )
-            for p in siblings
-        ),
-        key=lambda pair: pair[0],
-        reverse=True,
-    )
-
-    # Reconstruct full candidate paths by appending the tail. Prefer
-    # paths that actually exist on disk so we don't suggest a dead end.
-    candidates: list[str] = []
-    suggested: str | None = None
-    for score, sibling in scored[:10]:
-        full = sibling / tail if str(tail) else sibling
-        candidates.append(str(full))
-        if (
-            suggested is None
-            and score >= _SUGGEST_SIMILARITY_THRESHOLD
-            and full.exists()
-            and full.is_dir()
-        ):
-            suggested = str(full)
-
-    return SuggestRelinkTargetResponse(
-        existing_parent=str(surviving_parent),
-        suggested_path=suggested,
-        candidates=candidates[:5],
-    )
 
 
 def _walk_to_surviving_parent(missing: Path) -> tuple[Path | None, Path | None]:
@@ -973,6 +878,3 @@ def check_deployment_folder(
             detail=f"Deployment with id '{deployment_id}' not found",
         )
     return DeploymentResponse.model_validate(db_deployment)
-
-
-

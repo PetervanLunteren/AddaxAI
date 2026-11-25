@@ -14,7 +14,6 @@ import uuid
 from pathlib import Path
 
 from app.ml.label_exclusion import is_wildlife
-from app.utils.fs_hidden import mkdir_hidden_addaxai
 
 
 def collect_md_failures(md_results: dict) -> list[dict]:
@@ -91,24 +90,6 @@ def extract_wildlife_detections(
     return animals
 
 
-def create_artifacts_folder(deployment_folder: Path) -> Path:
-    """
-    Create .addaxai artifacts folder in deployment directory.
-
-    Args:
-        deployment_folder: Path to deployment folder
-
-    Returns:
-        Path to .addaxai artifacts folder
-
-    Raises:
-        OSError: If folder creation fails
-    """
-    artifacts = deployment_folder / ".addaxai"
-    mkdir_hidden_addaxai(artifacts)
-    return artifacts
-
-
 def assign_uuids_to_detection_json(md_results: dict) -> None:
     """
     Assign file_id and detection_id UUIDs to MegaDetector JSON in-place.
@@ -130,21 +111,6 @@ def assign_uuids_to_detection_json(md_results: dict) -> None:
         for det in img.get("detections") or []:
             if "detection_id" not in det:
                 det["detection_id"] = str(uuid.uuid4())
-
-
-def format_class_names_for_json(class_names: dict[str, str]) -> dict[str, str]:
-    """
-    Format class names dictionary for JSON output.
-
-    Ensures all keys are strings (not integers) for JSON compatibility.
-
-    Args:
-        class_names: Dict mapping class ID to class name
-
-    Returns:
-        Dict with string keys
-    """
-    return {str(k): v for k, v in class_names.items()}
 
 
 def build_classification_category_descriptions(
@@ -265,25 +231,3 @@ def trim_classification_results(
                 del descriptions[key]
 
     return original_count - len(categories)
-
-
-def get_relative_path(absolute_path: Path, base_folder: Path) -> str:
-    """
-    Get relative path from base folder to absolute path.
-
-    Args:
-        absolute_path: Absolute path to file
-        base_folder: Base folder path
-
-    Returns:
-        Relative path as string
-
-    Raises:
-        ValueError: If absolute_path is not under base_folder
-    """
-    try:
-        return str(absolute_path.relative_to(base_folder))
-    except ValueError as e:
-        raise ValueError(
-            f"Path {absolute_path} is not under base folder {base_folder}"
-        ) from e

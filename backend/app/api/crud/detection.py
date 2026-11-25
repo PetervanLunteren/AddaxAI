@@ -53,18 +53,6 @@ def get_detections_by_file(
     return list(result.scalars().all())
 
 
-def get_detections_by_job(db: Session, job_id: str) -> list[Detection]:
-    """
-    Get all detections created by a job.
-
-    Returns empty list if no detections exist.
-    Useful for stats and summaries.
-    """
-    query = select(Detection).where(Detection.job_id == job_id)
-    result = db.execute(query)
-    return list(result.scalars().all())
-
-
 def create_detection(db: Session, detection: DetectionCreate) -> Detection:
     """
     Create a single detection. Flushed, not committed: the caller commits
@@ -94,94 +82,6 @@ def create_detection(db: Session, detection: DetectionCreate) -> Detection:
     db.add(db_detection)
     db.flush()
     return db_detection
-
-
-def create_detections_bulk(
-    db: Session, detections: list[DetectionCreate]
-) -> list[Detection]:
-    """
-    Create multiple detections in a single transaction.
-
-    More efficient than creating one at a time.
-    Crashes if any detection violates database constraints.
-
-    Args:
-        detections: List of detection data to create
-
-    Returns:
-        List of created Detection objects
-    """
-    db_detections = [
-        Detection(
-            file_id=detection.file_id,
-            job_id=detection.job_id,
-            category=detection.category,
-            confidence=detection.confidence,
-            bbox_x=detection.bbox_x,
-            bbox_y=detection.bbox_y,
-            bbox_width=detection.bbox_width,
-            bbox_height=detection.bbox_height,
-            label=detection.label,
-            label_confidence=detection.label_confidence,
-            frame_number=detection.frame_number,
-        )
-        for detection in detections
-    ]
-
-    db.add_all(db_detections)
-    db.commit()
-
-    # Refresh all objects to get IDs and timestamps
-    for detection in db_detections:
-        db.refresh(detection)
-
-    return db_detections
-
-
-def get_detection_stats_by_job(db: Session, job_id: str) -> dict[str, int]:
-    """
-    Get detection statistics for a job.
-
-    Returns counts by category.
-    """
-    detections = get_detections_by_job(db, job_id)
-
-    stats: dict[str, int] = {
-        "total": len(detections),
-        "animal": 0,
-        "person": 0,
-        "vehicle": 0,
-    }
-
-    for detection in detections:
-        category = detection.category.lower()
-        if category in stats:
-            stats[category] += 1
-
-    return stats
-
-
-def get_detection_stats_by_file(db: Session, file_id: str) -> dict[str, int]:
-    """
-    Get detection statistics for a file.
-
-    Returns counts by category.
-    """
-    detections = get_detections_by_file(db, file_id)
-
-    stats: dict[str, int] = {
-        "total": len(detections),
-        "animal": 0,
-        "person": 0,
-        "vehicle": 0,
-    }
-
-    for detection in detections:
-        category = detection.category.lower()
-        if category in stats:
-            stats[category] += 1
-
-    return stats
 
 
 def create_human_detection(db: Session, data: DetectionCreateHuman) -> Detection:

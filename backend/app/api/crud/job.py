@@ -112,21 +112,6 @@ def update_job(db: Session, job_id: str, job_update: JobUpdate) -> Job | None:
     return db_job
 
 
-def delete_job(db: Session, job_id: str) -> bool:
-    """
-    Delete a job.
-
-    Returns True if deleted, False if job doesn't exist.
-    """
-    db_job = get_job(db, job_id)
-    if db_job is None:
-        return False
-
-    db.delete(db_job)
-    db.commit()
-    return True
-
-
 def update_job_status(db: Session, job_id: str, status: str) -> Job | None:
     """
     Update job status (convenience function).
@@ -226,15 +211,6 @@ def reconcile_interrupted_jobs(db: Session) -> int:
 
     db.commit()
     return len(interrupted)
-
-
-def get_pending_jobs(db: Session, job_type: str | None = None) -> list[Job]:
-    """
-    Get all pending jobs, optionally filtered by type.
-
-    Useful for queue processing.
-    """
-    return get_jobs(db, job_type=job_type, status="pending")
 
 
 def get_jobs_by_project(db: Session, project_id: str, job_type: str | None = None) -> list[Job]:

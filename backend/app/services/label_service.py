@@ -7,13 +7,11 @@ ml/inference/similarity_script.py running in the addaxai-base conda
 environment. The main backend process never imports numpy or faiss.
 
 The subprocess emits NDJSON events on stdout (progress, result, error).
-This module exposes:
-
-- `stream_labels_subprocess(...)` — generator yielding raw NDJSON
-  bytes lines for the streaming router endpoints to relay verbatim.
-- `sort_detections` / `search_similar` — non-streaming convenience
-  wrappers that drain the stream and return only the final result.
-  Used by tests and any caller that doesn't care about progress.
+`stream_labels_subprocess_async` relays them to the streaming router
+endpoints line by line, and `stream_sort_async`, `stream_search_async`
+and `stream_cohorts_async` build the parameters for each operation. A
+synchronous copy of the stream lived here until 2026-11; nothing called
+it, and every fix had to be made twice.
 
 The subprocess script is named for the underlying algorithm (cosine
 similarity); this service is named for the feature it serves (the
@@ -28,7 +26,7 @@ import queue
 import subprocess
 import threading
 import time
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator
 from datetime import datetime
 from datetime import time as dtime
 from pathlib import Path
@@ -40,9 +38,7 @@ from sqlalchemy.orm import Session
 from app.api.schemas.label import (
     LabelFilters,
     SearchRequest,
-    SearchResponse,
     SortRequest,
-    SortResponse,
 )
 from app.core.confidence import effective_floor
 from app.core.config import get_settings
@@ -123,133 +119,6 @@ def _filters_to_dict(filters: LabelFilters) -> dict[str, Any]:
     if filters.favorited is not None:
         d["favorited"] = filters.favorited
     return d
-
-
-def stream_labels_subprocess(
-    operation: str, project_id: str, params: dict[str, Any]
-) -> Iterator[bytes]:
-    """Run similarity_script.py and yield each NDJSON line from its stdout.
-
-    Each yielded value already ends with `\\n` and is one of:
-
-    - `{"type": "progress", "phase": "...", "done": N, "total": M}`
-    - `{"type": "result", ...}`
-    - `{"type": "error", "message": "..."}`
-
-    The router relays these verbatim to the HTTP client. On non-zero
-    subprocess exit without an explicit error event (rare; usually the
-    subprocess emits one before exit), an error line is synthesised.
-    """
-    python_path = _get_env_python()
-    db_path = _get_db_path()
-
-    cmd = [
-        str(python_path),
-        str(_SCRIPT_PATH),
-        "--db-path", db_path,
-        "--project-id", project_id,
-        "--operation", operation,
-        "--params", json.dumps(params, default=str),
-    ]
-
-    logger.info(f"Streaming labels subprocess: {operation} for project {project_id}")
-
-    env = clean_python_env()
-
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=env,
-        bufsize=1,
-    )
-
-    timeout_s = LABELS_SUBPROCESS_TIMEOUT_S
-
-    saw_terminal_event = False
-    try:
-        assert process.stdout is not None
-        for raw in process.stdout:
-            line = raw.rstrip("\n")
-            if not line:
-                continue
-            # Sanity-check that the line is JSON before relaying. If it
-            # isn't (subprocess crashed mid-write, env-addaxai-base
-            # printed a warning), skip it rather than corrupt the
-            # NDJSON stream.
-            try:
-                event = json.loads(line)
-            except json.JSONDecodeError:
-                logger.debug(f"similarity_script non-JSON stdout: {line!r}")
-                continue
-            else:
-                # `else`, not a bare statement after the try: the except
-                # above continues, so this only ever runs with `event`
-                # bound, but mypy's possibly-undefined check widens its
-                # analysis inside the enclosing try/finally and cannot
-                # see that. `else` states the same thing in a form it
-                # does understand.
-                if event.get("type") in ("result", "error"):
-                    saw_terminal_event = True
-            yield (line + "\n").encode("utf-8")
-
-        process.wait(timeout=timeout_s)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait()
-        msg = f"Labels subprocess timed out after {timeout_s}s"
-        logger.error(msg)
-        yield (json.dumps({"type": "error", "message": msg}) + "\n").encode("utf-8")
-        return
-    except GeneratorExit:
-        # The client disconnected mid-stream (browser navigated away,
-        # tab closed, user hit refresh). FastAPI cancels the generator;
-        # without an explicit kill the subprocess keeps running until
-        # the timeout, holding one of the browser's per-host connection
-        # slots and the cohort's compute. Kill it so subsequent
-        # requests aren't queued behind a zombie.
-        if process.poll() is None:
-            process.kill()
-            try:
-                process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                pass
-            logger.info(
-                "Labels subprocess killed on client disconnect"
-            )
-        raise
-    finally:
-        if process.stderr is not None:
-            stderr = process.stderr.read()
-            if stderr:
-                for line in stderr.strip().splitlines():
-                    logger.debug(f"similarity_script: {line}")
-
-    if process.returncode != 0 and not saw_terminal_event:
-        msg = f"Labels subprocess failed (exit {process.returncode})"
-        logger.error(msg)
-        yield (json.dumps({"type": "error", "message": msg}) + "\n").encode("utf-8")
-
-
-def _drain_to_result(events: Iterator[bytes]) -> dict[str, Any]:
-    """Consume an event stream and return just the final `result` payload.
-
-    Raises ValueError on `error` events. Used by callers that don't need
-    progress (tests, plain-JSON wrappers).
-    """
-    last_result: dict[str, Any] | None = None
-    for raw in events:
-        event = json.loads(raw.decode("utf-8"))
-        if event["type"] == "result":
-            last_result = {k: v for k, v in event.items() if k != "type"}
-        elif event["type"] == "error":
-            raise ValueError(event["message"])
-    if last_result is None:
-        raise RuntimeError("Labels subprocess produced no result event")
-    return last_result
 
 
 def _apply_project_threshold(
@@ -348,52 +217,6 @@ def _build_search_params(
     }
 
 
-def stream_sort(
-    project_id: str, body: SortRequest, db: Session
-) -> Iterator[bytes]:
-    """NDJSON event stream for the sort endpoint."""
-    params = _build_sort_params(project_id, body, db)
-    return stream_labels_subprocess("sort", project_id, params)
-
-
-def stream_search(
-    project_id: str, body: SearchRequest, db: Session
-) -> Iterator[bytes]:
-    """NDJSON event stream for the search endpoint."""
-    params = _build_search_params(project_id, body, db)
-    return stream_labels_subprocess("search", project_id, params)
-
-
-def stream_cohorts(
-    project_id: str,
-    min_count: int,
-    max_cohorts: int,
-    scope: LabelFilters,
-    db: Session,
-) -> Iterator[bytes]:
-    """NDJSON event stream for the cohorts endpoint."""
-    params = _build_cohort_params(project_id, min_count, max_cohorts, scope, db)
-    return stream_labels_subprocess("cohorts", project_id, params)
-
-
-def sort_detections(
-    project_id: str, body: SortRequest, db: Session
-) -> SortResponse:
-    """Drain the sort stream into a single SortResponse.
-
-    Used by tests; production traffic goes through `stream_sort` so the
-    UI can render a progress bar.
-    """
-    return SortResponse(**_drain_to_result(stream_sort(project_id, body, db)))
-
-
-def search_similar(
-    project_id: str, body: SearchRequest, db: Session
-) -> SearchResponse:
-    """Drain the search stream into a single SearchResponse."""
-    return SearchResponse(**_drain_to_result(stream_search(project_id, body, db)))
-
-
 # ── Async streaming with client-disconnect handling ─────────────────────
 
 
@@ -403,16 +226,18 @@ async def stream_labels_subprocess_async(
     project_id: str,
     params: dict[str, Any],
 ) -> AsyncIterator[bytes]:
-    """Async variant that polls ``request.is_disconnected()`` and kills
-    the subprocess when the client navigates away mid-stream.
+    """Run one labels operation and yield its NDJSON lines. Polls
+    ``request.is_disconnected()`` and kills the subprocess when the
+    client navigates away mid-stream.
 
-    The sync version above can't react to client disconnect while it is
-    blocked on ``process.stdout.readline()``: Starlette can only deliver
-    a ``GeneratorExit`` at a yield point, and the subprocess holds the
-    generator off the yield point indefinitely. In the wild that meant a
-    refreshed tab left a similarity subprocess running until its
-    timeout, holding one of the browser's six per-host connection slots
-    so the next page load queued behind it. This generator reads stdout on
+    It is async because a plain generator can't react to client
+    disconnect while it is blocked on ``process.stdout.readline()``:
+    Starlette can only deliver a ``GeneratorExit`` at a yield point, and
+    the subprocess holds the generator off the yield point indefinitely.
+    In the wild that meant a refreshed tab left a similarity subprocess
+    running until its timeout, holding one of the browser's six per-host
+    connection slots so the next page load queued behind it. This
+    generator reads stdout on
     a background thread and pops with a 0.5 s queue-poll tick, rechecking
     ``is_disconnected`` between ticks, so a refresh frees the slot within
     half a second. (Pure ``select`` on the pipe is not portable: Windows
@@ -452,7 +277,7 @@ async def stream_labels_subprocess_async(
     # Windows `select` only accepts sockets, not subprocess pipes, so the old
     # `select.select([process.stdout], ...)` raised WinError 10038 there and the
     # whole sort/cohort stream failed. A daemon reader thread does blocking line
-    # reads into a queue instead (same approach as the sync variant above);
+    # reads into a queue instead;
     # read_next() pops with a 0.5 s timeout, preserving the "" / line / None
     # contract and the re-check-disconnect-during-silence cadence, cross-platform.
     line_queue: queue.Queue[str | None] = queue.Queue()

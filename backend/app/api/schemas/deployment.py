@@ -256,30 +256,6 @@ class BulkRelinkResponse(BaseModel):
     results: list[BulkRelinkResultItem]
 
 
-class SuggestRelinkTargetRequest(BaseModel):
-    """Request body for the relink auto-suggest endpoint."""
-
-    missing_path: str = Field(
-        ..., min_length=1, description="Broken folder path to find a replacement for"
-    )
-
-
-class SuggestRelinkTargetResponse(BaseModel):
-    """
-    Suggested replacement for a missing folder.
-
-    `existing_parent` is the deepest ancestor of `missing_path` that still
-    exists on disk. `candidates` lists sibling directories under that
-    parent ranked by name similarity to the missing basename.
-    `suggested_path` is the top candidate if its similarity is high
-    enough to auto-fill, otherwise null.
-    """
-
-    existing_parent: str | None = None
-    suggested_path: str | None = None
-    candidates: list[str] = Field(default_factory=list)
-
-
 class GroupBrokenItem(BaseModel):
     """Single broken deployment sent to the group-broken endpoint."""
 

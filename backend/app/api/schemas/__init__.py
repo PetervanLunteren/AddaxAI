@@ -6,7 +6,7 @@ from .detection import (
     DetectionResult,
     DetectionStatsResponse,
 )
-from .job import JobCreate, JobResponse, JobUpdate, RunQueueResponse
+from .job import JobCreate, JobResponse, JobUpdate
 from .project import ProjectCreate, ProjectResponse, ProjectUpdate
 from .site import SiteCreate, SiteResponse, SiteUpdate
 
@@ -21,7 +21,6 @@ __all__ = [
     "ProjectCreate",
     "ProjectResponse",
     "ProjectUpdate",
-    "RunQueueResponse",
     "SiteCreate",
     "SiteResponse",
     "SiteUpdate",

@@ -465,17 +465,6 @@ def get_event_ids_for_files(db: Session, file_ids: list[str]) -> list[str]:
     return [row[0] for row in rows]
 
 
-def get_thumbnail_file_id(db: Session, event_id: str) -> str | None:
-    """Get the max_n_file_id of the dominant species (highest max_n)."""
-    obs = (
-        db.query(EventObservation.max_n_file_id)
-        .filter(EventObservation.event_id == event_id)
-        .order_by(EventObservation.max_n.desc())
-        .first()
-    )
-    return obs[0] if obs else None
-
-
 def get_max_n_frames(db: Session, event_id: str) -> list[dict]:
     """Get all MaxN frames for an event, ordered by max_n descending.
 
