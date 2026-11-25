@@ -150,6 +150,8 @@ export interface CustomLabelResponse {
   id: string;
   name: string;
   level: string;
+  /** False when creating returned the model's or a builtin row of the name. */
+  is_custom: boolean;
   taxon_class: string | null;
   taxon_order: string | null;
   taxon_family: string | null;

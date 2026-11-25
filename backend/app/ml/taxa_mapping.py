@@ -64,11 +64,11 @@ RETIRED = "retired-taxa-list:"
 # The cap on a custom label's name (LabelName in schemas/project.py).
 MAX_LABEL_LENGTH = 200
 
-# A refusal lists every bad row up to this many, each with at most this
-# much of its Latin name: the form shows them all, and a shared file can
-# be any size.
+# A refusal lists every bad row up to this many, and quotes at most this
+# much of a Latin name or of the first line: the form shows them all, and
+# a shared file can be any size.
 MAX_PROBLEMS = 100
-MAX_SHOWN_LATIN = 80
+MAX_SHOWN = 80
 
 
 class TaxaListError(ValueError):
@@ -141,7 +141,7 @@ def check_rows(
     for n, row in zip(line_numbers or range(2, len(rows) + 2), rows, strict=True):
         latin = row[LATIN]
         label = row[LABEL]
-        where = f"Row {n} ({latin[:MAX_SHOWN_LATIN] or 'empty'})"
+        where = f"Row {n} ({latin[:MAX_SHOWN] or 'empty'})"
         if not latin or not label:
             problems.append(f"{where}: needs both a Latin name and a label")
         elif len(label) > MAX_LABEL_LENGTH:
@@ -167,16 +167,33 @@ def parse_taxa_list(text: str, taxa: dict[str, dict[str, str]]) -> list[dict[str
     label is the label that ends up on the detections. Rows without a
     Latin name are skipped.
     """
-    reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")))
+    # U+FFFD is what a browser reads from bytes that are not UTF-8, such as
+    # Excel's plain "CSV" (cp1252), where every accented letter turns into
+    # it. Loading such a file would store the broken labels.
+    if "\ufffd" in text:
+        raise TaxaListError(["The file is not UTF-8. Save it from Excel as \"CSV UTF-8\"."])
+    text = text.lstrip("\ufeff")
+    header = text.split("\n", 1)[0].strip()
+    # Excel on Windows separates with the system's list separator, which
+    # is ";" in most of Europe, also for "CSV UTF-8". A header with ";" and
+    # no "," is such a file. MegaDetector never sees it: AddaxAI writes
+    # its own comma file for it (write_md_taxa_list).
+    delimiter = ";" if ";" in header and "," not in header else ","
+    reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
     columns = [c.strip() for c in reader.fieldnames or []]
+    # The header as the file has it, so a refusal shows what was read.
+    first_line = header[:MAX_SHOWN]
     fmt = next((f for f in FORMATS if f[0] in columns), None)
     if fmt is None:
-        raise TaxaListError(
-            [f"Missing column: {FORMATS[0][0]} (or {FORMATS[1][0]} in the older format)"]
-        )
+        raise TaxaListError([
+            f"Missing column: {FORMATS[0][0]} (or {FORMATS[1][0]} in the older format). "
+            f"The first line reads: {first_line or '(empty)'}"
+        ])
     latin_column, label_columns = fmt
     if label_columns[-1] not in columns:
-        raise TaxaListError([f"Missing column: {label_columns[-1]}"])
+        raise TaxaListError([
+            f"Missing column: {label_columns[-1]}. The first line reads: {first_line}"
+        ])
     reader.fieldnames = columns
 
     rows: list[dict[str, str]] = []

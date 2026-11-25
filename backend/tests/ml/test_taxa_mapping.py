@@ -112,16 +112,51 @@ def test_dans_example_file_loads_as_megadetector_reads_it():
     assert {LATIN: "equus zebra", LABEL: "zebra"} in rows
 
 
-def test_a_file_without_the_columns_is_refused(taxa):
+def test_a_file_without_the_columns_is_refused_quoting_its_first_line(taxa):
     with pytest.raises(TaxaListError) as e:
         parse_taxa_list(_csv("taxon,name", "aepyceros,impala"), taxa)
-    assert e.value.problems == ["Missing column: input_latin (or latin in the older format)"]
+    assert e.value.problems == [
+        "Missing column: input_latin (or latin in the older format). "
+        "The first line reads: taxon,name"
+    ]
     with pytest.raises(TaxaListError) as e:
         parse_taxa_list(_csv("input_latin,input_common", "aepyceros,impala"), taxa)
-    assert e.value.problems == ["Missing column: output_name"]
+    assert e.value.problems == [
+        "Missing column: output_name. The first line reads: input_latin,input_common"
+    ]
     with pytest.raises(TaxaListError) as e:
         parse_taxa_list(_csv("latin,original_common", "aepyceros,impala"), taxa)
-    assert e.value.problems == ["Missing column: common"]
+    assert e.value.problems == [
+        "Missing column: common. The first line reads: latin,original_common"
+    ]
+    # Tab separated, upper case: the quoted line shows what is wrong.
+    with pytest.raises(TaxaListError) as e:
+        parse_taxa_list(_csv("Input_Latin\tOutput_Name", "aepyceros\timpala"), taxa)
+    assert e.value.problems[0].endswith("The first line reads: Input_Latin\tOutput_Name")
+    with pytest.raises(TaxaListError) as e:
+        parse_taxa_list("", taxa)
+    assert e.value.problems[0].endswith("The first line reads: (empty)")
+
+
+def test_a_semicolon_file_from_a_european_excel_loads(taxa):
+    """Excel in most of Europe saves "CSV UTF-8" with ";". The header
+    decides: a comma file keeps a ";" inside a label."""
+    rows = [{LATIN: "aepyceros", LABEL: "impala"}, {LATIN: "bovidae", LABEL: "bovid, large"}]
+    assert parse_taxa_list(
+        _csv("input_latin;output_name", "aepyceros;impala", 'bovidae;"bovid, large"'), taxa
+    ) == rows
+    assert parse_taxa_list(
+        _csv("input_latin,output_name", "aepyceros,impala; adult"), taxa
+    ) == [{LATIN: "aepyceros", LABEL: "impala; adult"}]
+
+
+def test_a_file_that_is_not_utf8_is_refused(taxa):
+    """A browser reads Excel's plain "CSV" (cp1252) with every accented
+    letter turned into U+FFFD. Loading it would store broken labels."""
+    text = "input_latin,output_name\naepyceros,gazelle de Granté\n".encode("cp1252")
+    with pytest.raises(TaxaListError) as e:
+        parse_taxa_list(text.decode("utf-8", errors="replace"), taxa)
+    assert e.value.problems == ['The file is not UTF-8. Save it from Excel as "CSV UTF-8".']
 
 
 def test_every_bad_row_is_named_by_its_line_and_the_file_refused(taxa):
@@ -286,3 +321,48 @@ def test_labels_outside_the_list_get_a_row(db):
     assert [(r.name, r.level, r.taxon_class, r.project_id) for r in rows] == [
         ("bird", "class", "aves", None)
     ]
+
+
+def test_a_run_gives_every_list_label_its_row(db, tmp_path, monkeypatch):
+    """A project package carries only the rows something uses, so an
+    imported project can hold a list whose labels have no row. The run
+    writes them, or new boxes on those labels miss the filter."""
+    from app.ml import postprocessing
+    from app.models.label_taxonomy import LabelTaxonomy
+    from tests.conftest import make_project
+
+    (tmp_path / "taxonomy_release.1.txt").write_text(TAXONOMY, encoding="utf-8")
+    rows = [
+        {LATIN: "aepyceros", LABEL: "impala"},
+        {LATIN: "accipitridae", LABEL: "bird of prey"},
+        {LATIN: "strigiformes", LABEL: "bird of prey"},
+    ]
+    project = make_project(
+        db, classification_model_id="SN", taxa_mapping={"file_name": "a.csv", "rows": rows}
+    )
+    monkeypatch.setattr(postprocessing, "_run_ml_script", lambda _s, md, _o, _j: md)
+
+    postprocessing.apply_taxa_mapping({}, project, tmp_path, db, None)
+
+    own = db.query(LabelTaxonomy).filter(LabelTaxonomy.project_id == project.id).all()
+    assert sorted((r.name, r.level) for r in own) == [
+        ("bird of prey", "class"),
+        ("impala", "genus"),
+    ]
+
+
+def test_a_run_refuses_a_list_the_model_no_longer_knows(db, tmp_path, monkeypatch):
+    """A model update can drop a taxon: the run fails naming the row."""
+    from app.ml import postprocessing
+    from tests.conftest import make_project
+
+    (tmp_path / "taxonomy_release.1.txt").write_text(TAXONOMY, encoding="utf-8")
+    rows = [{LATIN: "panthera leo", LABEL: "lion"}]
+    project = make_project(
+        db, classification_model_id="SN", taxa_mapping={"file_name": "a.csv", "rows": rows}
+    )
+    monkeypatch.setattr(postprocessing, "_run_ml_script", lambda _s, md, _o, _j: md)
+
+    with pytest.raises(TaxaListError) as e:
+        postprocessing.apply_taxa_mapping({}, project, tmp_path, db, None)
+    assert e.value.problems == ["Row 2 (panthera leo): not a SpeciesNet taxon"]

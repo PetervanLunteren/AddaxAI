@@ -332,6 +332,9 @@ class CustomLabelResponse(BaseModel):
     id: str
     name: str
     level: str
+    # False when the create endpoint returns the model's or a builtin row
+    # of the name: that row is not a custom label and cannot be edited.
+    is_custom: bool
     taxon_class: str | None = None
     taxon_order: str | None = None
     taxon_family: str | None = None

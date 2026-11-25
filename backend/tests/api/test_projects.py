@@ -698,6 +698,9 @@ def test_custom_label_reuses_the_builtin_row(client, db):
     )
     assert resp.status_code in (200, 201)
     assert resp.json()["id"] == builtin["vehicle"]
+    # So the label dialog uses the row as it is instead of editing it as a
+    # custom label, which the edit endpoint refuses with a 404.
+    assert resp.json()["is_custom"] is False
 
     rows = (
         db.query(LabelTaxonomy)
@@ -745,6 +748,7 @@ def test_create_custom_label_is_deduped_globally(client, db):
         f"/api/projects/{b.id}/custom-labels", json={"name": "weird stump"}
     ).json()
     assert again["id"] == first["id"]
+    assert first["is_custom"] is True and again["is_custom"] is True
 
 
 def test_delete_custom_label_is_global_and_reports_usage(client, db):

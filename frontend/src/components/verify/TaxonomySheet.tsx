@@ -168,6 +168,9 @@ export function TaxonomySheet({
   const createMutation = useMutation({
     mutationFn: async (name: string) => {
       const created = await projectsApi.createCustomLabel(projectId, name);
+      // The name is already a model or builtin label: use that row as it
+      // is. It has its own taxonomy and is not a custom label to edit.
+      if (!created.is_custom) return created;
       // Immediately update taxonomy fields
       const updated = await projectsApi.updateCustomLabel(projectId, created.id, {
         taxon_class: taxonClass || null,

@@ -23,6 +23,7 @@ import {
 } from "../components/taxonomy/LabelSelectionField";
 import {
   clearSpeciesSelection,
+  fromApiCountryCode,
   taxaMappingField,
   toApiCountryCode,
 } from "../lib/speciesSelection";
@@ -270,7 +271,7 @@ export default function SettingsPage() {
         embedding_model_id: project.embedding_model_id || "none",
         excluded_classes: project.excluded_classes || [],
         taxa_mapping: project.taxa_mapping ?? null,
-        country_code: project.country_code || null,
+        country_code: fromApiCountryCode(project.country_code),
         state_code: project.state_code || null,
         timezone: project.timezone ?? "",
         video_fps: project.video_fps,
@@ -683,7 +684,7 @@ export default function SettingsPage() {
         embedding_model_id: project.embedding_model_id || "none",
         excluded_classes: project.excluded_classes || [],
         taxa_mapping: project.taxa_mapping ?? null,
-        country_code: project.country_code || null,
+        country_code: fromApiCountryCode(project.country_code),
         state_code: project.state_code || null,
         timezone: project.timezone ?? "",
         video_fps: project.video_fps,

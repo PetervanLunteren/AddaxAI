@@ -325,16 +325,29 @@ def apply_taxa_mapping(
     md_results: dict,
     project: Project,
     cls_model_dir: Path | None,
+    db: Session,
     job_id: str | None,
 ) -> dict:
     """
     Run the project's taxa list through MegaDetector's
-    `restrict_to_taxa_list`, so labels match Dan Morris's own runs.
+    `restrict_to_taxa_list`, so labels match Dan Morris's own runs, and
+    give every label of the list its label_taxonomy row first.
+
+    The rows are written on every run, not only when the list is saved: a
+    project package carries only the rows something uses, so after an
+    import a label nothing had yet would have no row, and its boxes would
+    miss the label filter and the exports' taxonomy.
 
     Raises instead of falling back: results without the list would carry
     SpeciesNet's labels in a project the user set up with their own.
     """
-    from app.ml.taxa_mapping import find_taxonomy_release_file, write_md_taxa_list
+    from app.ml.taxa_mapping import (
+        check_rows,
+        find_taxonomy_release_file,
+        load_speciesnet_taxa,
+        sync_taxa_mapping_rows,
+        write_md_taxa_list,
+    )
 
     taxonomy_file = (
         find_taxonomy_release_file(cls_model_dir) if cls_model_dir else None
@@ -345,9 +358,15 @@ def apply_taxa_mapping(
             f"model has no SpeciesNet taxonomy file to apply it with"
         )
 
+    rows = project.taxa_mapping["rows"]
+    taxa = load_speciesnet_taxa(str(taxonomy_file))
+    # Fails loudly, naming the rows, if a model update dropped a taxon.
+    check_rows(rows, taxa)
+    sync_taxa_mapping_rows(db, project.id, project.classification_model_id, rows, taxa)
+
     with tempfile.TemporaryDirectory() as tmp:
         taxa_list = Path(tmp) / "taxa_list.csv"
-        write_md_taxa_list(project.taxa_mapping["rows"], taxa_list)
+        write_md_taxa_list(rows, taxa_list)
         return _run_ml_script(
             "taxa_mapping_script.py",
             md_results,
@@ -531,7 +550,7 @@ def run_postprocessing_for_deployment(
     # (saving the list clears both), so the rollup above only did its
     # low-confidence pass.
     if project.taxa_mapping:
-        md_results = apply_taxa_mapping(md_results, project, cls_model_dir, job_id)
+        md_results = apply_taxa_mapping(md_results, project, cls_model_dir, db, job_id)
         add_taxa_list_ancestor_rows(md_results, project, db)
 
     # --- Event smoothing (independent of rollup) ---

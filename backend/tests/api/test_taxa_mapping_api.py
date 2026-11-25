@@ -6,6 +6,7 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy import text
 
 from app.api.schemas.project import TaxaRow
 from app.ml.taxa_mapping import LABEL, LATIN, RETIRED
@@ -336,6 +337,11 @@ def test_a_list_relinks_its_labels_and_removing_it_gives_them_back(client, db, m
     assert _own_row(db, project, "bird of prey") is None
     assert db.get(Detection, detection.id).label_taxonomy_id == model_row.id
     assert db.get(EventObservation, observation.id).label_taxonomy_id == model_row.id
+    # SQL NULL, not the JSON text null, as the model says "no list" is.
+    stored = db.execute(
+        text("SELECT taxa_mapping IS NULL FROM projects WHERE id = :id"), {"id": project.id}
+    ).scalar()
+    assert stored == 1
 
 
 def test_what_a_person_checked_keeps_its_row_through_list_changes(client, db, model_id):
