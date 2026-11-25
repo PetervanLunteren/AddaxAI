@@ -39,6 +39,10 @@ class TaxaMapping(BaseModel):
     project's model there (check_rows)."""
 
     file_name: str = Field(..., min_length=1, max_length=255)
+    # The file as it was read, notes and all, for the field's Download:
+    # users edit their list months later and rarely keep the file. Only
+    # `rows` is ever used for labels.
+    text: str
     rows: list[TaxaRow]
 
 

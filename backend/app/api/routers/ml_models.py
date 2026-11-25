@@ -926,9 +926,10 @@ def read_taxa_list(model_id: str, upload: TaxaListUpload) -> dict:
     """
     Read a custom SpeciesNet taxa list (.csv) for this model.
 
-    Returns the loaded list ({"file_name", "rows"}) for the form to save
-    with the project. 422 with every bad row when the file cannot be
-    used: it loads completely or not at all.
+    Returns the loaded list ({"file_name", "text", "rows"}) for the form
+    to save with the project; `text` is the file as read, for Download.
+    422 with every bad row when the file cannot be used: it loads
+    completely or not at all.
     """
     from app.ml.taxa_mapping import TaxaListError, parse_taxa_list, taxa_for_model
 
@@ -946,4 +947,4 @@ def read_taxa_list(model_id: str, upload: TaxaListUpload) -> dict:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={"message": "This taxa list cannot be used", "problems": e.problems},
         ) from None
-    return {"file_name": upload.file_name, "rows": rows}
+    return {"file_name": upload.file_name, "text": upload.text, "rows": rows}

@@ -43,6 +43,7 @@ import { cn } from "../../lib/utils";
 import { modelsApi } from "../../api/models";
 import type { TaxaMapping } from "../../api/types";
 import { ApiError } from "../../lib/api-client";
+import { downloadTextFile } from "../../lib/download";
 import { ALL_LABELS_CODE, mappedLabels } from "../../lib/speciesSelection";
 import { SpeciesSelectionModal } from "./SpeciesSelectionModal";
 
@@ -265,6 +266,12 @@ export function LabelSelectionField({
   // backend has read the whole file: a refused file leaves the current
   // choice as it was and lists its bad rows.
   const openTaxaListPicker = () => fileInputRef.current?.click();
+
+  // The user's own file back, notes and all, to edit and load again. The
+  // byte order mark makes Excel read it as UTF-8, or accented labels come
+  // out garbled; reading strips it again.
+  const downloadTaxaList = (mapping: TaxaMapping) =>
+    downloadTextFile(mapping.file_name, String.fromCharCode(0xfeff) + mapping.text);
   const loadTaxaList = async (file: File) => {
     setApplying(true);
     setRefused(null);
@@ -329,6 +336,13 @@ export function LabelSelectionField({
       {labelCount} {labelCount === 1 ? "label" : "labels"}{" "}
       <button type="button" onClick={openTaxaListPicker} className={linkClass}>
         · Change
+      </button>{" "}
+      <button
+        type="button"
+        onClick={() => downloadTaxaList(taxaMapping)}
+        className={linkClass}
+      >
+        · Download
       </button>{" "}
       <button type="button" onClick={removeTaxaList} className={linkClass}>
         · Remove

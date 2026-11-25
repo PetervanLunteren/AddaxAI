@@ -69,22 +69,34 @@ def model_id():
 
 
 def _mapping(rows=ROWS):
-    return {"file_name": "mara.csv", "rows": rows}
+    return {"file_name": "mara.csv", "text": "the file as read", "rows": rows}
 
 
-def test_reading_a_list_returns_its_rows(client, model_id):
+def test_reading_a_list_returns_its_rows_and_the_file_as_read(client, model_id):
+    text = "input_latin;output_name;notes\nAepyceros;Impala;check the reedbuck\n"
     resp = client.post(
         f"/api/ml/models/{model_id}/taxa-list",
-        json={
-            "file_name": "mara.csv",
-            "text": "input_latin,output_name\nAepyceros,Impala\n",
-        },
+        json={"file_name": "mara.csv", "text": text},
     )
     assert resp.status_code == 200
     assert resp.json() == {
         "file_name": "mara.csv",
+        "text": text,
         "rows": [{"latin": "aepyceros", "label": "impala"}],
     }
+
+
+def test_the_file_as_read_is_kept_with_the_project(client, db, model_id):
+    """Download hands the user's own file back, notes included, also
+    months later: the text is saved and read back unchanged."""
+    project = make_project(db, classification_model_id=model_id)
+    db.commit()
+    mapping = {**_mapping(), "text": "input_latin,output_name,notes\naepyceros,impala,a note\n"}
+
+    client.patch(f"/api/projects/{project.id}", json={"taxa_mapping": mapping})
+    stored = client.get(f"/api/projects/{project.id}").json()["taxa_mapping"]
+    assert stored["text"] == mapping["text"]
+    assert stored["file_name"] == "mara.csv"
 
 
 def test_a_bad_list_is_refused_with_its_rows(client, model_id):

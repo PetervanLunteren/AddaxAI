@@ -66,7 +66,7 @@ class Project(Base):
         JSON, nullable=False, default=list
     )
     # A custom SpeciesNet taxa list, used instead of the country geofence:
-    # {"file_name": str, "rows": [{"latin", "label"}]}
+    # {"file_name": str, "text": str (the file as read), "rows": [{"latin", "label"}]}
     # (app.ml.taxa_mapping). SQL NULL = no list (none_as_null, or removing
     # a list would store the JSON text null). Saving one clears
     # country_code, state_code and excluded_classes.

@@ -6,6 +6,7 @@ import { hasReprocessChanges } from "./reprocessSettings";
 
 const list = (name: string) => ({
   file_name: "mara.csv",
+  text: "",
   rows: [{ latin: "aepyceros", label: name }],
 });
 

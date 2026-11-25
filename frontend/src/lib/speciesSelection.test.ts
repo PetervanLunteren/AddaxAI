@@ -24,6 +24,7 @@ describe("mappedLabels", () => {
     expect(
       mappedLabels({
         file_name: "mara.csv",
+        text: "",
         rows: [
           { latin: "accipitridae", label: "bird of prey" },
           { latin: "aepyceros", label: "impala" },

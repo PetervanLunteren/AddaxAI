@@ -30,6 +30,8 @@ export type MediaFilter = "all" | "images" | "videos";
  *  from `modelsApi.readTaxaList` already checked and lowercased. */
 export interface TaxaMapping {
   file_name: string;
+  /** The file as it was read, for Download. Labels come from `rows` only. */
+  text: string;
   rows: { latin: string; label: string }[];
 }
 

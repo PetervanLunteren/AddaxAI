@@ -31,6 +31,7 @@ const CLEARED = {
 export const taxaMappingField = z
   .object({
     file_name: z.string(),
+    text: z.string(),
     rows: z.array(z.object({ latin: z.string(), label: z.string() })),
   })
   .nullable()
