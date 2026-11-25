@@ -82,10 +82,6 @@ class Settings(BaseSettings):
     # User data directory - defaults to ~/AddaxAI
     user_data_dir: Path = Field(default_factory=get_default_user_data_dir)
 
-    # Redis
-    redis_host: str = "127.0.0.1"
-    redis_port: int = 6379
-
     # Models directory
     models_dir: Path = Field(default_factory=get_default_models_dir)
 

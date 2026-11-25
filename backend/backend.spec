@@ -72,7 +72,6 @@ hiddenimports += collect_submodules('PIL')
 hiddenimports += collect_submodules('multipart')
 hiddenimports += collect_submodules('websockets')
 hiddenimports += collect_submodules('httpx')
-hiddenimports += collect_submodules('redis')
 hiddenimports += collect_submodules('requests')  # Required by huggingface_hub
 hiddenimports += collect_submodules('truststore')  # OS trust store for TLS
 hiddenimports += collect_submodules('ijson')  # streaming JSON (results.json)
