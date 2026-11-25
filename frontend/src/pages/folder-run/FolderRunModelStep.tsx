@@ -125,6 +125,7 @@ import {
 } from "../../components/taxonomy/LabelSelectionField";
 import {
   clearSpeciesSelection,
+  SPECIES_CHOICE_REQUIRED,
   taxaMappingField,
   toApiCountryCode,
 } from "../../lib/speciesSelection";
@@ -379,7 +380,6 @@ export function FolderRunModelStep() {
   const classificationModelId = form.watch("classification_model_id");
   const labelCaption = useLabelSelectionCaption(
     classificationModelId && classificationModelId !== "none" ? classificationModelId : "",
-    !!form.watch("taxa_mapping"),
   );
   const embeddingModelId = form.watch("embedding_model_id");
   const excludedClasses = form.watch("excluded_classes") ?? [];
@@ -815,7 +815,7 @@ export function FolderRunModelStep() {
     if (requiresCountryChoice && data.country_code == null && !data.taxa_mapping) {
       form.setError("country_code", {
         type: "required",
-        message: "Choose a country, or pick All labels to run unfiltered.",
+        message: SPECIES_CHOICE_REQUIRED,
       });
       return;
     }

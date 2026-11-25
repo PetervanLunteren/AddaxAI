@@ -171,7 +171,6 @@ export function DuplicateProjectDialog({
     !!classificationModelId && classificationModelId !== "none";
   const labelCaption = useLabelSelectionCaption(
     hasClassifier ? classificationModelId! : "",
-    !!form.watch("taxa_mapping"),
   );
 
   const { data: taxonomy } = useQuery({

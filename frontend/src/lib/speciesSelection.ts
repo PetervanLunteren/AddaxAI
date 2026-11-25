@@ -62,6 +62,10 @@ export function clearSpeciesSelection<T extends FieldValues>(
  *  yet", which makes the country field a required choice. */
 export const ALL_LABELS_CODE = "ALL";
 
+/** The error a form shows when a geofenced classifier has no choice yet:
+ *  no country, no taxa list and not "All labels". */
+export const SPECIES_CHOICE_REQUIRED = "Choose a country, a taxa list or All labels.";
+
 /** Map a form-level country code to what the API accepts: the ALL
  *  sentinel becomes null (no geofence filter). Use at every payload
  *  build site that sends country_code to the backend. */

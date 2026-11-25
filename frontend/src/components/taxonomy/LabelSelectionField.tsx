@@ -14,7 +14,10 @@
  * The dropdown also offers a custom SpeciesNet taxa list (.csv), the file
  * MegaDetector's restrict_to_taxa_list reads. It is a choice instead of a
  * country, as Dan Morris runs it: picking one clears the country and the
- * exclusions, and the field then shows the file and its label count.
+ * exclusions. The dropdown entry picks the list, never the file: with no
+ * list yet the field offers a "Choose .csv file" button and a link to the
+ * guide, and a list the field had before (saved, or loaded while the form
+ * is open) comes straight back, so trying a country costs nothing.
  */
 
 import { useState, useMemo, useCallback, useRef } from "react";
@@ -46,29 +49,32 @@ import { SpeciesSelectionModal } from "./SpeciesSelectionModal";
 /** First entry in the country dropdown: run with every label. */
 const ALL_LABELS_LABEL = "All labels";
 
-/** Second entry: load a custom taxa list instead of a country. */
+/** Second entry: use a custom taxa list instead of a country. */
 const TAXA_LIST_LABEL = "Custom taxa list (.csv)";
+
+/** How to make a taxa list, on docs.addaxai.com. */
+const TAXA_LIST_GUIDE_URL = "https://docs.addaxai.com/docs/guides/make-a-taxa-list/";
 
 /** Button prompt while no choice has been made yet. */
 const CHOOSE_PROMPT = "Select a country";
 
 /**
  * Model-aware helper text for the label-selection control. Geofence models
- * (e.g. SpeciesNet) narrow by country; other models pick species directly.
- * Shared so the three call sites (create project, project settings, folder
- * run) stay in sync, and reusing the cached geofence query means calling this
- * next to the field adds no extra request.
+ * (e.g. SpeciesNet) narrow by country or by a taxa list, in one sentence
+ * that is true whichever the field shows, also a list entry without a file
+ * yet; other models pick species directly. Shared so every form with the
+ * field stays in sync, and reusing the cached geofence query means calling
+ * this next to the field adds no extra request.
  */
-export function useLabelSelectionCaption(modelId: string, hasTaxaList: boolean): string {
+export function useLabelSelectionCaption(modelId: string): string {
   const { data: geofence } = useQuery({
     queryKey: ["model-geofence", modelId],
     queryFn: () => modelsApi.getModelGeofence(modelId),
     enabled: !!modelId,
     staleTime: Infinity,
   });
-  if (hasTaxaList) return "Your taxa list sets which labels the AI can give.";
   return geofence?.has_geofence && geofence.countries
-    ? "Filter species to the country where your cameras are."
+    ? "Filter species by country, or with your own taxa list."
     : "Pick which species the AI can identify, to cut false positives.";
 }
 
@@ -116,6 +122,24 @@ export function LabelSelectionField({
   // the user fixes those rows in the file, so they need to stay readable.
   const [refused, setRefused] = useState<{ fileName: string; problems: string[] } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // The last list this field had, so picking the list entry again after a
+  // country brings it back. Kept while the form is open, never stored, and
+  // dropped with the model the list was checked against.
+  const [rememberedList, setRememberedList] = useState<TaxaMapping | null>(null);
+  // The list entry is picked but no file is loaded yet.
+  const [listPicked, setListPicked] = useState(false);
+  const [rememberedFor, setRememberedFor] = useState(modelId);
+  // Adjusted while rendering rather than in an effect, React's pattern for
+  // state that follows a prop: the form's own list can arrive after mount.
+  if (modelId !== rememberedFor) {
+    setRememberedFor(modelId);
+    setRememberedList(null);
+    setListPicked(false);
+  } else if (taxaMapping && taxaMapping !== rememberedList) {
+    setRememberedList(taxaMapping);
+  }
+  const listMode = !!taxaMapping || listPicked;
 
   // Countries list for the dropdown (only present for geofence models).
   const { data: geofence } = useQuery({
@@ -168,9 +192,9 @@ export function LabelSelectionField({
   // choice yet (prompt).
   // A stored project keeps no country with a taxa list, and forms read a
   // stored null back as "All labels", so the list decides first.
-  const allLabelsChosen = !taxaMapping && countryCode === ALL_LABELS_CODE;
+  const allLabelsChosen = !listMode && countryCode === ALL_LABELS_CODE;
   const selectedLocationKey =
-    countryCode && !allLabelsChosen
+    countryCode && !listMode && !allLabelsChosen
       ? stateCode
         ? `${countryCode}:${stateCode}`
         : countryCode
@@ -180,10 +204,12 @@ export function LabelSelectionField({
   )?.label;
   const displayLabel = taxaMapping
     ? taxaMapping.file_name
-    : allLabelsChosen
-      ? ALL_LABELS_LABEL
-      : (selectedLocationLabel ?? CHOOSE_PROMPT);
-  const isPrompt = !taxaMapping && !allLabelsChosen && !selectedLocationLabel;
+    : listPicked
+      ? "Custom taxa list"
+      : allLabelsChosen
+        ? ALL_LABELS_LABEL
+        : (selectedLocationLabel ?? CHOOSE_PROMPT);
+  const isPrompt = !listMode && !allLabelsChosen && !selectedLocationLabel;
 
   // Apply a country/state pick: recompute excluded classes from the geofence.
   // The country is written together with the list it produced, never
@@ -193,6 +219,7 @@ export function LabelSelectionField({
     async (country: string | null, state: string | null) => {
       setLocationOpen(false);
       setRefused(null);
+      setListPicked(false);
       if (!country || country === ALL_LABELS_CODE) {
         onTaxaMappingChange(null);
         onLocationChange(country, state);
@@ -214,13 +241,30 @@ export function LabelSelectionField({
     [modelId, onExclusionChange, onLocationChange, onTaxaMappingChange],
   );
 
+  // Pick the list entry: the list the field had comes back, or, with none,
+  // the field waits for a file. The country goes either way, so the form
+  // never keeps a country the field no longer shows.
+  const pickTaxaList = () => {
+    setLocationOpen(false);
+    setRefused(null);
+    onLocationChange(null, null);
+    onExclusionChange([]);
+    if (rememberedList) {
+      onTaxaMappingChange(rememberedList);
+    } else {
+      setListPicked(true);
+    }
+  };
+  const removeTaxaList = () => {
+    setRememberedList(null);
+    setListPicked(false);
+    onTaxaMappingChange(null);
+  };
+
   // Load a taxa list. Like a country pick, nothing changes until the
   // backend has read the whole file: a refused file leaves the current
   // choice as it was and lists its bad rows.
-  const openTaxaListPicker = () => {
-    setLocationOpen(false);
-    fileInputRef.current?.click();
-  };
+  const openTaxaListPicker = () => fileInputRef.current?.click();
   const loadTaxaList = async (file: File) => {
     setApplying(true);
     setRefused(null);
@@ -266,8 +310,19 @@ export function LabelSelectionField({
   // Geofence caption: the shared status plus an "Edit species" link that opens
   // the species tree (the country button above does not open it). With a
   // taxa list there is no tree to edit: the file is the selection, so the
-  // caption counts its labels and offers to change or remove it.
+  // caption counts its labels and offers to change or remove it. Both list
+  // states end with the guide, since nobody has such a file by default.
   const linkClass = "text-primary font-medium hover:underline";
+  const guideLink = (
+    <a
+      href={TAXA_LIST_GUIDE_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={linkClass}
+    >
+      · How to make one
+    </a>
+  );
   const labelCount = taxaMapping ? mappedLabels(taxaMapping).length : 0;
   const summary = taxaMapping ? (
     <p className="pl-3 text-xs text-muted-foreground">
@@ -275,14 +330,24 @@ export function LabelSelectionField({
       <button type="button" onClick={openTaxaListPicker} className={linkClass}>
         · Change
       </button>{" "}
-      <button
-        type="button"
-        onClick={() => onTaxaMappingChange(null)}
-        className={linkClass}
-      >
+      <button type="button" onClick={removeTaxaList} className={linkClass}>
         · Remove
-      </button>
+      </button>{" "}
+      {guideLink}
     </p>
+  ) : listPicked ? (
+    <div className="flex items-center gap-2 pl-3 text-xs">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-7 text-xs"
+        onClick={openTaxaListPicker}
+      >
+        Choose .csv file
+      </Button>
+      {guideLink}
+    </div>
   ) : (
     <p className="pl-3 text-xs text-muted-foreground">
       {statusText}{" "}
@@ -346,16 +411,18 @@ export function LabelSelectionField({
                     </CommandItem>
                     <CommandItem
                       key="__taxa_list__"
-                      value="Custom taxa list csv file"
-                      onSelect={openTaxaListPicker}
+                      value={`Custom taxa list csv file ${rememberedList?.file_name ?? ""}`}
+                      onSelect={pickTaxaList}
                     >
                       <Check
                         className={cn(
                           "mr-2 h-4 w-4",
-                          taxaMapping ? "opacity-100" : "opacity-0",
+                          listMode ? "opacity-100" : "opacity-0",
                         )}
                       />
-                      {TAXA_LIST_LABEL}
+                      {rememberedList
+                        ? `Taxa list: ${rememberedList.file_name}`
+                        : TAXA_LIST_LABEL}
                     </CommandItem>
                     {locationOptions.map((option) => (
                       <CommandItem
