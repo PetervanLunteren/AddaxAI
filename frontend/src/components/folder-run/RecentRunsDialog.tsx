@@ -67,21 +67,19 @@ function formatRunFacts(run: FolderRunSummary, when: string): string {
 }
 
 /**
- * How far the review got. Only called once results exist, so "no detections"
- * unambiguously means analysed-and-empty rather than never-run: those are
- * different facts, and calling an empty result "not analysed" would invite
- * the user to re-run work they already did.
+ * How far the review got. Only called once results exist, so there is
+ * always something to check: every analysed file is at least one label.
  *
- * "Labels verified" is the app's canonical review metric (verified detections
- * over the detections the run shows), the same fraction the dashboard's
- * VerificationProgressChart and RerunConfirmDialog report. The wording is
- * shorter here because it shares a line with the file count and the date; the
- * metric itself is defined by the backend fields, so the two cannot drift.
+ * "Labels verified" is the Labels page's own fraction (cards checked plus
+ * empty files signed off, over all of them), the same one the dashboard's
+ * VerificationProgressChart and RerunConfirmDialog report. The backend
+ * fills the two fields from the function behind that page, so the numbers
+ * cannot drift. A run of only empty photos therefore reads "0% labels
+ * verified" until they are signed off, as it does on the page itself.
  */
 function formatReview(run: FolderRunSummary): string {
-  const total = run.detection_count;
-  if (total === 0) return "no detections";
-  const verified = run.verified_detection_count;
+  const total = run.label_count;
+  const verified = run.verified_label_count;
   if (verified === total) return "all labels verified";
   return `${Math.round((verified / total) * 100)}% labels verified`;
 }

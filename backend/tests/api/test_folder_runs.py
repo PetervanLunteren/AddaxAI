@@ -355,8 +355,8 @@ def test_lookup_returns_summary_for_existing_run(client, db):
         db, file_id=f1.id, confidence=0.9, label="dog", verified=True
     )
     make_detection(db, file_id=f2.id, confidence=0.85, label="wolf")
-    # A box the classifier rejected is stored too, but it is neither a
-    # detection nor a species in the summary.
+    # A box the classifier rejected is stored too. It is a card to check
+    # on the Labels page, so it is a label, but it is not a species.
     make_detection(db, file_id=f2.id, confidence=0.9, label="false detection")
 
     resp = client.get(
@@ -377,13 +377,13 @@ def test_lookup_returns_summary_for_existing_run(client, db):
     # Resume from step "setup" because the user finished the folder picker.
     assert body["step"] == "setup"
     assert body["file_count"] == 2
-    assert body["detection_count"] == 2
+    assert body["label_count"] == 3
     assert body["species_count"] == 2
     assert body["verified_file_count"] == 1
     # 1 of 2 files verified → its detection got cascaded to verified
     # too (see crud/file.py:update_file). The other file's detection
     # is still unverified.
-    assert body["verified_detection_count"] == 1
+    assert body["verified_label_count"] == 1
 
 
 def test_lookup_counts_confirmed_leave_out_events_with_nothing_to_count(
@@ -443,10 +443,10 @@ def test_lookup_returns_zero_counts_for_freshly_picked_folder(client):
     body = resp.json()
     assert body["id"] == run_id
     assert body["file_count"] == 0
-    assert body["detection_count"] == 0
+    assert body["label_count"] == 0
     assert body["species_count"] == 0
     assert body["verified_file_count"] == 0
-    assert body["verified_detection_count"] == 0
+    assert body["verified_label_count"] == 0
 
 
 def test_create_force_new_replaces_existing_run(client):
@@ -567,7 +567,7 @@ def test_lookup_counts_detection_verifications_independently_of_files(
 ):
     """A user can verify individual observations in the verify grid
     without marking the whole file as done. Those verifications still
-    show up in ``verified_detection_count`` so the Step 1 picker can
+    show up in ``verified_label_count`` so the Step 1 picker can
     honestly say "X of Y observations verified" — independent of
     whether the file-level done flag has been ticked."""
     from tests.conftest import (
@@ -599,8 +599,8 @@ def test_lookup_counts_detection_verifications_independently_of_files(
     )
     body = resp.json()
     assert body["verified_file_count"] == 0
-    assert body["verified_detection_count"] == 1
-    assert body["detection_count"] == 2
+    assert body["verified_label_count"] == 1
+    assert body["label_count"] == 2
 
 
 def test_create_after_promote_auto_dedupes_name(client, db):
@@ -1136,8 +1136,8 @@ def test_list_folder_runs_reports_labels_verified(client, db, tmp_path):
 
     body = client.get("/api/folder-runs").json()
 
-    assert body[0]["detection_count"] == 4
-    assert body[0]["verified_detection_count"] == 1
+    assert body[0]["label_count"] == 4
+    assert body[0]["verified_label_count"] == 1
 
 
 def test_list_folder_runs_labels_verified_applies_threshold_override(
@@ -1159,8 +1159,8 @@ def test_list_folder_runs_labels_verified_applies_threshold_override(
 
     body = client.get("/api/folder-runs").json()
 
-    assert body[0]["detection_count"] == 2
-    assert body[0]["verified_detection_count"] == 1
+    assert body[0]["label_count"] == 2
+    assert body[0]["verified_label_count"] == 1
 
 
 def test_list_folder_runs_labels_verified_uses_each_runs_own_threshold(
@@ -1171,12 +1171,14 @@ def test_list_folder_runs_labels_verified_uses_each_runs_own_threshold(
     strict = _make_run(db, str(tmp_path / "strict"), counting_threshold=0.5)
     loose = _make_run(db, str(tmp_path / "loose"), counting_threshold=0.05)
     for run in (strict, loose):
-        _add_detections(db, run, (0.1, False))
+        _add_detections(db, run, (0.1, False), (0.1, False))
 
     by_id = {r["id"]: r for r in client.get("/api/folder-runs").json()}
 
-    assert by_id[strict.id]["detection_count"] == 0
-    assert by_id[loose.id]["detection_count"] == 1
+    # Below the strict threshold the file is one empty photo to sign off.
+    # Above the loose one it carries two cards.
+    assert by_id[strict.id]["label_count"] == 1
+    assert by_id[loose.id]["label_count"] == 2
 
 
 def test_list_folder_runs_reports_zero_for_unanalysed_run(client, db, tmp_path):
@@ -1187,16 +1189,17 @@ def test_list_folder_runs_reports_zero_for_unanalysed_run(client, db, tmp_path):
     body = client.get("/api/folder-runs").json()
 
     assert body[0]["file_count"] == 0
-    assert body[0]["detection_count"] == 0
-    assert body[0]["verified_detection_count"] == 0
+    assert body[0]["label_count"] == 0
+    assert body[0]["verified_label_count"] == 0
 
 
 def test_list_folder_runs_distinguishes_empty_result_from_unanalysed(
     client, db, tmp_path
 ):
-    """Two runs report zero detections for very different reasons, and the
+    """Two runs have no detections for very different reasons, and the
     row must not call both "not analysed yet": a folder of empty images WAS
-    analysed, and saying otherwise invites the user to re-run it.
+    analysed, and saying otherwise invites the user to re-run it. Its
+    empty photos are labels to sign off, like on the Labels page.
 
     ``file_count`` is what separates them, because File rows are only written
     when results load (ml/json_pipeline.py). Pinned here so a future change to
@@ -1213,8 +1216,9 @@ def test_list_folder_runs_distinguishes_empty_result_from_unanalysed(
     by_id = {r["id"]: r for r in client.get("/api/folder-runs").json()}
 
     assert by_id[unanalysed.id]["file_count"] == 0
+    assert by_id[unanalysed.id]["label_count"] == 0
     assert by_id[empty_result.id]["file_count"] == 3
-    assert by_id[empty_result.id]["detection_count"] == 0
+    assert by_id[empty_result.id]["label_count"] == 3
 
 
 def test_list_folder_runs_carries_queue_status(client, db, tmp_path):
@@ -1454,3 +1458,124 @@ def test_folder_run_paths_match_with_or_without_a_trailing_slash(client):
     # And create-or-resume returns the same run rather than a second one.
     again = client.post("/api/folder-runs", json={"source_folder": "/tmp/slash-run"}).json()
     assert again["project"]["id"] == created["project"]["id"]
+
+
+# ---------------------------------------------------------------------------
+# "Labels verified" is one number: the Labels page's own
+# ---------------------------------------------------------------------------
+
+
+def _mixed_run(db, folder: str):
+    """A run with every shape a label takes: a tracked clip, photos with
+    boxes, a box the model rejected, a weak box and empty photos."""
+    from tests.conftest import make_track
+
+    run = _make_run(db, folder, counting_threshold=0.5)
+    deployment = make_deployment(db, project_id=run.id, folder_path=folder)
+
+    # One animal in a clip: 30 boxes, the card on frame 60 verified. A
+    # verdict on a track verifies the card only.
+    clip = make_file(
+        db, deployment_id=deployment.id, file_type="video", file_format="mp4"
+    )
+    track = make_track(db, file_id=clip.id, representative_frame_number=60)
+    for frame in range(46, 76):
+        make_detection(
+            db,
+            file_id=clip.id,
+            track_id=track.id,
+            frame_number=frame,
+            label="fox",
+            verified=frame == 60,
+        )
+
+    # Two photos with one fox each, one checked.
+    for verified in (True, False):
+        photo = make_file(db, deployment_id=deployment.id)
+        make_detection(db, file_id=photo.id, label="fox", verified=verified)
+
+    # A photo whose only box the model called blank: one card on the
+    # Detections tab and one on the Empties tab.
+    rejected = make_file(db, deployment_id=deployment.id)
+    make_detection(db, file_id=rejected.id, label="blank")
+
+    # Empty photos: one with nothing, signed off, and one with a box below
+    # the threshold, not looked at yet.
+    make_file(db, deployment_id=deployment.id, verified=True)
+    weak = make_file(db, deployment_id=deployment.id)
+    make_detection(db, file_id=weak.id, confidence=0.1, label="fox")
+    db.flush()
+    return run
+
+
+def test_both_dialogs_report_the_labels_pages_own_fraction(client, db, tmp_path):
+    """The recent-runs row and the re-run dialog say "labels verified",
+    the words of the Labels page's bar, so they give its numbers. Each
+    used to count with its own query, and both counted every frame of a
+    clip against the one card a person can verify: a fully checked video
+    run read 3% in the dialog that says what a re-run throws away."""
+    from app.api.crud.file import get_label_progress
+
+    run = _mixed_run(db, str(tmp_path))
+    progress = get_label_progress(db, run.id)
+    # Cards: the clip's one, two photos, the rejected box. Empties: the
+    # rejected photo, the bare one and the weak one.
+    assert (progress.verified, progress.total) == (3, 7)
+
+    row = client.get("/api/folder-runs").json()[0]
+    lookup = client.get(
+        "/api/folder-runs/lookup", params={"folder": str(tmp_path)}
+    ).json()
+
+    for body in (row, lookup):
+        assert body["verified_label_count"] == progress.verified
+        assert body["label_count"] == progress.total
+        assert body["file_count"] == progress.files == 6
+    # One species, and the weak fox on the last photo is not what makes it so.
+    assert lookup["species_count"] == 1
+
+
+def test_a_fully_checked_clip_reads_all_labels_verified(client, db, tmp_path):
+    """One track of 30 boxes with its card verified is 1 of 1, not 1 of 30."""
+    from tests.conftest import make_track
+
+    run = _make_run(db, str(tmp_path), counting_threshold=0.5)
+    deployment = make_deployment(db, project_id=run.id, folder_path=str(tmp_path))
+    clip = make_file(
+        db, deployment_id=deployment.id, file_type="video", file_format="mp4"
+    )
+    track = make_track(db, file_id=clip.id, representative_frame_number=60)
+    for frame in range(46, 76):
+        make_detection(
+            db,
+            file_id=clip.id,
+            track_id=track.id,
+            frame_number=frame,
+            label="fox",
+            verified=frame == 60,
+        )
+    db.flush()
+
+    row = client.get("/api/folder-runs").json()[0]
+    lookup = client.get(
+        "/api/folder-runs/lookup", params={"folder": str(tmp_path)}
+    ).json()
+
+    for body in (row, lookup):
+        assert (body["verified_label_count"], body["label_count"]) == (1, 1)
+
+
+def test_verified_empties_count_as_work_a_rerun_throws_away(client, db, tmp_path):
+    """Someone who only signed off empty photos has reviewed the run. The
+    re-run dialog decides whether there is progress to lose from this count."""
+    run = _make_run(db, str(tmp_path))
+    deployment = make_deployment(db, project_id=run.id, folder_path=str(tmp_path))
+    make_file(db, deployment_id=deployment.id, verified=True)
+    make_file(db, deployment_id=deployment.id)
+    db.flush()
+
+    lookup = client.get(
+        "/api/folder-runs/lookup", params={"folder": str(tmp_path)}
+    ).json()
+
+    assert (lookup["verified_label_count"], lookup["label_count"]) == (1, 2)

@@ -108,8 +108,8 @@ def threshold_or_verified(threshold) -> ColumnElement[bool]:
     on it in the grid, so the grid and the exports keep showing that
     verdict rather than making the box vanish.
 
-    ``threshold`` is a float, or a column expression where the query
-    compares per row (the folder-run summaries join ``Project``).
+    ``threshold`` is a float, or a column expression where a query
+    compares per row.
     The similarity sort worker keeps a hand-written SQL copy of this
     (``similarity_script.py``, no ``app.*`` imports there) — keep the
     two in step.

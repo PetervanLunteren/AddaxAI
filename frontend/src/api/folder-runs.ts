@@ -64,11 +64,9 @@ export interface FolderRunCreate {
  * card renders this when the user picks a folder that already has a
  * folder-run project. ``null`` from the API means "no existing run".
  *
- * ``verified_detection_count`` is the canonical "how much has the
- * user reviewed" signal: marking a file as verified cascades
- * Detection.verified=True onto every visible detection in the file,
- * so this count grows whether the user works file-by-file or
- * observation-by-observation in the verify grid. */
+ * ``verified_label_count`` of ``label_count`` is how much the user has
+ * reviewed, in the Labels page's own numbers: cards checked on its
+ * Detections tab plus empty files signed off. */
 export interface FolderRunLookup {
   id: string;
   name: string;
@@ -86,10 +84,10 @@ export interface FolderRunLookup {
   detection_augment: boolean;
   step: FolderRunStep;
   file_count: number;
-  detection_count: number;
+  label_count: number;
   species_count: number;
   verified_file_count: number;
-  verified_detection_count: number;
+  verified_label_count: number;
   /** Count-confirmation progress: events confirmed on the Counts page,
    * out of ``event_count`` total. The "Counts confirmed" half of the app's
    * two-metric verification split (the other half is verified detections). */
@@ -281,17 +279,17 @@ export interface SaveOutputsResult {
  *  No `step`: resuming goes through `get(runId)`, which carries the persisted
  *  step itself.
  *
- *  `detection_count` / `verified_detection_count` are the two halves of the
- *  row's "labels verified" fraction, using the same metric as the dashboard
- *  and RerunConfirmDialog. `detection_count` is 0 when the run has nothing
- *  analysed yet. */
+ *  `label_count` / `verified_label_count` are the two halves of the row's
+ *  "labels verified" fraction, the Labels page's own numbers: one label
+ *  per card and one per empty file. `label_count` is 0 only when the run
+ *  has no files yet. */
 export interface FolderRunSummary {
   id: string;
   folder_path: string;
   updated_at_utc: string;
   file_count: number;
-  detection_count: number;
-  verified_detection_count: number;
+  label_count: number;
+  verified_label_count: number;
   folder_exists: boolean;
   /** Queue entry status. "failed" means the run was interrupted (crash,
    * power cut) and has to be run again; the row says so instead of

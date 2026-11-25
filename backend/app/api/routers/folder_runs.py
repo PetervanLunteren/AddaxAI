@@ -30,11 +30,12 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, case, distinct, func, select
+from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session
 
 from app.api.crud import deployment_queue as crud_queue
 from app.api.crud import event as crud_event
+from app.api.crud import file as crud_file
 from app.api.crud import job as job_crud
 from app.api.crud import project as crud_project
 from app.api.schemas.deployment_queue import (
@@ -49,6 +50,7 @@ from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db
 from app.ml import detection_checkpoint as ckpt
+from app.ml.detection_visibility import on_visible_frame
 from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
 from app.models import (
     Deployment,
@@ -143,11 +145,11 @@ class FolderRunSummary(BaseModel):
     The step is not carried: resuming goes through ``GET /{run_id}``, which
     reads the persisted step itself.
 
-    ``detection_count`` / ``verified_detection_count`` are the two halves of
-    the "labels verified" fraction the row shows, matching the metric the
-    dashboard and the re-run dialog use. ``detection_count`` is 0 for a run
-    whose analysis has not produced anything yet, which the UI renders as
-    "not analysed yet" rather than a meaningless 0%.
+    ``label_count`` / ``verified_label_count`` are the two halves of
+    the "labels verified" fraction the row shows. They are the Labels
+    page's own numbers (``crud_file.get_label_progress``): one label per
+    card on its Detections tab and one per empty file, so an analysed run
+    always has labels and a run with no files has none.
 
     ``folder_exists`` is false when the source folder has moved, been
     deleted, or lives on a drive that isn't plugged in: the UI greys those
@@ -164,8 +166,8 @@ class FolderRunSummary(BaseModel):
     folder_path: str
     updated_at_utc: datetime
     file_count: int
-    detection_count: int
-    verified_detection_count: int
+    label_count: int
+    verified_label_count: int
     folder_exists: bool
     queue_status: str
 
@@ -247,13 +249,11 @@ class FolderRunLookupResponse(BaseModel):
     The numbers are intentionally cheap to compute — a handful of
     aggregate queries that run on every folder-picker change.
 
-    ``verified_detection_count`` is the canonical "how much has the
-    user reviewed" number. Signing a File off verifies every visible
-    detection on it and rejects the invisible weak ones (see
-    ``crud/file.py:set_file_verified``), so this count grows whether
-    the user verifies file-by-file or detection-by-detection in the
-    verify grid; the rejected boxes stay out of it through the shared
-    scope rule.
+    ``verified_label_count`` of ``label_count`` is how much the user
+    has reviewed, in the Labels page's own numbers
+    (``crud_file.get_label_progress``): cards checked on its Detections
+    tab plus empty files signed off. The re-run dialog reads it to say
+    what a re-run throws away, so it has to count all of that work.
 
     Model name fields are resolved through the local manifest; when
     the model is not installed (catalog drift, fresh install) we
@@ -274,10 +274,10 @@ class FolderRunLookupResponse(BaseModel):
     detection_augment: bool
     step: FolderRunStep
     file_count: int
-    detection_count: int
+    label_count: int
     species_count: int
     verified_file_count: int
-    verified_detection_count: int
+    verified_label_count: int
     # Count-confirmation progress (events confirmed on the Counts page),
     # the second half of the app's "Labels verified" + "Counts confirmed"
     # split. ``event_count`` is the denominator for the confirmed percentage.
@@ -611,56 +611,20 @@ def list_folder_runs(db: Session = Depends(get_db)) -> list[FolderRunSummary]:
     if not picked:
         return []
 
-    project_ids = [p.id for p, _, _ in picked]
-
-    # One grouped count for the whole page rather than a query per row.
-    file_counts = dict(
-        db.execute(
-            select(Deployment.project_id, func.count(File.id))
-            .join(File, File.deployment_id == Deployment.id)
-            .where(Deployment.project_id.in_(project_ids))
-            .group_by(Deployment.project_id)
-        ).all()
-    )
-
-    # Both halves of the "labels verified" fraction in one grouped query.
-    # The denominator is the detections the run actually shows, so it carries
-    # the threshold + verified override (DEVELOPERS.md "Detection threshold
-    # and verified override"). The threshold is per-project, hence the join to
-    # Project to compare against that run's own column rather than a scalar.
-    # Verified detections always pass the filter, so they are a subset of the
-    # counted set and can be summed in the same pass.
-    label_counts = {
-        project_id: (total, verified or 0)
-        for project_id, total, verified in db.execute(
-            select(
-                Deployment.project_id,
-                func.count(Detection.id),
-                func.sum(case((Detection.verified.is_(True), 1), else_=0)),
-            )
-            .select_from(Detection)
-            .join(File, Detection.file_id == File.id)
-            .join(Deployment, File.deployment_id == Deployment.id)
-            .join(Project, Deployment.project_id == Project.id)
-            .where(Deployment.project_id.in_(project_ids))
-            .where(threshold_or_verified(Project.counting_threshold))
-            .group_by(Deployment.project_id)
-        ).all()
-    }
-
     summaries: list[FolderRunSummary] = []
     for project, folder_path, queue_status in picked:
-        detection_count, verified_detection_count = label_counts.get(
-            project.id, (0, 0)
-        )
+        # The Labels page's own count, per run, so the row cannot say
+        # something else under the same words. An inline grouped query
+        # did this before and counted every frame of a clip.
+        progress = crud_file.get_label_progress(db, project.id)
         summaries.append(
             FolderRunSummary(
                 id=project.id,
                 folder_path=folder_path,
                 updated_at_utc=project.updated_at_utc,
-                file_count=file_counts.get(project.id, 0),
-                detection_count=detection_count,
-                verified_detection_count=verified_detection_count,
+                file_count=progress.files,
+                label_count=progress.total,
+                verified_label_count=progress.verified,
                 folder_exists=Path(folder_path).is_dir(),
                 queue_status=queue_status,
             )
@@ -716,53 +680,23 @@ def lookup_folder_run(
     state: dict = existing.folder_run_state or {}
     step: FolderRunStep = _normalize_step(state.get("step", "setup"))
 
-    # Cheap aggregates: total files, total threshold+verified
-    # detections, distinct species label count, count of files with a
-    # human verification on them. The threshold-or-verified rule is
-    # the same one used everywhere else (DEVELOPERS.md "Detection
-    # threshold and verified override").
     threshold = existing.counting_threshold
-    deployment_ids_subq = (
-        select(Deployment.id)
-        .where(Deployment.project_id == existing.id)
-        .scalar_subquery()
-    )
-    file_count = db.scalar(
-        select(func.count(File.id)).where(
-            File.deployment_id.in_(deployment_ids_subq)
-        )
-    ) or 0
-    # Boxes found, not boxes rejected: a model's "false detection" is
-    # neither a detection nor a species in the recent-runs summary.
-    detection_filter = and_(
-        File.deployment_id.in_(deployment_ids_subq),
-        threshold_or_verified(threshold),
-        is_a_real_detection(),
-    )
-    detection_count = db.scalar(
-        select(func.count(Detection.id))
-        .select_from(Detection)
-        .join(File, Detection.file_id == File.id)
-        .where(detection_filter)
-    ) or 0
+    # Files and labels as the Labels page counts them, so the notice card
+    # and the page agree on what has been reviewed.
+    progress = crud_file.get_label_progress(db, existing.id)
+    # Species found, not boxes rejected: a model's "false detection" is
+    # not a species. Counted on the frames the app shows, so a clip gives
+    # the species of its cards, not of every frame under them.
     species_count = db.scalar(
         select(func.count(distinct(Detection.label)))
         .select_from(Detection)
         .join(File, Detection.file_id == File.id)
-        .where(detection_filter)
+        .join(Deployment, File.deployment_id == Deployment.id)
+        .where(Deployment.project_id == existing.id)
+        .where(threshold_or_verified(threshold))
+        .where(is_a_real_detection())
+        .where(on_visible_frame())
         .where(Detection.label.isnot(None))
-    ) or 0
-    verified_file_count = db.scalar(
-        select(func.count(File.id))
-        .where(File.deployment_id.in_(deployment_ids_subq))
-        .where(File.verified.is_(True))
-    ) or 0
-    verified_detection_count = db.scalar(
-        select(func.count(Detection.id))
-        .select_from(Detection)
-        .join(File, Detection.file_id == File.id)
-        .where(detection_filter)
-        .where(Detection.verified.is_(True))
     ) or 0
     # Count confirmation is the second half of the verification work
     # (events whose count was confirmed on the Counts step), mirroring the
@@ -790,11 +724,11 @@ def lookup_folder_run(
         detection_image_size=existing.detection_image_size,
         detection_augment=existing.detection_augment,
         step=step,
-        file_count=file_count,
-        detection_count=detection_count,
+        file_count=progress.files,
+        label_count=progress.total,
         species_count=species_count,
-        verified_file_count=verified_file_count,
-        verified_detection_count=verified_detection_count,
+        verified_file_count=progress.files_verified,
+        verified_label_count=progress.verified,
         event_count=event_counts.total,
         confirmed_event_count=event_counts.confirmed,
         detection_resume=_detection_resume(db, existing, folder, image_count),

@@ -63,7 +63,7 @@ export function RerunConfirmDialog({
 }: RerunConfirmDialogProps) {
   const hasProgress =
     !failed &&
-    ((run?.verified_detection_count ?? 0) > 0 ||
+    ((run?.verified_label_count ?? 0) > 0 ||
       (run?.confirmed_event_count ?? 0) > 0);
   const resume = failed && canContinue ? run?.detection_resume ?? null : null;
 
@@ -181,13 +181,6 @@ function formatRunCounts(run: FolderRunLookup): string {
       run.file_count === 1 ? "" : "s"
     }`,
   ];
-  if (run.detection_count > 0) {
-    parts.push(
-      `${run.detection_count.toLocaleString()} observation${
-        run.detection_count === 1 ? "" : "s"
-      }`,
-    );
-  }
   if (run.species_count > 0) {
     parts.push(`${run.species_count.toLocaleString()} species`);
   }
@@ -195,14 +188,15 @@ function formatRunCounts(run: FolderRunLookup): string {
 }
 
 // The app frames verification as two metrics (see the dashboard's
-// VerificationProgressChart): "Labels verified" (detections checked on the
-// Labels page) and "Counts confirmed" (events confirmed on the Counts page).
+// VerificationProgressChart): "Labels verified" (cards and empty files
+// checked on the Labels page) and "Counts confirmed" (events confirmed on
+// the Counts page).
 // Re-running discards both, so the dialog shows both.
 
 function formatLabelsVerified(run: FolderRunLookup): string | null {
-  const total = run.detection_count;
+  const total = run.label_count;
   if (total === 0) return null;
-  const verified = run.verified_detection_count;
+  const verified = run.verified_label_count;
   if (verified === total) {
     return `All ${total.toLocaleString()} labels verified`;
   }
