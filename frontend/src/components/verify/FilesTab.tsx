@@ -51,7 +51,7 @@ import { FilesGrid } from "./FilesGrid";
 import { GridEmptyState } from "./GridEmptyState";
 import { LabelsKeyboardPopover } from "./LabelsKeyboardPopover";
 import { MOD, type Shortcut } from "./shortcuts";
-import { nextAfterActed, selectOnClick } from "./grid-selection";
+import { keepOnScreen, nextAfterActed, selectOnClick } from "./grid-selection";
 import { FileDetailModal } from "./FileDetailModal";
 import { SignOffDialog } from "./SignOffDialog";
 import { LabelsSettings } from "./LabelsSettings";
@@ -481,13 +481,21 @@ export function FilesTab({
     }
   }, [projectId, listParams, queryClient, closeViewer]);
 
-  const updateSelection = useCallback(
-    (next: Set<string>) => {
-      setSelected(next);
-      onSelectionChange?.(next.size);
-    },
-    [onSelectionChange],
-  );
+  // The parent hides the step nav while anything is selected: tell it
+  // the size, and 0 on unmount. Same as the Detections grid.
+  useEffect(() => {
+    onSelectionChange?.(selected.size);
+    return () => onSelectionChange?.(0);
+  }, [selected.size, onSelectionChange]);
+
+  // The selection is only ever tiles on screen, the rule Cmd+A states
+  // below. A page, filter or sort change, or a refetch that drops a
+  // file, takes the files that left out of it, so no key acts on a file
+  // the user cannot see. Keyed on the list alone: undo selects files
+  // that are still on their way back into it.
+  useEffect(() => {
+    setSelected((prev) => keepOnScreen(orderedIds, prev));
+  }, [orderedIds]);
 
   // Click / shift-range / cmd-toggle come from `grid-selection.ts`, the
   // same module the crop grid uses, so the gestures are identical.
@@ -501,15 +509,15 @@ export function FilesTab({
         selected,
       );
       anchorRef.current = result.anchor;
-      updateSelection(result.ids);
+      setSelected(result.ids);
     },
-    [orderedIds, selected, updateSelection],
+    [orderedIds, selected],
   );
 
   const clearSelection = useCallback(() => {
     anchorRef.current = null;
-    updateSelection(new Set());
-  }, [updateSelection]);
+    setSelected(new Set());
+  }, []);
 
   /** After a bulk action, select the file sliding into the freed slot,
    *  so a repeated pass never needs the mouse again. Same rule as the
@@ -524,9 +532,9 @@ export function FilesTab({
         return;
       }
       anchorRef.current = next;
-      updateSelection(new Set([next]));
+      setSelected(new Set([next]));
     },
-    [orderedIds, clearSelection, updateSelection],
+    [orderedIds, clearSelection],
   );
 
   // Undo: one history for this tab and its viewer. Every action pushes
@@ -551,7 +559,7 @@ export function FilesTab({
     }
     refresh("change");
     anchorRef.current = fileIds.values().next().value ?? null;
-    updateSelection(fileIds);
+    setSelected(fileIds);
   });
 
   // Verify and unverify, one mutation. Unverify takes the sign-off back
@@ -591,11 +599,15 @@ export function FilesTab({
     unchecked: number;
   } | null>(null);
   const requestSignOff = useCallback(
-    async (ids: string[]) => {
+    async (selectedIds: string[]) => {
       if (setChecked.isPending) return;
-      const clipIds = ids.filter(
-        (id) => items.find((i) => i.id === id)?.file_type === "video",
-      );
+      // Only files on the page. Right after an undo the restored files
+      // are selected before they are back in the list, and a clip that
+      // is not found here would pass for a photo and skip the confirm.
+      const byId = new Map(items.map((i) => [i.id, i]));
+      const ids = selectedIds.filter((id) => byId.has(id));
+      if (ids.length === 0) return;
+      const clipIds = ids.filter((id) => byId.get(id)?.file_type === "video");
       if (clipIds.length === 0) {
         setChecked.mutate({ ids, verified: true });
         return;
@@ -741,7 +753,7 @@ export function FilesTab({
         // files the user has not looked at and cannot see.
         e.preventDefault();
         anchorRef.current = orderedIds[0] ?? null;
-        updateSelection(new Set(orderedIds));
+        setSelected(new Set(orderedIds));
       } else if (e.key === "z" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         undo.undo();
@@ -796,7 +808,7 @@ export function FilesTab({
           if (run.some((f) => !f.verified)) {
             const ids = run.map((f) => f.id);
             anchorRef.current = ids[0];
-            updateSelection(new Set(ids));
+            setSelected(new Set(ids));
             // The event's divider to the top of the viewport, exactly
             // where the crop grid's E puts it (`scrollToDetection`
             // targets the divider row with align "start"), so the two
@@ -821,7 +833,6 @@ export function FilesTab({
     requestSignOff,
     signOff,
     orderedIds,
-    updateSelection,
     sort,
     items,
     undo,
@@ -975,7 +986,7 @@ export function FilesTab({
             detectionThreshold={project?.counting_threshold ?? 0}
             tileSize={tileSize}
             groupByEvent={sort === "events"}
-            onSelectEvent={(ids) => updateSelection(new Set(ids))}
+            onSelectEvent={(ids) => setSelected(new Set(ids))}
             onBackgroundClick={clearSelection}
             onOpen={(item: LabelsFileItem) =>
               setOpenIndex(items.findIndex((i) => i.id === item.id))

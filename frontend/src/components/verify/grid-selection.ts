@@ -55,7 +55,6 @@ export function selectOnClick(
       // Anchor stays put so repeated shift-clicks redraw the range.
       return { ids, anchor };
     }
-    return { ids: new Set(current), anchor };
   }
 
   if (event.metaKey || event.ctrlKey) {
@@ -66,6 +65,22 @@ export function selectOnClick(
   }
 
   return { ids: new Set([targetId]), anchor: targetId };
+}
+
+/**
+ * The selection without the ids that left the grid.
+ *
+ * A selection is only ever cards on screen: an action would otherwise
+ * reach rows the user cannot see. Returns `current` itself when nothing
+ * left, so a caller's state does not change.
+ */
+export function keepOnScreen(
+  orderedIds: string[],
+  current: Set<string>,
+): Set<string> {
+  const onScreen = new Set(orderedIds);
+  const kept = [...current].filter((id) => onScreen.has(id));
+  return kept.length === current.size ? current : new Set(kept);
 }
 
 /**
