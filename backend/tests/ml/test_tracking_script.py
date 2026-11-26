@@ -9,6 +9,7 @@ it; the tracker itself (``botsort.py``) runs for real, here and in
 
 import json
 import shutil
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -450,6 +451,41 @@ def test_a_frame_the_detector_failed_on_is_left_out_and_counted(tmp_path, make_v
     assert processed == [f for f in range(12) if f != 5]
     assert [b["frame_number"] for b in boxes] == processed
     assert {b["track_id"] for b in boxes} == {1}
+
+
+def test_a_detector_that_fails_on_every_frame_stops_the_run(tmp_path, make_video, monkeypatch):
+    """Frames that decode and a detector that fails on all of them is a
+    broken detector, not a bad video. The run stops with the video's name
+    and writes no results, instead of completing without the animals
+    (beta report 2026-11-24)."""
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        pytest.skip("ffmpeg not on PATH")
+    video = tmp_path / "clip.mp4"
+    make_video(video, total_frames=12, fps=10, size=(64, 48))
+    file_list = tmp_path / "files.json"
+    file_list.write_text(json.dumps([str(video)]))
+    out = tmp_path / "out.json"
+
+    class _Broken:
+        categories = {"0": "animal"}
+
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        def detect(self, frame_bgr: np.ndarray) -> None:
+            return None
+
+    monkeypatch.setattr(ts, "_Detector", _Broken)
+    monkeypatch.setattr(sys, "argv", [
+        "tracking_script.py", "model.pt", str(tmp_path), str(file_list), str(out),
+        "--fps", "10", "--ffmpeg", ffmpeg, "--crops_dir", str(tmp_path / "crops"),
+        "--track_high_thresh", "0.5", "--track_low_thresh", "0.01",
+        "--track_filter_motion", "0", "--track_filter_exempt", "0",
+    ])
+    with pytest.raises(RuntimeError, match="failed on every frame of clip.mp4"):
+        ts.main()
+    assert not out.exists()
 
 
 def test_the_detector_wrapper_tells_a_failure_from_an_empty_frame():

@@ -481,15 +481,14 @@ def write_track_crops(
             print(f"could not write {dest}: {e}", file=sys.stderr, flush=True)
 
 
-def failure_entry(relative_path: str, reason: str = "Failure video access") -> dict:
-    """MegaDetector's failure shape for a video with nothing to ingest:
-    one that would not open, or one the detector failed on throughout."""
+def failure_entry(relative_path: str) -> dict:
+    """MegaDetector's failure shape for a video that would not open."""
     return {
         "file": relative_path,
         "frame_rate": -1,
         "frames_processed": [],
         "detections": None,
-        "failure": reason,
+        "failure": "Failure video access",
     }
 
 
@@ -691,14 +690,18 @@ def main() -> int:
                 (width, height), progress, args.track_filter_motion,
                 args.track_filter_exempt, raw_out=raw_boxes,
             )
-            if not processed:
-                reason = (
-                    "Detection failed on every sampled frame"
-                    if failed
-                    else "Failure video access"
+            if failed and not processed:
+                # The frames decoded and the detector failed on every one:
+                # the detector is broken, not the video. Stop, or the run
+                # completes with the animal frames missing and no error.
+                raise RuntimeError(
+                    f"The detector failed on every frame of {relative}. "
+                    "The analysis environment is probably broken; the "
+                    "detector's own error is in the log."
                 )
-                images.append(failure_entry(relative, reason))
-                raw_images.append(failure_entry(relative, reason))
+            if not processed:
+                images.append(failure_entry(relative))
+                raw_images.append(failure_entry(relative))
                 continue
             write_track_crops(
                 args.crops_dir / relative, best_crops, {b["track_id"] for b in boxes}
