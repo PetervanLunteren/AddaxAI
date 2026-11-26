@@ -1272,6 +1272,72 @@
           }
         ]
       ]
+    },
+    "TAS-BB-v2-large": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "forest_raven",
+          "confidence": 0.9101478457450867
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "forest_raven",
+            "confidence": 0.9101478457450867
+          },
+          {
+            "label": "australian_magpie",
+            "confidence": 0.02403414435684681
+          },
+          {
+            "label": "wedge_tailed_eagle",
+            "confidence": 0.022747229784727097
+          },
+          {
+            "label": "black_currawong",
+            "confidence": 0.006506753619760275
+          },
+          {
+            "label": "yellow_tailed_black_cockatoo",
+            "confidence": 0.003917013294994831
+          }
+        ]
+      ]
+    },
+    "TAS-BB-v2-small": {
+      "source": "reference",
+      "predictions": [
+        {
+          "label": "forest_raven",
+          "confidence": 0.993459939956665
+        }
+      ],
+      "top_k": [
+        [
+          {
+            "label": "forest_raven",
+            "confidence": 0.993459939956665
+          },
+          {
+            "label": "black_currawong",
+            "confidence": 0.0036554960533976555
+          },
+          {
+            "label": "grey_currawong",
+            "confidence": 0.0014572959626093507
+          },
+          {
+            "label": "australian_magpie",
+            "confidence": 0.0005763334920629859
+          },
+          {
+            "label": "wedge_tailed_eagle",
+            "confidence": 0.00045985812903381884
+          }
+        ]
+      ]
     }
   }
 }
