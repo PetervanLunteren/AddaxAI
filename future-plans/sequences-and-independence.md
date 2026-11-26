@@ -1,8 +1,17 @@
 # Sequences and independence as two units
 
-Plan for a future change. Not scheduled. Captured here so we can pick it up without re-deriving the design. Written 2026-10-12 after a beta report (Simon Kravis, 2026-10-04) and a survey of how other platforms and the standards define events. None of this is built.
+Plan for a future change. Not scheduled. Captured here so we can pick it up without re-deriving the design. Written 2026-10-12 after a beta report (Simon Kravis, 2026-10-04) and a survey of how other platforms and the standards define events. Rechecked against current sources and the literature on 2026-11-26, when the decisions below were taken. None of this is built.
 
-The short version: AddaxAI's "event" does two jobs with one unit. It is the stored thing people confirm counts on, and it is the 30-minute independence rule behind every rate. Every other platform splits those into a short, stored, timestamp-only **sequence** and a computed, species-aware **independence interval**. The split is what removes the root cause of the time-lapse problem and of the "events follow the threshold" wish, and it is the shape Camtrap DP exports expect. It costs a redesign of Counts, so it belongs to a release of its own.
+The short version: AddaxAI's "event" does two jobs with one unit. It is the stored thing people confirm counts on, and it is the 30-minute independence rule behind every rate. Every other platform splits those into a short, stored, timestamp-only **sequence** and a computed, species-aware **independence interval**. The split is what removes the root cause of the time-lapse problem and of the "events follow the threshold" wish, and it is the shape Camtrap DP exports expect. The workflow on the Counts page stays as it is: only the unit on a card gets shorter. It still belongs to a release of its own.
+
+## Decisions (2026-11-26)
+
+- **Names.** The short stored unit is a **sequence**. The long computed unit keeps the word people know: an **event**, "independent events" in the statistics. Wildlife Insights uses the same pair. Not "burst": in the GBIF guide that is the photos of one trigger, in Animl photos within 2 s, in Wildlife Insights a separate setting. Not "visit": no platform or paper defines it, and in WildTrax it is a field visit to the camera. Not "independent detection": "detection" is already a box from the detector.
+- **Counts page.** Per sequence only. No headers per event, no "confirm event" action. The page, the keys and "Same as last" stay as they are. No platform shows both levels in its review screen, and a computed event moves while the user verifies.
+- **Sequence gap.** 120 s, a constant, not a setting. The clustering compares start times only, so two 60 s videos recorded back to back would split at 60 s, and many cameras have a quiet period of 30 to 60 s between triggers.
+- **Time-lapse frames.** Nothing special. No trigger mode from EXIF, no `captureMethod`, no badge. The gap alone fixes the reported problem, and only Reconyx exposes the trigger mode.
+- **Independence rule.** Rolling (compare to the last record), as today and as in most papers. Say so in the docs.
+- **Migration.** Measure first: run `count_regroup_impact` at 120 s on the real backups, read-only, before the carry rule is fixed.
 
 ## Why
 
@@ -49,7 +58,31 @@ On 2026-10-12 we reopened it with a sharper idea: let only "occupied" files (a d
 
 Sources: Wildlife Insights glossary and help (wildlifeinsights.org/node/283, /node/24563, /get-started/analyze/generate); Forrester et al. 2016 "An Open Standard for Camera Trap Data"; docs.agouti.eu/using/project_settings.html; trapper-project.readthedocs.io tutorial and ai-pipeline; cms.wildtrax.ca guide and abbiodiversity.github.io/wildrtrax; timelapse.ucalgary.ca reference guide part 11 and `Constant.cs`; TrapTagger `app/functions/globals.py` and `config.py` (github.com/WildEyeConservation/TrapTagger); camelot-project.readthedocs.io reports and `sighting_independence.clj`; rdrr.io/cran/camtrapR/man/recordTable.html; inbo.github.io/camtraptor; Swanson et al. 2015 and Pardo et al. 2021 for Snapshot; github.com/agentmorris/MegaDetector `cct_json_utils.py` and `classification_postprocessing.py`.
 
-The pattern, in one sentence: the stored unit is a short, timestamp-only burst over all photos, cut before any model or person has looked at them, so a threshold can never move it; the 30-minute visit is a species-aware calculation done afterwards over species records only, where blanks cannot enter and nothing is stored. TrapTagger is the one exception that lets detections decide a boundary, and only for time-lapse surveys, with a hard-coded floor. Nobody re-cuts stored bursts after the fact; Agouti refuses to, Wildlife Insights cannot.
+The pattern, in one sentence: the stored unit is a short, timestamp-only burst over all photos, cut before any model or person has looked at them, so a threshold can never move it; the 30-minute event is a species-aware calculation done afterwards over species records only, where blanks cannot enter and nothing is stored. TrapTagger is the one exception that lets detections decide a boundary, and only for time-lapse surveys, with a hard-coded floor. Nobody re-cuts stored bursts after the fact; Agouti refuses to, Wildlife Insights cannot.
+
+### Recheck of the survey (2026-11-26)
+
+Nothing in the table was found wrong. Corrections and additions:
+
+- **Not confirmed from a primary source:** eMammal 60 s, the Timelapse 2 min default (found only: the threshold "can now range from 1 second to 10 minutes"), the Camelot 20 min default and its fixed window (the docs examples use 30 and do not state the anchor).
+- **WildTrax:** the series gap defaults to 120 s, per project, changeable. The series is built over motion images only. `wt_ind_detect` has no default threshold; 30 min is the example.
+- **Wildlife Insights:** image projects also have a "burst", a user-set window of 0 to 600 s, next to the fixed 60 s sequence.
+- **camtraptor:** `get_record_table()` is superseded by `camtrapR::readCamtrapDP()` plus `recordTable`. It has `filter_out_timelapse()`.
+- **Animl (TNC), new:** stores nothing. Bursts (2 s, hard-coded) and "independent detections" (1, 2, 30 or 60 min, per label per deployment, rolling) are both computed on demand in the stats.
+- **SpeciesNet:** no sequence concept anywhere in the repository.
+- **Camtrap DP 1.0.2** (2025-06-10) changed no terms. Open issues: #415 "How are events defined" (the maintainers admit the spec is unclear), #377 (media join events only by deployment and time), #375 (Agouti gave a time-lapse photo and a motion sequence one sequenceID). No issue discusses independence.
+- **No platform** shows a confirmed count per sequence and a longer grouping in the same review screen. The long unit is always on the analysis side.
+
+## What the literature says (2026-11-26)
+
+- **Nobody defends a fixed value.** Burton et al. 2015 (doi:10.1111/1365-2664.12432): thresholds are "most commonly 30 or 60 min, but varying from no threshold up to 1 day". Sollmann 2018 (doi:10.1111/aje.12557): "determined subjectively". da Silva et al. 2026 (doi:10.1071/WR25048): richness is stable across 30 min to 24 h, abundance ranks shift, most for rare species. Advice everywhere: report the value, justify it, test the sensitivity. That favours a computed unit over a stored one.
+- **Data-driven choice exists.** The lorelogram of Iannarilli et al. 2019 (doi:10.1111/2041-210X.13308). Not needed in the app.
+- **Activity patterns.** Peral et al. 2022 (doi:10.1002/ece3.9408) argue against filtering for activity analyses; Smith 2025 (doi:10.1007/s00265-024-03544-6) rebuts. With a computed event either is one argument away.
+- **Rolling or fixed window.** Rolling is the usual definition in text and the camtrapR example. No paper measures the difference. The WildCo R course warns that a rolling 30 min rule can chain; per species over species records that only happens with real animals.
+- **Per species per station** is standard (camtrapR, Camelot, wildrtrax). Paired cameras count as one station (`camerasIndependent = FALSE`), which is our `paired_cameras`.
+- **Count.** The maximum in one image as a prefill is standard (Wildlife Insights group size per sequence) and is a lower bound. Camtrap DP: event counts "should be mutually exclusive, so that their `count` can be summed". Never sum sequence counts within one event.
+- **Time-lapse** is its own sampling process in the abundance methods (Moeller et al. 2018, Howe et al. 2017). No paper gives a rule for mixing it into a detection rate.
+- **Sequence gap.** 60 s in Wildlife Insights, MegaDetector, Kays et al. 2020; 120 s in Agouti, WildTrax, the GBIF example.
 
 ## What the standards say
 
@@ -57,37 +90,39 @@ The pattern, in one sentence: the stored unit is a short, timestamp-only burst o
 - **GBIF camera trap guide** glossary: *sequence* "Series of media files taken in rapid succession but separated by a time interval less than the set independence interval"; *independence interval* "Minimum duration between consecutive triggers to be considered belonging to separate sequences. This duration (e.g. 120 seconds) can be defined in a data management system to automatically group media into sequences"; *event* "animal activity recorded through one or more triggers and forming a sequence, but other definitions might be used when analysing data". The guide recommends publishing event-level animal observations and filtering blanks, humans and vehicles out of the Occurrence core.
 - **Darwin Core** maps the sequence to `eventID`, the deployment to `parentEventID`, `eventStart/eventEnd` to `eventDate` as an interval; `camtrapdp::events()` derives events from `observationLevel == "event"` rows.
 
-Note the vocabulary: in the standards, "independence interval" is the *sequence* gap (120 s), and the 30-minute species-level rule is an analysis convention from camtrapR. AddaxAI uses "independence interval" for the 30-minute rule. The plan below keeps our user-facing word for the long rule and introduces "sequence" for the short one; the docs will need one sentence on the difference.
+Note the vocabulary: in the standards, "independence interval" is the *sequence* gap (120 s), and the 30-minute species-level rule is an analysis convention from camtrapR. AddaxAI uses "independence interval" for the 30-minute rule. The plan below keeps our user-facing words for the long rule ("event", "independence interval") and introduces "sequence" for the short one. One clash remains, in the export only: Camtrap DP writes the sequence as `eventID`. The docs need one sentence on that.
 
 ## Target model: two units
 
-1. **Sequence** (stored). A burst of files from one camera folder (or one paired deployment) cut purely by timestamp gap, default 120 s (Agouti, GBIF example), never user-visible as a setting in the first version. Built once at ingest, blanks included, never dependent on any model, threshold or label, and therefore never rebuilt except after a capture-time correction (Adjust dates, camera offsets, relink does not change times). This is what the Counts page shows, what MaxN is computed on, what `confirmed`, human counts, demographics and notes attach to, what the smoother gets as a sequence, and what Camtrap DP exports as an event. A 5-minute time-lapse cadence can never bridge a 120 s gap.
+1. **Sequence** (stored). A burst of files from one camera folder (or one paired deployment) cut purely by timestamp gap, 120 s (Agouti, WildTrax, GBIF example), a constant and not a setting. Built once at ingest, blanks included, never dependent on any model, threshold or label, and therefore never rebuilt except after a capture-time correction (Adjust dates, camera offsets, relink does not change times). This is what the Counts page shows, what MaxN is computed on, what `confirmed`, human counts, demographics and notes attach to, what the smoother gets as a sequence, and what Camtrap DP exports as an event. A 5-minute time-lapse cadence can never bridge a 120 s gap.
 
-2. **Visit** (computed, the user-facing name for the 30-minute rule; keep the setting name `independence_interval`). "Sequences of the same species at the same camera less than N minutes apart are one visit." Computed on demand over species records that pass the current counting threshold, per species, with the rolling rule (`deltaTimeComparedTo = "lastRecord"` in camtrapR terms, the same gap rule we use today). Never stored. Changing the threshold, verifying a box, relabelling, or changing the interval changes the next chart and nothing else. Blanks cannot enter it by construction. This is what "independent events per 100 trap nights", the trend, the map rates and the activity insights read.
+2. **Event** (computed, "independent event" in the statistics; keep the setting name `independence_interval`). "Sequences of the same species at the same camera less than N minutes apart are one event." Computed on demand over species records that pass the current counting threshold, per species, with the rolling rule (`deltaTimeComparedTo = "lastRecord"` in camtrapR terms, the same gap rule we use today). Never stored. Changing the threshold, verifying a box, relabelling, or changing the interval changes the next chart and nothing else. Blanks cannot enter it by construction. This is what "independent events per 100 trap nights", the trend, the map rates and the activity insights read.
 
 Why this removes the root cause: the stored unit is dumb, so it is stable, and the smart unit is cheap to recompute, so it may follow every filter. The "events follow the threshold" wish comes true on the computed layer, where it costs nothing.
 
 ## Design sketch
 
-**Data model.** Rename nothing in a hurry; the `events` table becomes the sequence table in meaning. Add `Project.sequence_gap_seconds` (default 120, not in the UI at first; a constant until someone asks). Keep `event_files`, `event_observations`, `confirmed`, `notes`. Add `File.capture_method` (`activityDetection` / `timeLapse` / null) filled from EXIF where a camera writes it (Reconyx `TriggerMode`; needs an exiftool pass on images, today only videos get one) so Camtrap DP can carry `captureMethod` and the Counts page can show the time-lapse badge; not used for grouping.
+**Data model.** Rename nothing in a hurry; the `events` table becomes the sequence table in meaning. The gap is a constant (`SEQUENCE_GAP_SECONDS = 120`), no column. Keep `event_files`, `event_observations`, `confirmed`, `notes`. No `File.capture_method` and no EXIF pass for the trigger mode (decided 2026-11-26).
 
-**Grouping.** `cluster_files_into_events` keeps its shape with the gap parameter now the sequence gap. The paired-cameras bucket rule stays. Dateless files stay single-file sequences. The smoother keeps getting these clusters (MegaDetector's smoothing was designed for bursts, not for 30-minute visits).
+**Grouping.** `cluster_files_into_events` keeps its shape with the gap parameter now the sequence gap. The paired-cameras bucket rule stays. Dateless files stay single-file sequences. The smoother keeps getting these clusters (MegaDetector's smoothing was designed for bursts, not for 30-minute events).
 
-**Visits.** One function, `visits(db, project, *, independence_interval, threshold, site_ids, date_from, date_to) -> rows (species, deployment, visit_start, visit_end, sequence_ids, count)`, in `crud/statistics.py` or a new `crud/visits.py`. Count per visit = max over its sequences of the sequence's effective count (confirmed count or AI MaxN), which keeps the "do not add up two views of one animal" rule. Every rate that says "independent events" reads this and nothing else: `get_species_distribution` (frequency mode), the trend, the map, the activity analyses, `get_filter_options`, the dashboard tile (relabel it "Visits"), and `counts.csv` gains `visit_id` so a person can regroup in Excel. The Camtrap DP export is unchanged in shape and becomes more honest: event = sequence.
+**Independent events.** One function, `independent_events(db, project, *, independence_interval, threshold, site_ids, date_from, date_to) -> rows (species, deployment, event_start, event_end, sequence_ids, count)`, in `crud/statistics.py` or a new `crud/independent_events.py`. Count per event = max over its sequences of the sequence's effective count (confirmed count or AI MaxN), never the sum, which keeps the "do not add up two views of one animal" rule. Every rate that says "independent events" reads this and nothing else: `get_species_distribution` (frequency mode), the trend, the map, the activity analyses, `get_filter_options` and the dashboard tile, which keeps its name. The Camtrap DP export is unchanged in shape and becomes more honest: event = sequence.
 
-**Counts page.** The unit of confirmation becomes the sequence. To keep the work bearable: group the cards by visit (a header per visit, sequences inside, like the event dividers on Labels today), "Same as last" and keyboard confirm already exist, and a "confirm visit" action that applies one count to every sequence of a visit is the one new control. An animal that lingers for twenty minutes is then one header with a few cards, not one card as today.
+**Counts page.** The unit of confirmation becomes the sequence, and nothing else changes: same cards, same keys, same "Same as last", no headers per event and no "confirm event" action. The word on the cards, in the viewer and in "Sort by event" on Labels becomes "sequence". An animal that lingers for twenty minutes is a few cards instead of one, and a time-lapse folder is no longer one giant card.
 
-**Event viewer.** Opens a sequence; the filmstrip shows the sequence. A "previous / next sequence in this visit" pair replaces nothing and adds continuity.
+**Event viewer.** Opens a sequence; the filmstrip shows the sequence.
 
 **Trap nights.** Untouched; they never used events.
 
-**Migration.** Existing events are visits by today's rule, so they split into sequences by the 120 s gap. Carry: for every old event, each new sequence inside it inherits `notes`; `confirmed` and human counts carry onto a new sequence only when the old event contained exactly one sequence (then they describe the same files); otherwise the visit-level count becomes a `visit` computation and the sequences get the AI MaxN back, unconfirmed. Report the counts of "carried" and "reset" in the migration log and in a one-time notice. Test on the real backups under `~/AddaxAI/backups/` with `backend/scripts/check_migration_on_backups.py` before release.
+**Migration.** Existing events are the long unit by today's rule, so they split into sequences by the 120 s gap. Mechanically this is today's regroup with another gap, so measure before deciding: `count_regroup_impact(db, project_id, 120)` (`crud/event.py`) already reports how many confirmed events and manual counts would reset. Run it read-only on the real backups first. Proposed carry, to be fixed after that measurement: for every old event, each new sequence inside it inherits `notes`; `confirmed` and human counts carry onto a new sequence only when the old event contained exactly one sequence (then they describe the same files); otherwise the sequences get the AI MaxN back, unconfirmed. Report the counts of "carried" and "reset" in the migration log and in a one-time notice. Test on the real backups under `~/AddaxAI/backups/` with `backend/scripts/check_migration_on_backups.py` before release.
 
-**Docs.** `docs/docs/understanding/detections-events-observations.mdx` is rewritten around three words: detection, sequence, visit (observation stays). One paragraph on time-lapse cameras. `trap-nights.md` unchanged. DEVELOPERS.md "Observation cohorts" and "Paired cameras" updated; the "Datetime conventions" rule about `async def` applies to the visits endpoint.
+**Docs.** `docs/docs/understanding/detections-events-observations.mdx` is rewritten around three words: detection, sequence, event (observation stays). One paragraph on time-lapse cameras, one sentence that the independence rule is rolling, one that Camtrap DP writes the sequence as `eventID`. `trap-nights.md` unchanged. DEVELOPERS.md "Observation cohorts" and "Paired cameras" updated; the "Datetime conventions" rule about `async def` applies to the independent events endpoint.
 
 ## Effort and when to do it
 
-A release of its own, not a feedback-round fix. Rough shape: backend model and grouping 2 days, visits computation and the seven consumers 3 days, Counts page regrouping and confirm-visit 3 days, migration with backup tests 2 days, docs 1 day, bug hunt 1 day. About two and a half weeks of focused work, plus the beta cycle. Do it when the Counts page is next redesigned, or when a second user hits the time-lapse problem or asks for Camtrap DP exports that match Agouti's. Until then the workaround holds.
+A release of its own, not a feedback-round fix. Rough shape: backend grouping 1 day, independent events computation and its consumers 3 days, wording on Counts, viewer and Labels 1 day, migration with backup tests 2 days, docs 1 day, measuring and bug hunt 2 days. About two weeks of focused work, plus the beta cycle. The condition set on 2026-10-12 (a second user hits the time-lapse problem) is met: Philipp Vetter reported the same after Simon Kravis. Until it ships the workaround holds.
+
+Measure before and after on the same data: number of events and sequences, confirmed counts kept and reset, the rates per species on a project without time-lapse (they should move little) and on Simon's kind of data (they should become sane), and the time of a regroup and of the Counts page. A time-lapse folder of 24,000 photos becomes thousands of blank sequences; what that costs is not measured yet.
 
 ## The middle road we rejected (so nobody rebuilds it)
 
@@ -95,11 +130,13 @@ Keep one unit, but let only occupied files start and end events: occupancy = `th
 
 ## Open questions
 
-- Sequence gap: 120 s (Agouti, GBIF example) or 60 s (Wildlife Insights, eMammal, MegaDetector)? Either stops time-lapse chaining; 120 s keeps longer bursts together. Decide with Simon's data set and one or two others.
-- Should a person or vehicle sequence count toward a visit of its own kind in the rates? Camtrap DP treats them as observation types; the dashboard shows wildlife only.
-- Does the Counts page need a visit-level count at all (confirm once per visit), or is per-sequence confirmation with "confirm visit" enough? Wildlife Insights and Agouti confirm per sequence and never show a visit.
+Settled on 2026-11-26, see "Decisions": the gap (120 s), the names (sequence, event), the Counts page (per sequence only), time-lapse frames (nothing special).
+
+- Should a person or vehicle sequence count toward an event of its own kind in the rates? Camtrap DP treats them as observation types; the dashboard shows wildlife only.
 - `independence_interval` default: keep 30 min; camtrapR users often use 60. Leave as is.
-- Name: the user-facing word for the long unit. "Visit" is proposed because "event" is taken by the standards for the sequence and "independent event" reads as a statistic.
+- Should `counts.csv` carry an id for the independent event next to the sequence, so a person can regroup in Excel? The id depends on the threshold and the interval at export time.
+- The carry rule of the migration, after the measurement on the backups.
+- What thousands of blank sequences from one time-lapse folder cost in regroup time and on the Counts page.
 
 ## Key files
 
