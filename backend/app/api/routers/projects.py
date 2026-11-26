@@ -981,24 +981,6 @@ def get_independent_observation_stats(
     return {"total": total, "labels": label_counts}
 
 
-@router.get("/{project_id}/regroup-preview")
-def get_regroup_preview(
-    project_id: str,
-    independence_interval: int,
-    db: Session = Depends(get_db),
-) -> dict:
-    """
-    How much count verification a change to `independence_interval` would
-    reset. Changing the interval re-clusters sequences; a sequence's confirmation
-    and manual counts only survive when its file set still forms one cluster.
-    Returns ``{confirmed_at_risk, counts_at_risk, total_confirmed}`` so the UI
-    can warn before regrouping. Read-only.
-    """
-    from app.api.crud import sequence as crud_sequence
-
-    return crud_sequence.count_regroup_impact(db, project_id, independence_interval)
-
-
 @router.post(
     "/{project_id}/reprocess",
     status_code=status.HTTP_202_ACCEPTED,

@@ -70,6 +70,13 @@ class Sequence(Base):
     sequence_start_local: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     sequence_end_local: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     file_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Which camera of the deployment the sequence is from: the folder of its
+    # files, or "" for a paired-cameras deployment (one camera). The
+    # statistics apply the independence interval per camera with it
+    # (services/sequence_clustering.camera_key).
+    camera_key: Mapped[str] = mapped_column(
+        String, nullable=False, server_default="", default=""
+    )
     # Human confirmation that the sequence's species and counts are correct
     # (the "Confirm" action on the Observations page). Distinct from
     # Detection.verified ("a label was confirmed", set on the Labels page).

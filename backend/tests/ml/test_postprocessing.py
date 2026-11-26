@@ -66,10 +66,11 @@ def test_hash_changes_on_smoothing_toggle():
     assert compute_postprocessing_settings_hash(p1) != compute_postprocessing_settings_hash(p2)
 
 
-def test_hash_changes_on_interval_change():
+def test_the_interval_is_not_in_the_hash():
+    """It groups nothing that is stored, so changing it needs no reprocess."""
     p1 = _make_project_mock(independence_interval=1800)
     p2 = _make_project_mock(independence_interval=3600)
-    assert compute_postprocessing_settings_hash(p1) != compute_postprocessing_settings_hash(p2)
+    assert compute_postprocessing_settings_hash(p1) == compute_postprocessing_settings_hash(p2)
 
 
 def test_hash_excluded_classes_order_independent():
@@ -88,7 +89,7 @@ def test_smoother_input_empty_deployment(db):
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    result = build_smoother_input(d.id, 1800, db)
+    result = build_smoother_input(d.id, db)
     assert result == []
 
 
@@ -97,14 +98,14 @@ def test_smoother_input_single_file(db):
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id, folder_path="/fake/folder")
     make_file(db, deployment_id=d.id, captured_at_local=datetime(2024, 1, 1, 12, 0))
-    result = build_smoother_input(d.id, 1800, db)
+    result = build_smoother_input(d.id, db)
     assert len(result) == 1
     # seq_id is MegaDetector's CCT contract — kept in the emitted rows.
     assert "seq_id" in result[0]
     assert "file_name" in result[0]
 
 
-def test_smoother_input_groups_within_interval(db):
+def test_smoother_input_groups_within_the_sequence_gap(db):
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id, folder_path="/fake/folder")
@@ -116,12 +117,12 @@ def test_smoother_input_groups_within_interval(db):
     f2 = make_file(
         db, deployment_id=d.id,
         file_path="/fake/folder/img_002.jpg",
-        captured_at_local=datetime(2024, 1, 1, 12, 10, 0),
+        captured_at_local=datetime(2024, 1, 1, 12, 1, 0),
     )
     _ = (f1, f2)
-    result = build_smoother_input(d.id, 1800, db)
+    result = build_smoother_input(d.id, db)
     assert len(result) == 2
-    # Both share seq_id (10 min gap < 30 min interval, same folder).
+    # Both share seq_id (a 1 min gap is inside the 2 min sequence gap).
     assert result[0]["seq_id"] == result[1]["seq_id"]
 
 
@@ -137,17 +138,17 @@ def test_smoother_input_splits_on_gap(db):
     make_file(
         db, deployment_id=d.id,
         file_path="/fake/folder/img_002.jpg",
-        captured_at_local=datetime(2024, 1, 1, 13, 0, 0),
+        captured_at_local=datetime(2024, 1, 1, 12, 5, 0),
     )
-    result = build_smoother_input(d.id, 1800, db)
+    result = build_smoother_input(d.id, db)
     assert len(result) == 2
-    # 60 min gap > 30 min interval → different seq_id.
+    # A 5 min gap is past the 2 min sequence gap: different seq_id.
     assert result[0]["seq_id"] != result[1]["seq_id"]
 
 
 def test_smoother_input_splits_on_folder_boundary(db):
     """A backlog deployment with files in two folders must give two
-    distinct seq_ids, even when timestamps fall inside the interval."""
+    distinct seq_ids, even when timestamps fall inside the sequence gap."""
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id, folder_path="/data/backlog")
@@ -159,9 +160,9 @@ def test_smoother_input_splits_on_folder_boundary(db):
     make_file(
         db, deployment_id=d.id,
         file_path="/data/backlog/card_b/img_001.jpg",
-        captured_at_local=datetime(2024, 1, 1, 12, 5, 0),
+        captured_at_local=datetime(2024, 1, 1, 12, 0, 30),
     )
-    result = build_smoother_input(d.id, 1800, db)
+    result = build_smoother_input(d.id, db)
     assert len(result) == 2
     # Different folder → different seq_id, matching Sequence behaviour.
     assert result[0]["seq_id"] != result[1]["seq_id"]

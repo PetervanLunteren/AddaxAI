@@ -50,6 +50,7 @@ from app.models import (
     SequenceObservation,
 )
 from app.models.sequence import sequence_files
+from app.services.sequence_clustering import camera_key
 from app.utils.fs_hidden import mkdir_hidden_addaxai
 
 logger = get_logger(__name__)
@@ -673,6 +674,9 @@ def _reassign_sequences(
                     max(timestamps) if timestamps else sequence.sequence_end_local
                 ),
                 file_count=len(files_here),
+                camera_key=camera_key(
+                    files_here[0], paired_cameras=child_dep.paired_cameras
+                ),
                 # Observations are duplicated as-is, so the human's
                 # confirmation still holds for each child sequence. The note
                 # too: a remark is never lost, at worst it sits on one

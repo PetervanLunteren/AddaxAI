@@ -692,8 +692,8 @@ def test_verified_detections_skipped_during_raw_reload(deployment_scaffold):
     assert reloaded_dets[2].label == "lion"   # reverted
 
 
-def test_smoother_input_groups_by_interval(deployment_scaffold):
-    """Files within interval → same seq_id; gap > interval → different seq_id."""
+def test_smoother_input_groups_by_sequence(deployment_scaffold):
+    """Files within the sequence gap share a seq_id; a longer gap starts a new one."""
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
 
@@ -702,9 +702,9 @@ def test_smoother_input_groups_by_interval(deployment_scaffold):
     # Create 4 files: 3 close together, then a gap
     timestamps = [
         base_time,
-        base_time + timedelta(minutes=5),
-        base_time + timedelta(minutes=10),
-        base_time + timedelta(hours=2),  # big gap
+        base_time + timedelta(minutes=1),
+        base_time + timedelta(minutes=2),
+        base_time + timedelta(minutes=10),  # past the 2 min sequence gap
     ]
 
     for i, ts in enumerate(timestamps):
@@ -718,11 +718,7 @@ def test_smoother_input_groups_by_interval(deployment_scaffold):
         )
     db.flush()
 
-    rows = build_smoother_input(
-        deployment_id=s["deployment"].id,
-        independence_interval=1800,  # 30 min
-        db=db,
-    )
+    rows = build_smoother_input(deployment_id=s["deployment"].id, db=db)
 
     assert len(rows) == 4
     # First 3 share a seq_id, 4th differs.

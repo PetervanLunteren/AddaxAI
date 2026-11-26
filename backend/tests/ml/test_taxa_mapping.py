@@ -257,7 +257,6 @@ def test_a_project_without_a_list_keeps_its_settings_hash():
                 "event_smoothing": True,
                 "smoothing_strength": "normal",
                 "taxonomic_rollup": True,
-                "independence_interval": 1800,
                 "excluded_classes": [],
                 "country_code": None,
                 "state_code": None,

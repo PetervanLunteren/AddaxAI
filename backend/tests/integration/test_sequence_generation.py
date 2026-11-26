@@ -67,7 +67,7 @@ def test_full_pipeline_to_sequences(deployment_scaffold):
 
     # 3 images close together → 1 sequence
     base = datetime(2024, 6, 15, 10, 0, 0)
-    timestamps = [base, base + timedelta(minutes=5), base + timedelta(minutes=10)]
+    timestamps = [base, base + timedelta(minutes=1), base + timedelta(minutes=2)]
     _load_images_with_timestamps(s, timestamps)
 
     total = generate_sequences_for_project(db, s["project"].id)
@@ -142,7 +142,7 @@ def test_sequences_idempotent_regeneration(deployment_scaffold):
     db = s["db"]
 
     base = datetime(2024, 6, 15, 10, 0, 0)
-    timestamps = [base, base + timedelta(minutes=5)]
+    timestamps = [base, base + timedelta(minutes=1)]
     _load_images_with_timestamps(s, timestamps)
 
     total1 = generate_sequences_for_project(db, s["project"].id)
@@ -186,24 +186,21 @@ def test_every_file_is_in_one_sequence_at_most(deployment_scaffold):
 
 
 def test_sequences_temporal_clustering(deployment_scaffold):
-    """6 files in 2 clusters (3h apart) with independence_interval=1800 → 2 sequences."""
+    """6 files in 2 bursts (3h apart) → 2 sequences. The project's
+    independence interval plays no part."""
     s = deployment_scaffold
     db = s["db"]
-
-    # Update project independence interval
-    s["project"].independence_interval = 1800  # 30 min
-    db.flush()
 
     base = datetime(2024, 6, 15, 8, 0, 0)
     # Cluster 1: 3 files close together
     # Cluster 2: 3 files 3 hours later
     timestamps = [
         base,
-        base + timedelta(minutes=5),
-        base + timedelta(minutes=10),
+        base + timedelta(minutes=1),
+        base + timedelta(minutes=2),
         base + timedelta(hours=3),
-        base + timedelta(hours=3, minutes=5),
-        base + timedelta(hours=3, minutes=10),
+        base + timedelta(hours=3, minutes=1),
+        base + timedelta(hours=3, minutes=2),
     ]
     _load_images_with_timestamps(s, timestamps)
 
@@ -215,10 +212,10 @@ def test_sequences_temporal_clustering(deployment_scaffold):
     assert sequences[1].file_count == 3
 
     assert sequences[0].sequence_start_local == base
-    assert sequences[0].sequence_end_local == base + timedelta(minutes=10)
+    assert sequences[0].sequence_end_local == base + timedelta(minutes=2)
 
     assert sequences[1].sequence_start_local == base + timedelta(hours=3)
-    assert sequences[1].sequence_end_local == base + timedelta(hours=3, minutes=10)
+    assert sequences[1].sequence_end_local == base + timedelta(hours=3, minutes=2)
 
 
 def test_sequences_split_at_folder_boundary(deployment_scaffold):
@@ -229,7 +226,6 @@ def test_sequences_split_at_folder_boundary(deployment_scaffold):
     """
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
-    s["project"].independence_interval = 1800  # 30 min
     db.flush()
 
     # Two folders, each with two images, timestamps 1 minute apart
@@ -293,7 +289,6 @@ def test_sequences_interleaved_parallel_folders(deployment_scaffold):
     """
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
-    s["project"].independence_interval = 1800
     db.flush()
 
     base = datetime(2024, 6, 15, 10, 0, 0)
@@ -355,7 +350,6 @@ def test_sequences_and_smoother_input_agree_on_boundaries(deployment_scaffold):
 
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
-    s["project"].independence_interval = 1800
     db.flush()
 
     (deploy_dir / "card_a").mkdir()
@@ -403,9 +397,7 @@ def test_sequences_and_smoother_input_agree_on_boundaries(deployment_scaffold):
     ]
 
     # Ask the smoother for its input on the same deployment.
-    smoother_rows = build_smoother_input(
-        s["deployment"].id, 1800, db
-    )
+    smoother_rows = build_smoother_input(s["deployment"].id, db)
     smoother_groups: dict[str, set[str]] = {}
     for row in smoother_rows:
         smoother_groups.setdefault(row["seq_id"], set()).add(
@@ -424,7 +416,6 @@ def test_sequences_same_folder_still_cluster(deployment_scaffold):
     rule."""
     s = deployment_scaffold
     db, deploy_dir = s["db"], s["deploy_dir"]
-    s["project"].independence_interval = 1800
     db.flush()
 
     base = datetime(2024, 6, 15, 10, 0, 0)
@@ -508,12 +499,10 @@ def test_paired_cameras_form_one_sequence_with_max_not_sum(deployment_scaffold):
     """A paired station groups both cameras' frames into one sequence in
     capture order, and MaxN is the largest count in any single frame (2),
     not the sum over both cameras (5)."""
-    from app.api.crud.sequence import count_regroup_impact
     from app.ml.postprocessing import build_smoother_input
 
     s = deployment_scaffold
     db = s["db"]
-    s["project"].independence_interval = 1800
     s["deployment"].paired_cameras = True
     db.flush()
     _load_paired_station(s)
@@ -530,22 +519,15 @@ def test_paired_cameras_form_one_sequence_with_max_not_sum(deployment_scaffold):
     assert obs.max_n == 2
 
     # The smoother sees the same grouping: one seq_id across both cameras.
-    smoother = build_smoother_input(s["deployment"].id, 1800, db)
+    smoother = build_smoother_input(s["deployment"].id, db)
     assert len(smoother) == 4
     assert len({row["seq_id"] for row in smoother}) == 1
-
-    # The regroup preview clusters with the same rule, so at the current
-    # interval nothing is at risk.
-    sequence.confirmed = True
-    db.commit()
-    assert count_regroup_impact(db, s["project"].id, 1800)["confirmed_at_risk"] == 0
 
 
 def test_unpaired_station_layout_stays_two_sequences(deployment_scaffold):
     """Same layout with the flag off keeps the per-subfolder rule."""
     s = deployment_scaffold
     db = s["db"]
-    s["project"].independence_interval = 1800
     db.flush()
     _load_paired_station(s)
 

@@ -377,23 +377,6 @@ def test_independent_observation_stats_honours_human_count(client, db):
     assert data["total"] == 6
 
 
-def test_regroup_preview_empty(client, db):
-    p = make_project(db)
-    resp = client.get(
-        f"/api/projects/{p.id}/regroup-preview?independence_interval=1800"
-    )
-    assert resp.status_code == 200
-    assert resp.json() == {
-        "confirmed_at_risk": 0,
-        "counts_at_risk": 0,
-        "total_confirmed": 0,
-        "example": None,
-    }
-
-
-# --- Reprocess / Re-embed ---
-
-
 def test_reprocess_not_found(client):
     resp = client.post("/api/projects/nonexistent/reprocess")
     assert resp.status_code == 404

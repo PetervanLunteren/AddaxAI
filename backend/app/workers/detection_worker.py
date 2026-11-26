@@ -1120,12 +1120,13 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 # one phase that has died on a large video deployment (the
                 # server was killed building the input on 238,941 boxes);
                 # generated here, the counts and MaxN of a finished analysis
-                # never depend on it. Project-wide and idempotent, so a batch
-                # of several folders regenerates on each, which is cheap.
+                # never depend on it. This deployment only: adding a folder
+                # must not regroup the rest of the project, whose sequences
+                # may come from an older rule and carry confirmed counts.
                 # In a thread: the job runs on the event loop that serves the
                 # app, and on a 900K-photo deployment this takes minutes.
                 sequence_count = await asyncio.to_thread(
-                    sequence_crud.generate_sequences_for_project, db, project_id
+                    sequence_crud.generate_sequences_for_deployment, db, deployment
                 )
                 db.commit()
                 logger.info(f"Batch job {job_id}: {sequence_count} sequences after {deployment.id}")

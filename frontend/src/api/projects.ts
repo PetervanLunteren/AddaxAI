@@ -165,25 +165,6 @@ export const projectsApi = {
     ),
 
   /**
-   * How much count verification a change to the independence interval
-   * would reset (sequences regroup; confirmations/manual counts on regrouped
-   * sequences are lost).
-   */
-  regroupPreview: (id: string, independenceInterval: number) =>
-    api.get<{
-      confirmed_at_risk: number;
-      counts_at_risk: number;
-      total_confirmed: number;
-      example: {
-        time_range: string | null;
-        observations: { label: string; count: number }[];
-        maps_to: number;
-      } | null;
-    }>(
-      `/api/projects/${id}/regroup-preview?independence_interval=${independenceInterval}`
-    ),
-
-  /**
    * Get count of detections at or above a confidence threshold
    */
   getDetectionCount: (id: string, threshold: number) =>

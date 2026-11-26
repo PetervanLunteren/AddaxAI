@@ -45,6 +45,8 @@ def compute_postprocessing_settings_hash(project: Project) -> str:
     Compute SHA-256 hash of the project's postprocessing-relevant settings.
 
     Used to detect when settings have changed and reprocessing is needed.
+    The independence interval is not one of them: it groups nothing that
+    is stored, the statistics apply it when they are asked.
 
     Args:
         project: Project ORM object
@@ -56,7 +58,6 @@ def compute_postprocessing_settings_hash(project: Project) -> str:
         "event_smoothing": project.sequence_smoothing,
         "smoothing_strength": project.smoothing_strength,
         "taxonomic_rollup": project.taxonomic_rollup,
-        "independence_interval": project.independence_interval,
         "excluded_classes": sorted(project.excluded_classes or []),
         "country_code": project.country_code,
         "state_code": project.state_code,
@@ -69,11 +70,7 @@ def compute_postprocessing_settings_hash(project: Project) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
-def build_smoother_input(
-    deployment_id: str,
-    independence_interval: int,
-    db: Session,
-) -> list[dict]:
+def build_smoother_input(deployment_id: str, db: Session) -> list[dict]:
     """
     Package a deployment's sequences for MegaDetector's sequence-level smoother.
 
@@ -88,7 +85,6 @@ def build_smoother_input(
 
     Args:
         deployment_id: Deployment UUID
-        independence_interval: Gap in seconds that starts a new sequence
         db: Database session
 
     Returns:
@@ -121,7 +117,7 @@ def build_smoother_input(
 
     smoother_input: list[dict] = []
     for cluster in cluster_files_into_sequences(
-        files, independence_interval, paired_cameras=deployment.paired_cameras
+        files, paired_cameras=deployment.paired_cameras
     ):
         seq_id = str(uuid.uuid4())
         for file_record in cluster:
@@ -568,13 +564,10 @@ def run_postprocessing_for_deployment(
 
     # Package sequences for the smoother. Uses the same clustering primitive
     # as the UI's Sequence rows, so the smoother sees the same boundaries.
-    smoother_input = build_smoother_input(
-        deployment_id, project.independence_interval, db
-    )
+    smoother_input = build_smoother_input(deployment_id, db)
     if smoother_input:
         logger.info(
-            f"Running sequence-level smoothing on {len(smoother_input)} file "
-            f"rows (independence_interval={project.independence_interval}s)"
+            f"Running sequence-level smoothing on {len(smoother_input)} file rows"
         )
 
     # Build options for the subprocess script. `smoother_input` is the

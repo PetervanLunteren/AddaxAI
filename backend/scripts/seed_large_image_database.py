@@ -384,10 +384,10 @@ class Seeder:
     def captures(self, count: int) -> Iterator[datetime]:
         """Trigger bursts of 1 to 5 photos 2 s apart.
 
-        A gap of 31 min to 6 h starts a new sequence, because the default
-        independence interval is 30 min. With ``sequence_photos`` set, most
-        gaps are 1 to 29 min instead, so the bursts form sequences of about
-        that many photos.
+        A gap of 31 min to 6 h starts a new sequence, and a new independent
+        event at the default 30-min interval. With ``sequence_photos`` set,
+        most gaps are 10 to 110 s instead, inside the 2-min sequence gap, so
+        the bursts form sequences of about that many photos.
         """
         sequence_photos = self.shape.sequence_photos
         t = SEASON_START + timedelta(minutes=self.rng.uniform(0, 600))
@@ -400,7 +400,7 @@ class Seeder:
             if sequence_photos is None or self.rng.random() < BURST_MEAN / sequence_photos:
                 t += timedelta(minutes=self.rng.uniform(31, 360))
             else:
-                t += timedelta(minutes=self.rng.uniform(1, 29))
+                t += timedelta(seconds=self.rng.uniform(10, 110))
 
     def seed_project(self, spec: ProjectShape) -> str:
         from app.models import Deployment, Project, Site

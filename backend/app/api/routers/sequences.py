@@ -138,7 +138,7 @@ def generate_sequences(
     """
     Generate or regenerate sequences for a project.
 
-    Groups files into sequences based on the project's independence_interval.
+    Groups files into sequences (see `services/sequence_clustering`).
     Idempotent: deletes existing sequences before regenerating.
     """
     try:

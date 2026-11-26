@@ -1,7 +1,7 @@
 /**
  * A confirmation dialog gated on typing an exact word, the shared shape
  * behind every "type X to confirm" destructive/heavy action (delete
- * project/site/deployment, reset app, restore backup, regroup sequences).
+ * project/site/deployment, reset app, restore backup).
  *
  * The caller owns the action (`onConfirm`) and the warning body
  * (`children`); this component owns the typed-word gate, the reset on

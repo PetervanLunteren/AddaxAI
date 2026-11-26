@@ -369,9 +369,10 @@ async def process_postprocessing_job(job_id: str) -> None:
             if n_skipped:
                 message += f", {n_skipped} skipped"
 
-        # Auto-regenerate sequences (independence_interval may have changed).
-        # In a thread, like the statistics refresh below: the job runs on the sequence
-        # loop that serves the app, and both take minutes on a large project.
+        # Regroup the whole project: the user asked for a reprocess, so every
+        # deployment gets the current rule (a group someone worked on is kept).
+        # In a thread, like the statistics refresh below: the job runs on the
+        # event loop that serves the app, and both take minutes on a large project.
         sequence_count = await asyncio.to_thread(
             sequence_crud.generate_sequences_for_project, db, project_id
         )

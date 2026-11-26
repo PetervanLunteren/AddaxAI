@@ -1036,55 +1036,37 @@ def test_generate_preserves_confirmed_and_human_count_when_unchanged(db):
     assert cow_obs2.effective_count == 5
 
 
-def test_generate_interval_change_resets_merged_but_keeps_unaffected(db):
-    """Widening the interval merges some sequences (reset) but leaves others
-    untouched (preserved)."""
+def test_the_interval_regroups_nothing(db):
+    """The independence interval is applied by the statistics, so a
+    regeneration after changing it gives the same sequences and keeps
+    every confirmation and count."""
     from app.api.crud.sequence import generate_sequences_for_project
 
     project = make_project(db, counting_threshold=0.5, independence_interval=300)
-    # dep1: cow pair + far bear -> merges into one at a wide interval.
-    dep1 = make_deployment(db, project_id=project.id)
-    _file_with_dets(db, dep1.id, datetime(2024, 1, 1, 12, 0, 0), [("cow", "animal", 0.9)])
-    _file_with_dets(db, dep1.id, datetime(2024, 1, 1, 12, 0, 30), [("cow", "animal", 0.9)])
-    _file_with_dets(db, dep1.id, datetime(2024, 1, 1, 12, 10, 0), [("bear", "animal", 0.9)])
-    # dep2: a single deer file -> always its own sequence, unaffected.
-    dep2 = make_deployment(db, project_id=project.id)
-    _file_with_dets(db, dep2.id, datetime(2024, 1, 1, 12, 0, 0), [("deer", "animal", 0.9)])
+    dep = make_deployment(db, project_id=project.id)
+    _file_with_dets(db, dep.id, datetime(2024, 1, 1, 12, 0, 0), [("cow", "animal", 0.9)])
+    _file_with_dets(db, dep.id, datetime(2024, 1, 1, 12, 10, 0), [("bear", "animal", 0.9)])
     db.commit()
 
     generate_sequences_for_project(db, project.id)
-    cow_sequence = _sequences(db, dep1.id)[0]
-    deer_sequence = _sequences(db, dep2.id)[0]
-    obs = db.query(SequenceObservation)
-    obs.filter_by(sequence_id=cow_sequence.id, label="cow").one().human_count = 4
-    obs.filter_by(sequence_id=deer_sequence.id, label="deer").one().human_count = 2
+    cow_sequence = _sequences(db, dep.id)[0]
+    db.query(SequenceObservation).filter_by(
+        sequence_id=cow_sequence.id, label="cow"
+    ).one().human_count = 4
     cow_sequence.confirmed = True
-    deer_sequence.confirmed = True
     db.commit()
 
-    # Widen the interval so dep1's two sequences merge.
     project.independence_interval = 3600
     db.commit()
     generate_sequences_for_project(db, project.id)
 
-    dep1_sequences = _sequences(db, dep1.id)
-    assert len(dep1_sequences) == 1  # merged
-    merged = dep1_sequences[0]
-    assert merged.confirmed is False  # regrouped -> reset
+    after = _sequences(db, dep.id)
+    assert len(after) == 2
+    assert after[0].confirmed is True
     cow_after = (
-        db.query(SequenceObservation).filter_by(sequence_id=merged.id, label="cow").one()
+        db.query(SequenceObservation).filter_by(sequence_id=after[0].id, label="cow").one()
     )
-    assert cow_after.human_count is None  # reverted to AI count
-
-    deer_after_sequence = _sequences(db, dep2.id)[0]
-    assert deer_after_sequence.confirmed is True  # unchanged grouping -> preserved
-    deer_after = (
-        db.query(SequenceObservation)
-        .filter_by(sequence_id=deer_after_sequence.id, label="deer")
-        .one()
-    )
-    assert deer_after.human_count == 2
-
+    assert cow_after.human_count == 4
 
 def test_generate_relabel_unconfirms_preserved_sequence(db):
     """Same interval, but a label change inside a preserved sequence (e.g.
@@ -1109,49 +1091,6 @@ def test_generate_relabel_unconfirms_preserved_sequence(db):
 
     event2 = _sequences(db, dep.id)[0]
     assert event2.confirmed is False
-
-
-def test_count_regroup_impact(db):
-    """Preview counts confirmed sequences / manual counts a regroup would reset,
-    and is zero when the interval is unchanged."""
-    from app.api.crud.sequence import count_regroup_impact, generate_sequences_for_project
-
-    project = make_project(db, counting_threshold=0.5, independence_interval=300)
-    dep1 = make_deployment(db, project_id=project.id)
-    _file_with_dets(db, dep1.id, datetime(2024, 1, 1, 12, 0, 0), [("cow", "animal", 0.9)])
-    _file_with_dets(db, dep1.id, datetime(2024, 1, 1, 12, 0, 30), [("cow", "animal", 0.9)])
-    _file_with_dets(db, dep1.id, datetime(2024, 1, 1, 12, 10, 0), [("bear", "animal", 0.9)])
-    dep2 = make_deployment(db, project_id=project.id)
-    _file_with_dets(db, dep2.id, datetime(2024, 1, 1, 12, 0, 0), [("deer", "animal", 0.9)])
-    db.commit()
-
-    generate_sequences_for_project(db, project.id)
-    cow_sequence = _sequences(db, dep1.id)[0]
-    deer_sequence = _sequences(db, dep2.id)[0]
-    obs = db.query(SequenceObservation)
-    obs.filter_by(sequence_id=cow_sequence.id, label="cow").one().human_count = 4
-    cow_sequence.confirmed = True
-    deer_sequence.confirmed = True
-    db.commit()
-
-    # Widening merges dep1's cow sequence; dep2's deer sequence is unaffected.
-    merging = count_regroup_impact(db, project.id, 3600)
-    assert merging["total_confirmed"] == 2
-    assert merging["confirmed_at_risk"] == 1
-    assert merging["counts_at_risk"] == 1
-    # The example points at the regrouped cow sequence: its confirmed count,
-    # its time range, and that its files land in one merged sequence.
-    example = merging["example"]
-    assert example is not None
-    assert example["observations"] == [{"label": "cow", "count": 4}]
-    assert example["maps_to"] == 1
-    assert example["time_range"] is not None
-
-    # Same interval: nothing at risk, no example.
-    unchanged = count_regroup_impact(db, project.id, 300)
-    assert unchanged["confirmed_at_risk"] == 0
-    assert unchanged["counts_at_risk"] == 0
-    assert unchanged["example"] is None
 
 
 def test_update_paired_cameras_regroups_only_that_deployment(db):
@@ -1462,21 +1401,24 @@ def test_generate_sequences_carries_cohorts_when_the_file_set_is_unchanged(db):
 def test_notes_survive_a_merge_and_a_split(db):
     """Counts are dropped when sequences regroup; notes never are. A merge
     joins the notes in time order, a split copies the note to every
-    child."""
+    child. Turning paired cameras on and off merges and splits."""
     from app.api.crud.sequence import generate_sequences_for_project
 
-    project = make_project(db, counting_threshold=0.5, independence_interval=300)
-    dep = make_deployment(db, project_id=project.id)
-    _file_with_dets(db, dep.id, datetime(2024, 1, 1, 12, 0, 0), [("cow", "animal", 0.9)])
-    _file_with_dets(db, dep.id, datetime(2024, 1, 1, 12, 10, 0), [("bear", "animal", 0.9)])
+    project = make_project(db, counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id, folder_path="/data/pair")
+    for cam, secs in (("cam_a", 0), ("cam_b", 30)):
+        f = _file_with_dets(
+            db, dep.id, datetime(2024, 1, 1, 12, 0, secs), [("cow", "animal", 0.9)]
+        )
+        f.file_path = f"/data/pair/{cam}/{f.id}.jpg"
     db.commit()
     generate_sequences_for_project(db, project.id)
-    first, second = sorted(_sequences(db, dep.id), key=lambda e: e.sequence_start_local)
+    first, second = _sequences(db, dep.id)
     set_sequence_notes(db, first.id, "camera knocked")
     set_sequence_notes(db, second.id, "check interval")
 
     # Merge: one sequence, both notes, earliest first, one per line.
-    project.independence_interval = 3600
+    dep.paired_cameras = True
     db.commit()
     generate_sequences_for_project(db, project.id)
     (merged,) = _sequences(db, dep.id)
@@ -1484,14 +1426,13 @@ def test_notes_survive_a_merge_and_a_split(db):
     assert merged.confirmed is False
 
     # Split it again: both children carry the joined note.
-    project.independence_interval = 300
+    dep.paired_cameras = False
     db.commit()
     generate_sequences_for_project(db, project.id)
     assert [e.notes for e in _sequences(db, dep.id)] == [
         "camera knocked\ncheck interval",
         "camera knocked\ncheck interval",
     ]
-
 
 def test_demographics_survive_when_the_ai_stops_seeing_the_species(db):
     """An AI row a person labelled keeps that label as a human-only row
@@ -1535,15 +1476,6 @@ def test_observation_edits_are_scoped_to_the_sequence_in_the_path(db):
     ) is None
     assert db.get(SequenceObservation, cow.id).effective_count == 6
     assert set_human_count(db, cow.id, 5, sequence_id=ev.id).effective_count == 5
-
-
-def test_regroup_example_sums_a_split_species(db):
-    from app.api.crud.sequence import _regroup_example
-
-    ev, cow, _ = _cow_sequence(db, n_cows=3)
-    split_observation(db, cow.id)
-    example = _regroup_example(db, ev.id, None, None, set(), set())
-    assert example["observations"] == [{"label": "cow", "count": 3}]
 
 
 def test_update_camera_offsets_shifts_one_subfolder_and_regroups(db):
@@ -1735,3 +1667,120 @@ def test_a_per_frame_classifier_label_still_gets_no_row(db):
     rows = calculate_max_n_for_sequence(db, sequence.id, project.counting_threshold)
 
     assert {r.label for r in rows} == {"red deer"}
+
+
+# ---------------------------------------------------------------------------
+# A group somebody worked on is never cut
+# ---------------------------------------------------------------------------
+
+
+def _legacy_group(db, minutes=(0, 10, 20), label="cow"):
+    """One deployment whose files sit 10 minutes apart in ONE stored group,
+    as the 30-minute rule made them before sequences existed. Returns
+    (project, deployment, group, files)."""
+    from app.api.crud.sequence import _create_sequence
+
+    project = make_project(db, counting_threshold=0.5)
+    dep = make_deployment(db, project_id=project.id)
+    t0 = datetime(2024, 1, 1, 12, 0, 0)
+    files = [
+        _file_with_dets(db, dep.id, t0 + timedelta(minutes=m), [(label, "animal", 0.9)])
+        for m in minutes
+    ]
+    group = _create_sequence(db, dep, files)
+    calculate_max_n_for_sequence(db, group.id, 0.5)
+    db.commit()
+    return project, dep, group, files
+
+
+def _cow_row(db, sequence_id):
+    return db.query(SequenceObservation).filter_by(sequence_id=sequence_id, label="cow").one()
+
+
+def test_a_confirmed_old_group_stays_whole(db):
+    from app.api.crud.sequence import generate_sequences_for_project
+
+    project, dep, group, _ = _legacy_group(db)
+    _cow_row(db, group.id).human_count = 3
+    group.confirmed = True
+    db.commit()
+
+    generate_sequences_for_project(db, project.id)
+
+    (kept,) = _sequences(db, dep.id)
+    assert kept.file_count == 3
+    assert kept.confirmed is True
+    assert _cow_row(db, kept.id).human_count == 3
+
+
+def test_a_count_or_a_demographic_alone_keeps_the_group_whole(db):
+    """Not confirmed, but a person set a count, or only a sex."""
+    from app.api.crud.sequence import generate_sequences_for_project
+
+    project, dep, group, _ = _legacy_group(db)
+    _cow_row(db, group.id).human_count = 2
+    db.commit()
+    generate_sequences_for_project(db, project.id)
+    (kept,) = _sequences(db, dep.id)
+    assert _cow_row(db, kept.id).human_count == 2
+
+    project, dep, group, _ = _legacy_group(db)
+    set_observation_attributes(db, _cow_row(db, group.id).id, sex="female")
+    db.commit()
+    generate_sequences_for_project(db, project.id)
+    (kept,) = _sequences(db, dep.id)
+    assert _cow_row(db, kept.id).sex == "female"
+
+
+def test_an_untouched_old_group_is_cut_into_sequences(db):
+    """The AI's numbers only: nothing to keep, so the new rule applies.
+    A note does not protect the group; it is copied to every part."""
+    from app.api.crud.sequence import generate_sequences_for_project
+
+    project, dep, group, _ = _legacy_group(db)
+    set_sequence_notes(db, group.id, "foggy")
+    db.commit()
+
+    generate_sequences_for_project(db, project.id)
+
+    parts = _sequences(db, dep.id)
+    assert [p.file_count for p in parts] == [1, 1, 1]
+    assert [p.notes for p in parts] == ["foggy"] * 3
+    assert not any(p.confirmed for p in parts)
+
+
+def test_a_worked_on_group_that_gains_a_file_resets_as_before(db):
+    """A new file inside the group's time span is not a split: the files
+    changed, so the count no longer describes them and resets."""
+    from app.api.crud.sequence import generate_sequences_for_project
+
+    project, dep, group, _ = _legacy_group(db, minutes=(0, 1, 10))
+    group.confirmed = True
+    db.commit()
+    _file_with_dets(db, dep.id, datetime(2024, 1, 1, 12, 11, 0), [("cow", "animal", 0.9)])
+    db.commit()
+
+    generate_sequences_for_project(db, project.id)
+
+    parts = _sequences(db, dep.id)
+    assert [p.file_count for p in parts] == [2, 2]
+    assert not any(p.confirmed for p in parts)
+
+
+def test_an_analysis_regroups_only_its_own_deployment(db):
+    """Adding a folder to a project must not cut the old groups of the
+    other deployments: the end of an analysis regroups its deployment only."""
+    from app.api.crud.sequence import generate_sequences_for_deployment
+
+    project, old_dep, group, _ = _legacy_group(db)
+    new_dep = make_deployment(db, project_id=project.id)
+    t0 = datetime(2024, 2, 1, 12, 0, 0)
+    for m in (0, 10):
+        _file_with_dets(db, new_dep.id, t0 + timedelta(minutes=m), [("deer", "animal", 0.9)])
+    db.commit()
+
+    generate_sequences_for_deployment(db, new_dep)
+    db.commit()
+
+    assert [s.id for s in _sequences(db, old_dep.id)] == [group.id]
+    assert [s.file_count for s in _sequences(db, new_dep.id)] == [1, 1]

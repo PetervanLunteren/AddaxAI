@@ -25,6 +25,8 @@ Those describe the schema at head; these tests write into the schema as
 it was, where the columns are different.
 """
 
+import json
+
 import sqlalchemy as sa
 from sqlalchemy import text
 
@@ -1241,3 +1243,114 @@ def test_b7d9f1a3c5e7_keeps_every_row_under_the_new_names(engine) -> None:
         conn.execute(text("DELETE FROM sequences WHERE id = :i"), {"i": event_id})
         assert conn.execute(text("SELECT count(*) FROM sequence_files")).scalar() == 0
         assert conn.execute(text("SELECT count(*) FROM sequence_observations")).scalar() == 0
+
+
+# ---------------------------------------------------------------------------
+# c8e0a2b4d6f9 — the independence interval leaves the reprocess hash
+# ---------------------------------------------------------------------------
+
+# What `compute_postprocessing_settings_hash` returned on main for these two
+# settings, before the interval left it. Literals, so the test cannot drift
+# with the formula it checks.
+_SETTINGS_A = dict(
+    sequence_smoothing=1, smoothing_strength="normal", taxonomic_rollup=0,
+    independence_interval=600, excluded_classes='["fox", "badger"]',
+    country_code="NLD", state_code=None, taxa_mapping=None,
+)
+_OLD_HASH_A = "521b59e56aa87f9b099a274afc2382cb9f9ae01ab1b88586cfa44fba4317933e"
+_SETTINGS_B = dict(
+    sequence_smoothing=0, smoothing_strength="aggressive", taxonomic_rollup=1,
+    independence_interval=1800, excluded_classes="[]", country_code=None, state_code=None,
+    taxa_mapping='{"file_name": "t.csv", "text": "x", '
+    '"rows": [{"latin": "Vulpes vulpes", "label": "fox"}]}',
+)
+_OLD_HASH_B = "d62a42943217324bfb897cab3d7e1646dea092554b712814a647d58ba8ab494b"
+
+
+def test_c8e0a2b4d6f9_keeps_the_reprocess_banner_as_it_was(engine) -> None:
+    """A project processed with its current settings is still up to date
+    after the update, and one that needed a reprocess still needs it: the
+    stored hash is rewritten only where it matched the old formula."""
+    from types import SimpleNamespace
+
+    from app.ml.postprocessing import compute_postprocessing_settings_hash
+
+    upgrade_to("b7d9f1a3c5e7")
+    with engine.begin() as conn:
+        up_to_date_a = insert_row(
+            conn, "projects", name="a", postprocessing_settings_hash=_OLD_HASH_A, **_SETTINGS_A
+        )
+        up_to_date_b = insert_row(
+            conn, "projects", name="b", postprocessing_settings_hash=_OLD_HASH_B, **_SETTINGS_B
+        )
+        stale = insert_row(
+            conn, "projects", name="c", postprocessing_settings_hash="0" * 64, **_SETTINGS_A
+        )
+
+    upgrade_to("c8e0a2b4d6f9")
+
+    def app_hash(settings: dict) -> str:
+        # The Python values the ORM hands the app, not the raw row's.
+        project = SimpleNamespace(**{
+            **settings,
+            "sequence_smoothing": bool(settings["sequence_smoothing"]),
+            "taxonomic_rollup": bool(settings["taxonomic_rollup"]),
+            "excluded_classes": json.loads(settings["excluded_classes"]),
+            "taxa_mapping": json.loads(settings["taxa_mapping"] or "null"),
+        })
+        return compute_postprocessing_settings_hash(project)
+
+    with engine.connect() as conn:
+        stored = dict(conn.execute(text(
+            "SELECT id, postprocessing_settings_hash FROM projects"
+        )).all())
+    assert stored[up_to_date_a] == app_hash(_SETTINGS_A) != _OLD_HASH_A
+    assert stored[up_to_date_b] == app_hash(_SETTINGS_B) != _OLD_HASH_B
+    assert stored[stale] == "0" * 64
+
+
+# ---------------------------------------------------------------------------
+# d9f1b3c5e7a1 — sequences.camera_key
+# ---------------------------------------------------------------------------
+
+
+def test_d9f1b3c5e7a1_fills_the_camera_of_every_sequence(engine) -> None:
+    """The folder of the first file, POSIX or Windows, the same as the
+    app's `camera_key`; "" for a paired-cameras deployment and for a
+    sequence without files."""
+    from types import SimpleNamespace
+
+    from app.services.sequence_clustering import camera_key
+
+    upgrade_to("c8e0a2b4d6f9")
+    paths = {
+        "posix": ["/data/site 1/cam_a/b.JPG", "/data/site 1/cam_a/a.JPG"],
+        "windows": ["D:\\Fieldwork\\cam.b\\IMG_0001.JPG"],
+        "paired": ["/data/pair/cam_a/1.jpg", "/data/pair/cam_b/2.jpg"],
+        "empty": [],
+    }
+    ids = {}
+    with engine.begin() as conn:
+        project_id, unpaired = seed_deployment(conn)
+        paired = insert_row(conn, "deployments", project_id=project_id)
+        conn.execute(text("UPDATE deployments SET paired_cameras = 1 WHERE id = :d"),
+                     {"d": paired})
+        for name, files in paths.items():
+            dep = paired if name == "paired" else unpaired
+            ids[name] = insert_row(conn, "sequences", deployment_id=dep)
+            for position, path in enumerate(files):
+                file_id = insert_row(conn, "files", deployment_id=dep, file_path=path)
+                insert_row(conn, "sequence_files", sequence_id=ids[name],
+                           file_id=file_id, position=position)
+
+    upgrade_to("d9f1b3c5e7a1")
+
+    with engine.connect() as conn:
+        keys = dict(conn.execute(text("SELECT id, camera_key FROM sequences")).all())
+    assert keys[ids["posix"]] == "/data/site 1/cam_a/"
+    assert keys[ids["windows"]] == "D:\\Fieldwork\\cam.b\\"
+    assert keys[ids["paired"]] == ""
+    assert keys[ids["empty"]] == ""
+    for name in ("posix", "windows"):
+        first = SimpleNamespace(file_path=paths[name][0])
+        assert keys[ids[name]] == camera_key(first, paired_cameras=False)

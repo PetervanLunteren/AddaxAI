@@ -19,7 +19,6 @@ from app.db.sql_params import iter_id_chunks
 from app.ml.detection_visibility import on_visible_frame, visible_detections
 from app.ml.label_exclusion import (
     classification_score_in_range,
-    is_wildlife_category,
     threshold_or_verified,
 )
 from app.ml.observation_type import derive_observation_type
@@ -376,6 +375,16 @@ class _SequenceCarry:
     confirmed: bool
     prior: list  # list[PriorObs]
 
+    @property
+    def worked_on(self) -> bool:
+        """A person confirmed the sequence or set a count, sex, age or
+        behaviour on it. A note alone does not count: notes survive any
+        regroup anyway."""
+        return self.confirmed or any(
+            p.human_count is not None or p.sex or p.life_stage or p.behavior
+            for p in self.prior
+        )
+
 
 @dataclass
 class _RegroupCarry:
@@ -488,8 +497,7 @@ def generate_sequences_for_project(db: Session, project_id: str) -> int:
     (`SequenceObservation.human_count`) are carried onto any regenerated sequence
     whose file set is unchanged, so a reprocess that doesn't actually
     regroup a sequence never loses its count verification. Sequences that merge
-    or split (an interval change) find no match and reset to unconfirmed
-    AI counts.
+    or split find no match and reset to unconfirmed AI counts.
 
     Returns total sequence count created.
     """
@@ -499,7 +507,6 @@ def generate_sequences_for_project(db: Session, project_id: str) -> int:
     if not project:
         raise ValueError(f"Project {project_id} not found")
 
-    independence_interval = project.independence_interval  # seconds
     threshold = project.counting_threshold
 
     # Get all deployments for this project
@@ -520,7 +527,7 @@ def generate_sequences_for_project(db: Session, project_id: str) -> int:
     total_sequences = 0
     for deployment in deployments:
         total_sequences += _regenerate_deployment_sequences(
-            db, deployment, independence_interval, threshold, carry
+            db, deployment, threshold, carry
         )
 
     db.flush()
@@ -531,8 +538,10 @@ def generate_sequences_for_project(db: Session, project_id: str) -> int:
 def generate_sequences_for_deployment(db: Session, deployment: Deployment) -> int:
     """
     Regenerate the sequences of one deployment, carrying the human layer
-    like `generate_sequences_for_project` does. Used when a deployment-level
-    setting that changes the grouping (`paired_cameras`) is edited.
+    like `generate_sequences_for_project` does. Used at the end of an
+    analysis, which only touches its own deployment, and when a
+    deployment-level setting that changes the grouping (`paired_cameras`,
+    camera offsets) is edited.
 
     Does NOT commit: the caller owns the transaction. Returns the number
     of sequences created.
@@ -541,11 +550,7 @@ def generate_sequences_for_deployment(db: Session, deployment: Deployment) -> in
     carry = _snapshot_sequence_carry(db, [deployment.id])
     db.execute(delete(Sequence).where(Sequence.deployment_id == deployment.id))
     count = _regenerate_deployment_sequences(
-        db,
-        deployment,
-        project.independence_interval,
-        project.counting_threshold,
-        carry,
+        db, deployment, project.counting_threshold, carry
     )
     db.flush()
     return count
@@ -554,7 +559,6 @@ def generate_sequences_for_deployment(db: Session, deployment: Deployment) -> in
 def _regenerate_deployment_sequences(
     db: Session,
     deployment: Deployment,
-    independence_interval: int,
     threshold: float,
     carry: _RegroupCarry,
 ) -> int:
@@ -571,11 +575,13 @@ def _regenerate_deployment_sequences(
         .all()
     )
 
+    clusters = _keep_worked_on_whole(
+        cluster_files_into_sequences(files, paired_cameras=deployment.paired_cameras),
+        carry,
+    )
     count = 0
-    for cluster in cluster_files_into_sequences(
-        files, independence_interval, paired_cameras=deployment.paired_cameras
-    ):
-        sequence = _create_sequence(db, deployment.id, cluster)
+    for cluster in clusters:
+        sequence = _create_sequence(db, deployment, cluster)
         file_ids = [f.id for f in cluster]
         carried = carry.by_fileset.get(frozenset(file_ids))
         if carried is not None:
@@ -594,174 +600,54 @@ def _regenerate_deployment_sequences(
     return count
 
 
-def _format_sequence_range(start, end) -> str | None:
-    """A human range like "Jan 05, 2024 10:00–10:30" from naive local sequence
-    bounds (camera wall-clock; no tz conversion). None for dateless sequences."""
-    if start is None:
-        return None
-    if end is None or end.date() == start.date():
-        tail = (end or start).strftime("%H:%M")
-        return f"{start:%b %d, %Y} {start:%H:%M}–{tail}"
-    return f"{start:%b %d, %Y %H:%M} – {end:%b %d, %Y %H:%M}"
+def _keep_worked_on_whole(
+    clusters: list[list[File]], carry: _RegroupCarry
+) -> list[list[File]]:
+    """Never cut a group somebody worked on.
 
-
-def _regroup_example(
-    db: Session,
-    sequence_id: str,
-    start,
-    end,
-    sequence_files_set: set[str],
-    new_filesets: set[frozenset],
-) -> dict:
-    """A concrete "here's what you'll lose" example for one confirmed sequence
-    that regroups: its confirmed animal counts, its time range, and how many
-    new sequences its files land in (1 = merged into a bigger sequence, >1 = split)."""
-    # Summed per species: a species split into cohorts is one entry.
-    count_by_label: dict[str, int] = defaultdict(int)
-    for o in (
-        db.query(SequenceObservation)
-        .filter(
-            SequenceObservation.sequence_id == sequence_id,
-            is_wildlife_category(SequenceObservation.category),
-            SequenceObservation.label.isnot(None),
-        )
-        .all()
-    ):
-        count_by_label[o.label] += o.effective_count
-    observations = [
-        {"label": label, "count": count} for label, count in count_by_label.items()
-    ]
-    maps_to = sum(1 for fs in new_filesets if fs & sequence_files_set)
-    return {
-        "time_range": _format_sequence_range(start, end),
-        "observations": observations,
-        "maps_to": maps_to,
-    }
-
-
-def count_regroup_impact(
-    db: Session, project_id: str, independence_interval: int
-) -> dict:
-    """How much count verification a regrouping at `independence_interval`
-    would reset.
-
-    A sequence's confirmation and manual counts survive a regeneration only
-    when its exact file set still forms one cluster. This clusters the
-    project's files at the candidate interval and counts the currently
-    confirmed sequences (and manual-count rows) whose file set would no longer
-    survive, plus one concrete `example` of a confirmed sequence that regroups.
-    Read-only. Returns ``{confirmed_at_risk, counts_at_risk, total_confirmed,
-    example}``.
+    Where the new rule would only split an old group that was confirmed or
+    has a manual count or demographics (its files land in more than one
+    new cluster and in nothing else), the clusters are joined back into
+    that group, so the existing carry finds the same file set and keeps
+    the person's work. This is what keeps counts confirmed before
+    sequences existed (30-minute groups) whole through every later
+    regroup. A merge or a mixed change (files added, removed, or joined
+    with another group) is not a split and resets as before.
     """
-    from app.services.sequence_clustering import cluster_files_into_sequences
+    cluster_of = {f.id: i for i, cluster in enumerate(clusters) for f in cluster}
+    joined: dict[int, int] = {}  # cluster index -> index it was joined into
+    for fileset, old in carry.by_fileset.items():
+        if not old.worked_on or not fileset <= cluster_of.keys():
+            continue
+        touched = sorted({cluster_of[f] for f in fileset})
+        if len(touched) < 2 or sum(len(clusters[i]) for i in touched) != len(fileset):
+            continue
+        for i in touched:
+            joined[i] = touched[0]
 
-    deployments = (
-        db.query(Deployment).filter(Deployment.project_id == project_id).all()
-    )
-    deployment_ids = [d.id for d in deployments]
-    empty = {
-        "confirmed_at_risk": 0,
-        "counts_at_risk": 0,
-        "total_confirmed": 0,
-        "example": None,
-    }
-    if not deployment_ids:
-        return empty
-
-    new_filesets: set[frozenset] = set()
-    for dep in deployments:
-        files = (
-            db.query(File)
-            .filter(File.deployment_id == dep.id)
-            .filter(File.file_type.in_(["image", "video"]))
-            .all()
-        )
-        for cluster in cluster_files_into_sequences(
-            files, independence_interval, paired_cameras=dep.paired_cameras
-        ):
-            new_filesets.add(frozenset(f.id for f in cluster))
-
-    sequences = (
-        db.query(
-            Sequence.id,
-            Sequence.confirmed,
-            Sequence.sequence_start_local,
-            Sequence.sequence_end_local,
-        )
-        .filter(Sequence.deployment_id.in_(deployment_ids))
-        .all()
-    )
-    if not sequences:
-        return empty
-    sequence_ids = [e.id for e in sequences]
-
-    # Chunk the sequence-id filters: one `IN (?, ?, ...)` over every sequence blows
-    # SQLite's bound-parameter limit on a large project (see app/db/sql_params).
-    files_by_sequence: dict[str, set[str]] = defaultdict(set)
-    for chunk in iter_id_chunks(sequence_ids):
-        for eid, fid in db.query(
-            sequence_files.c.sequence_id, sequence_files.c.file_id
-        ).filter(sequence_files.c.sequence_id.in_(chunk)):
-            files_by_sequence[eid].add(fid)
-
-    human_by_sequence: dict[str, int] = defaultdict(int)
-    for chunk in iter_id_chunks(sequence_ids):
-        for (eid,) in db.query(SequenceObservation.sequence_id).filter(
-            SequenceObservation.sequence_id.in_(chunk),
-            SequenceObservation.human_count.isnot(None),
-        ):
-            human_by_sequence[eid] += 1
-
-    total_confirmed = confirmed_at_risk = counts_at_risk = 0
-    example_sequence = None  # earliest affected confirmed sequence, for the example
-    for e in sequences:
-        survives = frozenset(files_by_sequence.get(e.id, set())) in new_filesets
-        if e.confirmed:
-            total_confirmed += 1
-            if not survives:
-                confirmed_at_risk += 1
-                if example_sequence is None or _starts_before(e, example_sequence):
-                    example_sequence = e
-        if not survives:
-            counts_at_risk += human_by_sequence.get(e.id, 0)
-
-    example = (
-        _regroup_example(
-            db,
-            example_sequence.id,
-            example_sequence.sequence_start_local,
-            example_sequence.sequence_end_local,
-            files_by_sequence.get(example_sequence.id, set()),
-            new_filesets,
-        )
-        if example_sequence is not None
-        else None
-    )
-
-    return {
-        "confirmed_at_risk": confirmed_at_risk,
-        "counts_at_risk": counts_at_risk,
-        "total_confirmed": total_confirmed,
-        "example": example,
-    }
+    if not joined:
+        return clusters
+    out: dict[int, list[File]] = {}
+    for i, cluster in enumerate(clusters):
+        out.setdefault(joined.get(i, i), []).extend(cluster)
+    for i in set(joined.values()):
+        out[i].sort(key=lambda f: (f.captured_at_local or datetime.max, f.file_path))
+    return list(out.values())
 
 
-def _starts_before(a, b) -> bool:
-    """True when sequence `a` starts before `b`; dateless (None) sorts last."""
-    if a.sequence_start_local is None:
-        return False
-    if b.sequence_start_local is None:
-        return True
-    return a.sequence_start_local < b.sequence_start_local
+def _create_sequence(db: Session, deployment: Deployment, files: list[File]) -> Sequence:
+    """Create a sequence with its junction table entries. It ends when its
+    last file ends: a video at its start plus its length. A dateless file is
+    a sequence of its own, with no bounds."""
+    from app.services.sequence_clustering import camera_key, file_end
 
-
-def _create_sequence(db: Session, deployment_id: str, files: list[File]) -> Sequence:
-    """Create a sequence with its junction table entries."""
+    dated = [f for f in files if f.captured_at_local is not None]
     sequence = Sequence(
         id=str(uuid.uuid4()),
-        deployment_id=deployment_id,
-        sequence_start_local=files[0].captured_at_local,
-        sequence_end_local=files[-1].captured_at_local,
+        deployment_id=deployment.id,
+        camera_key=camera_key(files[0], paired_cameras=deployment.paired_cameras),
+        sequence_start_local=dated[0].captured_at_local if dated else None,
+        sequence_end_local=max(map(file_end, dated)) if dated else None,
         file_count=len(files),
     )
     db.add(sequence)
