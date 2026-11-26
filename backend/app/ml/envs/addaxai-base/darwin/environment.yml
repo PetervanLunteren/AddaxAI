@@ -22,6 +22,14 @@ dependencies:
   # viewer shows; pinned for the reason given in the marine env.
   - ffmpeg=9.0.1
   - pip:
+    # The same torch as on Windows and Linux, without the CUDA build.
+    # Unpinned, pip took the newest: torch 2.15.0 and torchvision 0.29.2,
+    # whose MPS kernels failed to compile on a macOS 14.6 machine. Every
+    # frame with a box failed in NMS and the videos read as "could not be
+    # read" (beta report 2026-11-24).
+    - torch==2.8.0
+    - torchvision==0.23.0
+
     # Image processing and metadata
     - exifread
     - piexif

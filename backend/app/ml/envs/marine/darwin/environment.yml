@@ -21,6 +21,10 @@ dependencies:
   # the version the pipe was benchmarked on.
   - ffmpeg=9.0.1
   - pip:
+    # The same pins as the base env; see there for why they are pinned.
+    - torch==2.8.0
+    - torchvision==0.23.0
+
     # Utility packages the detectors and the tracker script read.
     - requests
     - pillow

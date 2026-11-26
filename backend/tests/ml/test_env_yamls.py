@@ -102,6 +102,28 @@ def test_detector_envs_carry_the_trackers_solvers(env: str, platform_dir: str) -
     assert "scipy==1.17.1" in pip_deps
 
 
+def _pinned(yaml_path: Path, package: str) -> str | None:
+    """The version a YAML pins for a package, without a +cu128 tag."""
+    for dep in _pip_deps(yaml_path):
+        match = re.fullmatch(rf"{package}==([\w.]+?)(\+\w+)?", dep)
+        if match:
+            return match.group(1)
+    return None
+
+
+@pytest.mark.parametrize("package", ("torch", "torchvision"))
+def test_an_env_pins_torch_on_every_platform_or_on_none(package: str) -> None:
+    """The macOS base env left torch unpinned while Windows and Linux
+    pinned 2.8.0. pip took 2.15.0, which broke detection on a macOS 14.6
+    machine (beta report 2026-11-24). An env runs one torch on every OS."""
+    for env_dir in sorted({p.parents[1] for p in ALL_YAMLS}):
+        pins = {
+            p.parent.name: _pinned(p, package)
+            for p in sorted(env_dir.glob("*/environment.yml"))
+        }
+        assert len(set(pins.values())) == 1, f"{env_dir.name}: {pins}"
+
+
 def _yaml_id(yaml_path: Path) -> str:
     return f"{yaml_path.parent.parent.name}-{yaml_path.parent.name}"
 
