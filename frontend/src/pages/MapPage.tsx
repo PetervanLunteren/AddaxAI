@@ -14,7 +14,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
-import { eventsApi } from "../api/events";
+import { sequencesApi } from "../api/sequences";
 import { sitesApi } from "../api/sites";
 import { speciesLabelMap } from "../lib/species-name-mode";
 import {
@@ -150,8 +150,8 @@ export function MapPage() {
     enabled: !!projectId,
   });
   const { data: filterOptions } = useQuery({
-    queryKey: ["event-filter-options", projectId],
-    queryFn: () => eventsApi.getFilterOptions(projectId!),
+    queryKey: ["sequence-filter-options", projectId],
+    queryFn: () => sequencesApi.getFilterOptions(projectId!),
     enabled: !!projectId,
   });
 
@@ -263,7 +263,7 @@ export function MapPage() {
               rate = observations / trap_nights, shown in the unit
               chosen under View &gt; Rate unit, summed per site
               across its deployments and restricted to the active date
-              and label filters. Events respect the project's detection
+              and label filters. Sequences respect the project's detection
               threshold with the verified override applied, so verified
               detections count even when they fall below threshold.
               Hexbin colour scaling is per-render, so a hex's shade

@@ -15,7 +15,7 @@ Conventions
   ``LabelTaxonomy.name`` matches (case-insensitive). Non-animal detections
   (person/vehicle) and files with zero in-scope detections survive so
   blank rows still fire.
-* Observational datetimes (``File.captured_at_local``, ``Event.event_*_local``)
+* Observational datetimes (``File.captured_at_local``, ``Sequence.sequence_*_local``)
   are naive wall-clock values in ``Project.timezone`` and are formatted via
   ``to_local_iso_with_offset`` with an explicit timezone argument, so the
   formatted value carries a per-row UTC offset (DST-correct).
@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -51,13 +51,13 @@ from app.ml.taxonomic_rollup import format_scientific_name_from_taxonomy_row
 from app.models import (
     Deployment,
     Detection,
-    Event,
-    EventObservation,
     File,
     LabelTaxonomy,
     Project,
+    Sequence,
+    SequenceObservation,
     Site,
-    event_files,
+    sequence_files,
 )
 from app.utils.datetime_serialization import to_local_iso_with_offset
 from app.utils.media_dates import frame_time
@@ -88,7 +88,7 @@ OBSERVATIONS_SCHEMA = (
 # ---------------------------------------------------------------------------
 
 # Every table carries the identity of its parents, broadest first: site,
-# deployment, event, file. The same columns in the same order in counts,
+# deployment, sequence, file. The same columns in the same order in counts,
 # detections and files, built by ``_site_cells`` and friends below, so a
 # person can read one table in Excel without joining another. The ids
 # stay, so a join is still possible for those who want one.
@@ -108,7 +108,7 @@ _DEPLOYMENT_CONTEXT_HEADERS = [
     "deployment_end",
     "deployment_tags",
 ]
-_EVENT_CONTEXT_HEADERS = ["event_id", "event_start", "event_end"]
+_SEQUENCE_CONTEXT_HEADERS = ["event_id", "event_start", "event_end"]
 # What a row says about its file, after the file's own id: the path inside
 # the deployment folder, the capture time and the pixel size. The size is
 # what turns the fractional box columns into pixels without opening the
@@ -133,7 +133,7 @@ _FILE_CONTEXT_HEADERS = [
 # geometry.
 #
 #   detection_id    — the detection row id.
-#   site_*, deployment_*, event_*, file_id and the file columns: the
+#   site_*, deployment_*, sequence_*, file_id and the file columns: the
 #                     context block, same values as files.csv.
 #   detection_category — detector class: animal / person / vehicle.
 #   detection_confidence — detector (MegaDetector) score for the box.
@@ -162,12 +162,12 @@ _FILE_CONTEXT_HEADERS = [
 #   bbox_*          — normalized [0,1] box.
 #
 # Empty files do not appear here (a detections table holds detections);
-# they live in files.csv. The per-event species count lives in counts.csv.
+# they live in files.csv. The per-sequence species count lives in counts.csv.
 _DETECTION_HEAD = [
     "detection_id",
     *_SITE_CONTEXT_HEADERS,
     *_DEPLOYMENT_CONTEXT_HEADERS,
-    *_EVENT_CONTEXT_HEADERS,
+    *_SEQUENCE_CONTEXT_HEADERS,
     "file_id",
     *_FILE_CONTEXT_HEADERS,
     # Detector stage (MegaDetector): category + score.
@@ -375,7 +375,7 @@ def _files_with_excluded_boxes(
     blank observation claims there is no animal. Only a box
     ``iter_scoped_files`` would have yielded counts (``on_visible_frame``):
     a video box that is no card was never in the file's rows, so the
-    exclusion did not remove it. Chunked like ``_events_by_file``."""
+    exclusion did not remove it. Chunked like ``_sequences_by_file``."""
     removed = _excluded_box(project)
     if removed is None:
         return set()
@@ -405,7 +405,7 @@ class ScopedFile(NamedTuple):
 
 # How many rows the scoped query fetches at a time, and about how many rows
 # (boxes, or the file itself when it has none) one batch of files holds
-# for the lookups of their events and camera cells. Memory per batch, not
+# for the lookups of their sequences and camera cells. Memory per batch, not
 # per project; small enough to stay flat, large enough that the per-batch
 # lookups cost nothing next to the rows.
 STREAM_BATCH = 1000
@@ -656,7 +656,7 @@ def _camtrap_variant_fields(
 
 
 def _camtrap_cohort_fields(
-    taxonomy: LabelTaxonomy | None, obs: EventObservation, event_notes: str | None
+    taxonomy: LabelTaxonomy | None, obs: SequenceObservation, sequence_notes: str | None
 ) -> tuple[str, str, str, str]:
     """Camtrap DP's ``(lifeStage, sex, behavior, observationComments)`` for
     one cohort row.
@@ -664,12 +664,12 @@ def _camtrap_cohort_fields(
     The model's variant wins over what a person set on the row when both
     speak (a variant is the taxon's own claim; that cannot happen for a
     model without variants). NULL exports blank, never "unknown": the
-    enums have no such value. The event's note goes to observationComments
+    enums have no such value. The sequence's note goes to observationComments
     of each of its rows (the standard has no event-level comment), after
     the variant comment when there is one.
     """
     life_stage, sex, variant_comment = _camtrap_variant_fields(taxonomy)
-    comments = "; ".join(c for c in (variant_comment, event_notes or "") if c)
+    comments = "; ".join(c for c in (variant_comment, sequence_notes or "") if c)
     return (
         life_stage or obs.life_stage or "",
         sex or obs.sex or "",
@@ -678,24 +678,24 @@ def _camtrap_cohort_fields(
     )
 
 
-def _events_by_file(
-    db: Session, file_ids: Sequence[str]
-) -> dict[str, Event]:
-    """Map each file id to its event (avoids N+1).
+def _sequences_by_file(
+    db: Session, file_ids: list[str]
+) -> dict[str, Sequence]:
+    """Map each file id to its sequence (avoids N+1).
 
     Chunked over ``file_ids`` to stay under SQLite's bound-parameter limit:
     one `IN (?, ?, ...)` over every file id crashes large runs with "too many
     SQL variables" (Simon's 45k-file folder run).
     """
-    result: dict[str, Event] = {}
+    result: dict[str, Sequence] = {}
     for chunk in iter_id_chunks(file_ids):
         stmt = (
-            select(event_files.c.file_id, Event)
-            .join(event_files, event_files.c.event_id == Event.id)
-            .where(event_files.c.file_id.in_(chunk))
+            select(sequence_files.c.file_id, Sequence)
+            .join(sequence_files, sequence_files.c.sequence_id == Sequence.id)
+            .where(sequence_files.c.file_id.in_(chunk))
         )
-        for fid, event in db.execute(stmt).all():
-            result[fid] = event
+        for fid, sequence in db.execute(stmt).all():
+            result[fid] = sequence
     return result
 
 
@@ -769,13 +769,13 @@ def build_detection_rows(
     is one box; for a video it is one track (one animal the AI followed),
     its box on the track's representative frame, plus the track's span:
     first and last frame, frames with a box, start and end time and
-    duration. Carries the context block (site, deployment, event, file) so
+    duration. Carries the context block (site, deployment, sequence, file) so
     a row reads on its own, and the FK id set inside it for direct
-    linkability. Files with no detections do not appear here; per-event
+    linkability. Files with no detections do not appear here; per-sequence
     counts live in counts.csv.
 
-    `event_id` is blank when the file has no event, so every non-empty
-    value resolves in the events table. See the note on `_FILES_HEADERS`.
+    `sequence_id` is blank when the file has no sequence, so every non-empty
+    value resolves in the sequences table. See the note on `_FILES_HEADERS`.
 
     The other boxes of a track are not separate rows: they are the same
     animal, and listing them would count it once per frame. They are in
@@ -791,12 +791,12 @@ def _detection_rows(
     tz_name = project.timezone
     files = iter_scoped_files(db, project, deployment_ids=deployment_ids)
     for batch in _batched(files):
-        event_map = _events_by_file(db, [sf.file.id for sf in batch])
+        sequence_map = _sequences_by_file(db, [sf.file.id for sf in batch])
         for file_obj, deployment, site, detections in batch:
             # Built once per file, not once per box: the same cells repeat on
             # every detection row of the file.
             context = _context_cells(
-                file_obj, deployment, site, event_map.get(file_obj.id), tz_name
+                file_obj, deployment, site, sequence_map.get(file_obj.id), tz_name
             )
             for detection, taxonomy in detections:
                 yield (
@@ -849,11 +849,11 @@ def iter_frames_rows(
             (sf, {det.track_id for det, _tax in sf.detections if det.track_id})
             for sf in batch
         ]
-        event_map = _events_by_file(db, [sf.file.id for sf, ids in in_scope if ids])
+        sequence_map = _sequences_by_file(db, [sf.file.id for sf, ids in in_scope if ids])
         for sf, track_ids in in_scope:
             if track_ids:
                 context = _context_cells(
-                    sf.file, sf.deployment, sf.site, event_map.get(sf.file.id), tz_name
+                    sf.file, sf.deployment, sf.site, sequence_map.get(sf.file.id), tz_name
                 )
                 videos[sf.file.id] = (sf.file, context, track_ids)
 
@@ -917,15 +917,15 @@ def _context_cells(
     file_obj: File,
     deployment: Deployment | None,
     site: Site | None,
-    event: Event | None,
+    sequence: Sequence | None,
     tz_name: str,
 ) -> list[Any]:
     """The context block of a Detections or Frames row, after the row's own
-    id: site, deployment, event, the file id and the file columns."""
+    id: site, deployment, sequence, the file id and the file columns."""
     return [
         *_site_cells(site),
         *_deployment_cells(deployment),
-        *_event_cells(event, tz_name),
+        *_sequence_cells(sequence, tz_name),
         file_obj.id,
         *_file_cells(file_obj, deployment, tz_name),
     ]
@@ -1038,15 +1038,15 @@ def _deployment_cells(deployment: Deployment | None) -> list[Any]:
     ]
 
 
-def _event_cells(event: Event | None, tz_name: str) -> list[Any]:
-    """The event part of the context block. All blank when the file has no
-    event, never a stand-in id; see the note on ``_FILES_HEADERS``."""
-    if event is None:
+def _sequence_cells(sequence: Sequence | None, tz_name: str) -> list[Any]:
+    """The sequence part of the context block. All blank when the file has no
+    sequence, never a stand-in id; see the note on ``_FILES_HEADERS``."""
+    if sequence is None:
         return ["", "", ""]
     return [
-        event.id,
-        _iso_datetime(event.event_start_local, tz_name),
-        _iso_datetime(event.event_end_local, tz_name),
+        sequence.id,
+        _iso_datetime(sequence.sequence_start_local, tz_name),
+        _iso_datetime(sequence.sequence_end_local, tz_name),
     ]
 
 
@@ -1136,21 +1136,21 @@ def build_deployments_rows(
 
 # One row per file, including empties. This is the home for "which files
 # had no detections" (category=blank) and "which files are in which
-# event" (event_id), instead of faking blank rows in the detections table.
+# sequence" (sequence_id), instead of faking blank rows in the detections table.
 # Mirrors the Camtrap-DP media table. Carries the context block, so the
 # site and the deployment dates sit on the row.
 #
-# event_id is blank when a file has no event, never a stand-in id. Every
-# image / video lands in exactly one cluster once events are generated
-# (date-less files become singleton events with NULL bounds), so in
+# sequence_id is blank when a file has no sequence, never a stand-in id. Every
+# image / video lands in exactly one cluster once sequences are generated
+# (date-less files become singleton sequences with NULL bounds), so in
 # practice the column is always populated. If it ever is blank, that means
-# what it says: no event. Every non-empty value resolves in the events
+# what it says: no sequence. Every non-empty value resolves in the sequences
 # table.
 _FILES_HEADERS = [
     "file_id",
     *_SITE_CONTEXT_HEADERS,
     *_DEPLOYMENT_CONTEXT_HEADERS,
-    *_EVENT_CONTEXT_HEADERS,
+    *_SEQUENCE_CONTEXT_HEADERS,
     "file_type",
     # The file block, plus the absolute path that only this table carries.
     "relative_path",
@@ -1204,7 +1204,7 @@ _FILES_HEADERS = [
     # which, so grouping by the label alone silently merges an order with
     # the species inside it. Same names as detections.csv and counts.csv,
     # and the same pairing order as detections.csv; counts.csv has no
-    # confidence columns to pair, being one row per species per event.
+    # confidence columns to pair, being one row per species per sequence.
     #
     # These are computed from the detections in *this export's scope*,
     # while observation_type is read from the stored column, which is
@@ -1246,7 +1246,7 @@ _BLANK_CAMERA_CELLS = ["", "", "", ""]
 
 
 def _camera_cells_by_file(
-    db: Session, file_ids: Sequence[str]
+    db: Session, file_ids: list[str]
 ) -> dict[str, list[str]]:
     """The four camera cells (make, model, temperature, serial) per file id.
 
@@ -1281,8 +1281,8 @@ def build_files_rows(
     deployment_ids: list[str] | None = None,
 ) -> tuple[list[str], Iterator[list[Any]]]:
     """Build `(headers, rows)` for the Files export: one row per media file,
-    including files with no detections (the effort table). `event_id`
-    answers "which files are in this event". ``rows`` is a generator, read
+    including files with no detections (the effort table). `sequence_id`
+    answers "which files are in this sequence". ``rows`` is a generator, read
     once, like ``build_detection_rows``'."""
     return _FILES_HEADERS, _files_rows(db, project, deployment_ids)
 
@@ -1294,16 +1294,16 @@ def _files_rows(
     files = iter_scoped_files(db, project, deployment_ids=deployment_ids)
     for batch in _batched(files):
         file_ids = [sf.file.id for sf in batch]
-        event_map = _events_by_file(db, file_ids)
+        sequence_map = _sequences_by_file(db, file_ids)
         camera_map = _camera_cells_by_file(db, file_ids)
         for file_obj, deployment, site, detections in batch:
-            event = event_map.get(file_obj.id)
+            sequence = sequence_map.get(file_obj.id)
             relative_path, *file_rest = _file_cells(file_obj, deployment, tz_name)
             yield [
                 file_obj.id,
                 *_site_cells(site),
                 *_deployment_cells(deployment),
-                *_event_cells(event, tz_name),
+                *_sequence_cells(sequence, tz_name),
                 file_obj.file_type or "",
                 relative_path,
                 file_obj.file_path,
@@ -1322,7 +1322,7 @@ def _files_rows(
 def _strongest_species_cells(
     project: Project,
     file_obj: File,
-    detections: Sequence[tuple[Detection, LabelTaxonomy | None]],
+    detections: list[tuple[Detection, LabelTaxonomy | None]],
 ) -> list[Any]:
     """Everything the Files row says about the file's strongest passing
     detection, or the same width in blanks when nothing passes.
@@ -1384,7 +1384,7 @@ def _strongest_species_cells(
 
 
 def _all_labels_cell(
-    detections: Sequence[tuple[Detection, LabelTaxonomy | None]],
+    detections: list[tuple[Detection, LabelTaxonomy | None]],
 ) -> str:
     """Every label on a file, for the Files row: the distinct species of its
     in-scope cards, or the category for a card without one, sorted and
@@ -1403,12 +1403,12 @@ def _all_labels_cell(
 
 
 # ---------------------------------------------------------------------------
-# Event-level observations rows (one row per species per event)
+# Counts rows (one row per species per sequence)
 # ---------------------------------------------------------------------------
 
-# The ecological record table: one row per event x species with the
+# The ecological record table: one row per sequence x species with the
 # effective count (human-confirmed if set, else the AI count) and the
-# event sign-off. This is the analysis-ready "record table" and the Counts
+# sequence sign-off. This is the analysis-ready "record table" and the Counts
 # page output, distinct from the per-detection Detections export above.
 _OBSERVATIONS_HEADERS = [
     "event_id",
@@ -1431,7 +1431,7 @@ _OBSERVATIONS_HEADERS = [
     "scientific_name",
     "common_name",
     # The human-confirmed count, falling back to the AI's count when the
-    # event isn't confirmed. The two it is made of follow, so an export
+    # sequence isn't confirmed. The two it is made of follow, so an export
     # taken after review still separates what the AI said from what a
     # person set (a user comparing the two asked for exactly that).
     "count",
@@ -1440,21 +1440,21 @@ _OBSERVATIONS_HEADERS = [
     # Where and when the AI counted its MaxN: the file, the frame of that
     # file and the seconds into it (both blank for a photo), the wall-clock
     # time that frame stands for, and when the species was first seen in
-    # the event. Blank on human-only rows and when the files carry no
+    # the sequence. Blank on human-only rows and when the files carry no
     # capture time. The file is what makes the frame unambiguous in an
-    # event of several videos.
+    # sequence of several videos.
     "max_n_file_id",
     "max_n_frame",
     "max_n_offset_seconds",
     "max_n_time",
     "first_arrival_time",
     # What a person recorded about the individuals on this row, blank
-    # when unknown. One species can have several rows in an event (4 adult
+    # when unknown. One species can have several rows in a sequence (4 adult
     # males, 2 juveniles); the species total is their sum.
     "sex",
     "life_stage",
     "behavior",
-    # The event's note, repeated on each of its rows.
+    # The sequence's note, repeated on each of its rows.
     "event_notes",
     "is_confirmed",
 ]
@@ -1466,12 +1466,12 @@ def build_observation_rows(
     deployment_ids: list[str] | None = None,
 ) -> tuple[list[str], Iterator[list[Any]]]:
     """
-    Build `(headers, rows)` for the event-level Observations export.
+    Build `(headers, rows)` for the sequence-level Counts export.
     ``rows`` is a generator, read once.
 
-    Grain: one row per event x cohort (a species, or one demographic group
+    Grain: one row per sequence x cohort (a species, or one demographic group
     of it), carrying the effective count (human-confirmed if set, else the
-    AI count) and the event sign-off. Count-0 rows (a species a human
+    AI count) and the sequence sign-off. Count-0 rows (a species a human
     removed) are skipped. This maps to the Counts page; the per-detection
     grain lives in the Detections export.
     """
@@ -1486,28 +1486,28 @@ def _observation_rows(
     tz_name = project.timezone
 
     query = (
-        select(EventObservation, Event, Deployment, Site, LabelTaxonomy)
-        .join(Event, Event.id == EventObservation.event_id)
-        .join(Deployment, Deployment.id == Event.deployment_id)
+        select(SequenceObservation, Sequence, Deployment, Site, LabelTaxonomy)
+        .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
+        .join(Deployment, Deployment.id == Sequence.deployment_id)
         .outerjoin(Site, Site.id == Deployment.site_id)
         .outerjoin(
             LabelTaxonomy,
-            LabelTaxonomy.id == EventObservation.label_taxonomy_id,
+            LabelTaxonomy.id == SequenceObservation.label_taxonomy_id,
         )
         # The MaxN file's time is read per row below; loading it here keeps
         # that one query, instead of one extra SELECT per counts row.
-        .options(joinedload(EventObservation.max_n_file))
+        .options(joinedload(SequenceObservation.max_n_file))
         .where(Deployment.project_id == project.id)
-        .order_by(Event.event_start_local.asc(), Event.id)
+        .order_by(Sequence.sequence_start_local.asc(), Sequence.id)
     )
     if deployment_ids is not None:
         query = query.where(Deployment.id.in_(deployment_ids))
 
-    from app.api.crud.event_observation import first_arrivals
+    from app.api.crud.sequence_observation import first_arrivals
 
-    # When each species was first seen, per event, in one query for the
+    # When each species was first seen, per sequence, in one query for the
     # whole export.
-    first_seen_by_event = first_arrivals(
+    first_seen_by_sequence = first_arrivals(
         db, project.counting_threshold, project_id=project.id, deployment_ids=deployment_ids
     )
 
@@ -1526,21 +1526,21 @@ def _observation_rows(
 
     result = db.execute(query.execution_options(yield_per=STREAM_BATCH))
     try:
-        for obs, event, deployment, site, taxonomy in result:
+        for obs, sequence, deployment, site, taxonomy in result:
             count = obs.effective_count
             if count <= 0:
                 continue
-            first_seen = first_seen_by_event.get(event.id, {}).get(
+            first_seen = first_seen_by_sequence.get(sequence.id, {}).get(
                 obs.label_taxonomy_id or obs.label
             )
             max_n_file = obs.max_n_file if obs.max_n_file_id else None
             yield [
-                event.id,
+                sequence.id,
                 *_site_cells(site),
                 *_deployment_cells(deployment),
                 trap_nights.get(deployment.id, ""),
-                _iso_datetime(event.event_start_local, tz_name),
-                _iso_datetime(event.event_end_local, tz_name),
+                _iso_datetime(sequence.sequence_start_local, tz_name),
+                _iso_datetime(sequence.sequence_end_local, tz_name),
                 obs.category,
                 obs.label or "",
                 *_taxon_ranks(taxonomy),
@@ -1559,8 +1559,8 @@ def _observation_rows(
                 obs.sex or "",
                 obs.life_stage or "",
                 obs.behavior or "",
-                event.notes or "",
-                "TRUE" if event.confirmed else "FALSE",
+                sequence.notes or "",
+                "TRUE" if sequence.confirmed else "FALSE",
             ]
     finally:
         result.close()
@@ -1621,7 +1621,7 @@ def build_summary_rows(
 
     - ``n_detections``: its rows in the Detections table.
     - ``n_images`` / ``n_videos``: the files those rows sit on, by type.
-    - ``n_events``: the events those files belong to.
+    - ``n_events``: the sequences those files belong to.
     - ``n_individuals``: the sum of ``count`` in the Counts table (the
       confirmed number where one was set, else the AI's MaxN).
 
@@ -1641,21 +1641,21 @@ def build_summary_rows(
 
     Built in one pass over the stream, holding one counter per species.
     Each file arrives once, so the files per species are counted per file
-    without keeping their ids; the events per species do need a set of
-    ``(species, event)`` pairs, which grows with the events in scope, not
+    without keeping their ids; the sequences per species do need a set of
+    ``(species, sequence)`` pairs, which grows with the sequences in scope, not
     with the boxes.
     """
     name_cells: dict[tuple[str, str], list[Any]] = {}
     n_images: dict[tuple[str, str], int] = defaultdict(int)
     n_videos: dict[tuple[str, str], int] = defaultdict(int)
-    events: dict[tuple[str, str], set[str]] = defaultdict(set)
+    sequences: dict[tuple[str, str], set[str]] = defaultdict(set)
     n_detections: dict[tuple[str, str], int] = defaultdict(int)
 
     files = iter_scoped_files(db, project, deployment_ids=deployment_ids)
     for batch in _batched(files):
-        event_map = _events_by_file(db, [sf.file.id for sf in batch])
+        sequence_map = _sequences_by_file(db, [sf.file.id for sf in batch])
         for file_obj, _deployment, _site, detections in batch:
-            event = event_map.get(file_obj.id)
+            sequence = sequence_map.get(file_obj.id)
             keys_in_file: set[tuple[str, str]] = set()
             for detection, taxonomy in detections:
                 if is_non_label(detection.label):
@@ -1672,8 +1672,8 @@ def build_summary_rows(
             per_type = n_videos if file_obj.file_type == "video" else n_images
             for key in keys_in_file:
                 per_type[key] += 1
-                if event is not None:
-                    events[key].add(event.id)
+                if sequence is not None:
+                    sequences[key].add(sequence.id)
 
     individuals: dict[tuple[str, str], int] = defaultdict(int)
     obs_headers, obs_rows = build_observation_rows(db, project, deployment_ids)
@@ -1695,7 +1695,7 @@ def build_summary_rows(
                 n_images[key],
                 n_videos[key],
                 n_detections[key],
-                len(events[key]),
+                len(sequences[key]),
                 individuals[key],
             ]
         )
@@ -1922,10 +1922,10 @@ class CamtrapDpBuilder:
     1. ``deployments_rows``, one per camera, built up front,
     2. ``media()``, one ``(media_row, observation_rows)`` per file, from
        the scoped stream,
-    3. ``event_observations()``, one per species per event, and
+    3. ``sequence_observations()``, one per species per sequence, and
     4. ``datapackage()``,
 
-    in that order. 3 and 4 summarise what 2 saw (events, taxa, dates), so
+    in that order. 3 and 4 summarise what 2 saw (sequences, taxa, dates), so
     they can only be asked for after 2 is exhausted.
 
     Deployments without a site are skipped because Camtrap DP requires
@@ -1946,9 +1946,9 @@ class CamtrapDpBuilder:
         self._not_reviewed = f"{self._classified_by}, not reviewed"
 
         self._observed_taxa: dict[str, tuple[LabelTaxonomy | None, str]] = {}
-        # Events in scope, for the event-level (per-species count) rows
+        # Sequences in scope, for the event-level (per-species count) rows
         # emitted after the per-file media rows.
-        self._events_in_scope: dict[str, dict[str, str]] = {}
+        self._sequences_in_scope: dict[str, dict[str, str]] = {}
         self._first_captured: datetime | None = None
         self._last_captured: datetime | None = None
         self._sites_seen: dict[str, Site] = {}
@@ -2049,7 +2049,7 @@ class CamtrapDpBuilder:
         )
         for batch in _batched(files):
             file_ids = [sf.file.id for sf in batch]
-            event_map = _events_by_file(self._db, file_ids)
+            sequence_map = _sequences_by_file(self._db, file_ids)
             excluded_only = _files_with_excluded_boxes(self._db, self._project, file_ids)
             for file_obj, deployment, _site, detections in batch:
                 if deployment.id in skipped_dep_set:
@@ -2092,7 +2092,7 @@ class CamtrapDpBuilder:
                     file_obj,
                     deployment,
                     detections,
-                    event_map.get(file_obj.id),
+                    sequence_map.get(file_obj.id),
                     excluded_only=file_obj.id in excluded_only,
                 )
 
@@ -2108,35 +2108,35 @@ class CamtrapDpBuilder:
         file_obj: File,
         deployment: Deployment,
         detections: list[tuple[Detection, LabelTaxonomy | None]],
-        event: Event | None,
+        sequence: Sequence | None,
         *,
         excluded_only: bool,
     ) -> list[list[Any]]:
         """The media-level observation rows of one file."""
         tz_name = self._tz_name
-        # Unlike files.csv / detections.csv, a missing event here falls back
-        # to the file id on purpose. Camtrap DP has no events resource:
+        # Unlike files.csv / detections.csv, a missing sequence here falls back
+        # to the file id on purpose. Camtrap DP has no sequences resource:
         # eventID is a grouping key inside observations.csv, paired with the
         # eventStart / eventEnd written just below (the file's own capture
-        # time). So an unclustered file is its own single-media event and the
+        # time). So an unclustered file is its own single-media sequence and the
         # row stays self-consistent. A blank eventID would instead merge every
-        # unclustered file into one event under a GROUP BY.
-        event_id = event.id if event else file_obj.id
-        event_start = _iso_datetime(
-            event.event_start_local if event else file_obj.captured_at_local, tz_name
+        # unclustered file into one sequence under a GROUP BY.
+        sequence_id = sequence.id if sequence else file_obj.id
+        sequence_start = _iso_datetime(
+            sequence.sequence_start_local if sequence else file_obj.captured_at_local, tz_name
         )
-        event_end = _iso_datetime(
-            event.event_end_local if event else file_obj.captured_at_local, tz_name
+        sequence_end = _iso_datetime(
+            sequence.sequence_end_local if sequence else file_obj.captured_at_local, tz_name
         )
         captured_iso = _iso_datetime(file_obj.captured_at_local, tz_name)
-        if event is not None:
-            self._events_in_scope.setdefault(
-                event_id,
+        if sequence is not None:
+            self._sequences_in_scope.setdefault(
+                sequence_id,
                 {
                     "deployment_id": deployment.id,
-                    "event_start": event_start or captured_iso,
-                    "event_end": event_end or captured_iso,
-                    "notes": event.notes or "",
+                    "sequence_start": sequence_start or captured_iso,
+                    "sequence_end": sequence_end or captured_iso,
+                    "notes": sequence.notes or "",
                 },
             )
 
@@ -2163,9 +2163,9 @@ class CamtrapDpBuilder:
                 _camtrap_blank_row(
                     file_obj,
                     deployment.id,
-                    event_id,
-                    event_start or captured_iso,
-                    event_end or captured_iso,
+                    sequence_id,
+                    sequence_start or captured_iso,
+                    sequence_end or captured_iso,
                     self._not_reviewed,
                 )
             ]
@@ -2226,8 +2226,8 @@ class CamtrapDpBuilder:
                 )
             else:
                 obs_id = f"{obs_id_prefix}-{detection.id}"
-                obs_start = event_start or captured_iso
-                obs_end = event_end or captured_iso
+                obs_start = sequence_start or captured_iso
+                obs_end = sequence_end or captured_iso
                 individual = ""
                 tags = ""
 
@@ -2238,7 +2238,7 @@ class CamtrapDpBuilder:
                     obs_id,                                # observationID
                     deployment.id,                         # deploymentID
                     file_obj.id,                           # mediaID
-                    event_id,                              # eventID
+                    sequence_id,                              # eventID
                     obs_start,                             # eventStart
                     obs_end,                               # eventEnd
                     "media",                               # observationLevel
@@ -2267,34 +2267,34 @@ class CamtrapDpBuilder:
             )
         return rows
 
-    def event_observations(self) -> Iterator[list[Any]]:
-        """Event-level observations: one row per species per event carrying
+    def sequence_observations(self) -> Iterator[list[Any]]:
+        """Event-level observations: one row per species per sequence carrying
         the effective count (human override, else MaxN). Mutually exclusive
         and summable, the Camtrap DP shape for "N individuals in this
         sequence". The per-box media rows remain for spatial detail.
-        Chunked over the event ids to stay under SQLite's bound-parameter
-        limit (a large project can have >32k events in scope)."""
+        Chunked over the sequence ids to stay under SQLite's bound-parameter
+        limit (a large project can have >32k sequences in scope)."""
         if not self._media_done:
-            raise RuntimeError("event_observations() needs media() to be read first")
-        for chunk in iter_id_chunks(self._events_in_scope.keys()):
+            raise RuntimeError("sequence_observations() needs media() to be read first")
+        for chunk in iter_id_chunks(self._sequences_in_scope.keys()):
             for obs, taxonomy in (
-                self._db.query(EventObservation, LabelTaxonomy)
+                self._db.query(SequenceObservation, LabelTaxonomy)
                 .outerjoin(
                     LabelTaxonomy,
-                    LabelTaxonomy.id == EventObservation.label_taxonomy_id,
+                    LabelTaxonomy.id == SequenceObservation.label_taxonomy_id,
                 )
-                .filter(EventObservation.event_id.in_(chunk))
+                .filter(SequenceObservation.sequence_id.in_(chunk))
                 .all()
             ):
                 count = obs.effective_count
                 if count <= 0:
                     continue
-                ctx = self._events_in_scope[obs.event_id]
+                ctx = self._sequences_in_scope[obs.sequence_id]
                 sci_name = _camtrap_taxonomy_name(taxonomy) or (obs.label or "")
                 species_name = (taxonomy.name if taxonomy else None) or obs.label
                 if is_wildlife(obs.category) and species_name:
                     self._observed_taxa.setdefault(species_name, (taxonomy, species_name))
-                yield _camtrap_event_row(
+                yield _camtrap_sequence_row(
                     obs, ctx, count, sci_name, self._classified_by, taxonomy
                 )
 
@@ -2311,15 +2311,15 @@ class CamtrapDpBuilder:
         )
 
 
-def _camtrap_event_row(
-    obs: EventObservation,
+def _camtrap_sequence_row(
+    obs: SequenceObservation,
     ctx: dict[str, str],
     count: int,
     sci_name: str,
     classified_by: str,
     taxonomy: LabelTaxonomy | None,
 ) -> list[Any]:
-    """Event-level observation row (per species per event, no bbox).
+    """Event-level observation row (per species per sequence, no bbox).
 
     Order must match _CAMTRAP_OBS_HEADERS exactly. classificationMethod is
     "human" when the count was set by a person, else "machine" (MaxN).
@@ -2340,9 +2340,9 @@ def _camtrap_event_row(
         f"obs-event-{obs.id}",            # observationID
         ctx["deployment_id"],             # deploymentID
         "",                               # mediaID (event-level, no media)
-        obs.event_id,                     # eventID
-        ctx["event_start"],               # eventStart
-        ctx["event_end"],                 # eventEnd
+        obs.sequence_id,                  # eventID
+        ctx["sequence_start"],            # eventStart
+        ctx["sequence_end"],              # eventEnd
         "event",                          # observationLevel
         _obs_type_from_category(obs.category),  # observationType
         "",                               # cameraSetupType
@@ -2401,9 +2401,9 @@ def _obs_type_from_category(category: str) -> str:
 def _camtrap_blank_row(
     file_obj: File,
     deployment_id: str,
-    event_id: str,
-    event_start: str,
-    event_end: str,
+    sequence_id: str,
+    sequence_start: str,
+    sequence_end: str,
     not_reviewed: str,
 ) -> list[Any]:
     """Observation row for a file with no in-scope detections (blank).
@@ -2416,9 +2416,9 @@ def _camtrap_blank_row(
         f"obs-blank-{file_obj.id}",  # observationID
         deployment_id,                # deploymentID
         file_obj.id,                  # mediaID
-        event_id,                     # eventID
-        event_start,                  # eventStart
-        event_end,                    # eventEnd
+        sequence_id,                     # eventID
+        sequence_start,                  # eventStart
+        sequence_end,                    # eventEnd
         "media",                      # observationLevel
         "blank",                      # observationType
         "",                           # cameraSetupType

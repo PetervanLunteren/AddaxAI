@@ -5,7 +5,7 @@
  * project actually has deployments with no assigned site — so users
  * never see a filter they cannot use. The backend's site_ids_filter()
  * already translates NO_SITE_SENTINEL to `Deployment.site_id IS NULL`,
- * so selecting it works end-to-end on every events / statistics
+ * so selecting it works end-to-end on every sequences / statistics
  * endpoint without any additional wiring.
  */
 

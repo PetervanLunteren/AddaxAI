@@ -178,7 +178,7 @@ def get_site_info(db: Session, site_id: str):
     """
     from sqlalchemy import case
 
-    from app.api.crud.event_observation import count_individuals_by_class
+    from app.api.crud.sequence_observation import count_individuals_by_class
     from app.api.schemas.site import (
         SiteFileCounts,
         SiteInfoResponse,
@@ -186,14 +186,14 @@ def get_site_info(db: Session, site_id: str):
         SiteVerification,
     )
     from app.api.schemas.statistics import ClassCounts
-    from app.models import Event, EventObservation, File, LabelTaxonomy
+    from app.models import File, LabelTaxonomy, Sequence, SequenceObservation
 
     site = get_site(db, site_id)
     if site is None:
         return None
 
     # Deployment ids scoped to this site. Most aggregate queries filter
-    # files / events by `deployment_id IN (...)`. Using a list keeps the
+    # files / sequences by `deployment_id IN (...)`. Using a list keeps the
     # downstream SQL simple.
     deployment_ids = [
         row[0]
@@ -227,7 +227,7 @@ def get_site_info(db: Session, site_id: str):
     else:
         total_files = images = videos = verified_files = total_size_bytes = 0
 
-    event_count = 0
+    sequence_count = 0
     observation_count = 0
     class_counts: dict[str, int] = {}
     empty_count = 0
@@ -236,10 +236,10 @@ def get_site_info(db: Session, site_id: str):
     last_captured_at_local = None
 
     if deployment_ids:
-        event_count = (
+        sequence_count = (
             db.scalar(
-                select(func.count(Event.id)).where(
-                    Event.deployment_id.in_(deployment_ids)
+                select(func.count(Sequence.id)).where(
+                    Sequence.deployment_id.in_(deployment_ids)
                 )
             )
             or 0
@@ -247,10 +247,10 @@ def get_site_info(db: Session, site_id: str):
 
         observation_count = (
             db.scalar(
-                select(func.coalesce(func.sum(EventObservation.effective_count), 0))
-                .select_from(EventObservation)
-                .join(Event, Event.id == EventObservation.event_id)
-                .where(Event.deployment_id.in_(deployment_ids))
+                select(func.coalesce(func.sum(SequenceObservation.effective_count), 0))
+                .select_from(SequenceObservation)
+                .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
+                .where(Sequence.deployment_id.in_(deployment_ids))
             )
             or 0
         )
@@ -268,25 +268,25 @@ def get_site_info(db: Session, site_id: str):
 
         top_species_rows = db.execute(
             select(
-                EventObservation.label,
+                SequenceObservation.label,
                 LabelTaxonomy.scientific_name,
                 LabelTaxonomy.common_name,
-                func.sum(EventObservation.effective_count),
+                func.sum(SequenceObservation.effective_count),
             )
-            .select_from(EventObservation)
-            .join(Event, Event.id == EventObservation.event_id)
+            .select_from(SequenceObservation)
+            .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
             .outerjoin(
-                LabelTaxonomy, LabelTaxonomy.id == EventObservation.label_taxonomy_id
+                LabelTaxonomy, LabelTaxonomy.id == SequenceObservation.label_taxonomy_id
             )
-            .where(Event.deployment_id.in_(deployment_ids))
-            .where(is_wildlife_category(EventObservation.category))
-            .where(EventObservation.label.isnot(None))
+            .where(Sequence.deployment_id.in_(deployment_ids))
+            .where(is_wildlife_category(SequenceObservation.category))
+            .where(SequenceObservation.label.isnot(None))
             .group_by(
-                EventObservation.label,
+                SequenceObservation.label,
                 LabelTaxonomy.scientific_name,
                 LabelTaxonomy.common_name,
             )
-            .order_by(func.sum(EventObservation.effective_count).desc())
+            .order_by(func.sum(SequenceObservation.effective_count).desc())
             .limit(5)
         ).all()
         top_species = [
@@ -341,7 +341,7 @@ def get_site_info(db: Session, site_id: str):
         verification=SiteVerification(
             verified=int(verified_files), total=int(total_files)
         ),
-        event_count=int(event_count),
+        sequence_count=int(sequence_count),
         observation_count=int(observation_count),
         detection_categories=ClassCounts(classes=class_counts, empty=int(empty_count)),
         top_species=top_species,

@@ -7,11 +7,11 @@ detected" chart, and the date-range filter.
 from datetime import datetime
 
 from app.api.crud import statistics as stats_crud
-from app.models.event_observation import EventObservation
+from app.models.sequence_observation import SequenceObservation
 from tests.conftest import (
     make_deployment,
-    make_event_with_files,
     make_project,
+    make_sequence_with_files,
     make_site,
 )
 
@@ -19,13 +19,13 @@ from tests.conftest import (
 def _add_observation(
     db,
     *,
-    event_id: str,
+    sequence_id: str,
     label: str,
     max_n: int = 1,
     category: str = "animal",
-) -> EventObservation:
-    obs = EventObservation(
-        event_id=event_id,
+) -> SequenceObservation:
+    obs = SequenceObservation(
+        sequence_id=sequence_id,
         label=label,
         category=category,
         max_n=max_n,
@@ -36,7 +36,7 @@ def _add_observation(
 
 
 def _build_fixture(db):
-    """One project, one deployment, four events across two months.
+    """One project, one deployment, four sequences across two months.
 
     Observations mix wildlife (leopard, lion) with every non-wildlife
     source the dashboard complaint covered: a person-category row (from
@@ -47,31 +47,31 @@ def _build_fixture(db):
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev1 = make_event_with_files(
-        db, deployment_id=dep.id, event_start_local=datetime(2024, 1, 2, 8, 0)
+    ev1 = make_sequence_with_files(
+        db, deployment_id=dep.id, sequence_start_local=datetime(2024, 1, 2, 8, 0)
     )
-    ev2 = make_event_with_files(
-        db, deployment_id=dep.id, event_start_local=datetime(2024, 1, 5, 14, 0)
+    ev2 = make_sequence_with_files(
+        db, deployment_id=dep.id, sequence_start_local=datetime(2024, 1, 5, 14, 0)
     )
-    ev3 = make_event_with_files(
-        db, deployment_id=dep.id, event_start_local=datetime(2024, 2, 3, 9, 0)
+    ev3 = make_sequence_with_files(
+        db, deployment_id=dep.id, sequence_start_local=datetime(2024, 2, 3, 9, 0)
     )
-    ev4 = make_event_with_files(
-        db, deployment_id=dep.id, event_start_local=datetime(2024, 2, 7, 18, 0)
+    ev4 = make_sequence_with_files(
+        db, deployment_id=dep.id, sequence_start_local=datetime(2024, 2, 7, 18, 0)
     )
 
-    _add_observation(db, event_id=ev1.id, label="leopard", max_n=2)
-    _add_observation(db, event_id=ev2.id, label="leopard", max_n=3)
-    _add_observation(db, event_id=ev3.id, label="lion")
+    _add_observation(db, sequence_id=ev1.id, label="leopard", max_n=2)
+    _add_observation(db, sequence_id=ev2.id, label="leopard", max_n=3)
+    _add_observation(db, sequence_id=ev3.id, label="lion")
     # Detector category rows: label falls back to the category string.
-    _add_observation(db, event_id=ev1.id, label="person", category="person")
-    _add_observation(db, event_id=ev2.id, label="vehicle", category="vehicle")
+    _add_observation(db, sequence_id=ev1.id, label="person", category="person")
+    _add_observation(db, sequence_id=ev2.id, label="vehicle", category="vehicle")
     # Classifier classes that are real detections but not wildlife.
-    _add_observation(db, event_id=ev3.id, label="human")
-    _add_observation(db, event_id=ev4.id, label="vehicle")
+    _add_observation(db, sequence_id=ev3.id, label="human")
+    _add_observation(db, sequence_id=ev4.id, label="vehicle")
     # A user-marked false detection (verified, so it passed every
     # threshold on its way into the observations).
-    _add_observation(db, event_id=ev4.id, label="false detection")
+    _add_observation(db, sequence_id=ev4.id, label="false detection")
 
     db.flush()
     return project
@@ -111,12 +111,12 @@ def test_wildlife_only_label_match_is_case_insensitive(db):
     project = make_project(db)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
-    ev = make_event_with_files(
-        db, deployment_id=dep.id, event_start_local=datetime(2024, 1, 2, 8, 0)
+    ev = make_sequence_with_files(
+        db, deployment_id=dep.id, sequence_start_local=datetime(2024, 1, 2, 8, 0)
     )
-    _add_observation(db, event_id=ev.id, label="Human")
-    _add_observation(db, event_id=ev.id, label="False Detection")
-    _add_observation(db, event_id=ev.id, label="leopard")
+    _add_observation(db, sequence_id=ev.id, label="Human")
+    _add_observation(db, sequence_id=ev.id, label="False Detection")
+    _add_observation(db, sequence_id=ev.id, label="leopard")
 
     rows = stats_crud.get_species_distribution(db, project.id, wildlife_only=True)
 
@@ -129,17 +129,17 @@ def test_wildlife_only_keeps_non_megadetector_categories(db):
     project = make_project(db)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
-    ev = make_event_with_files(
-        db, deployment_id=dep.id, event_start_local=datetime(2024, 1, 2, 8, 0)
+    ev = make_sequence_with_files(
+        db, deployment_id=dep.id, sequence_start_local=datetime(2024, 1, 2, 8, 0)
     )
-    _add_observation(db, event_id=ev.id, label="shark", category="shark")
+    _add_observation(db, sequence_id=ev.id, label="shark", category="shark")
 
     rows = stats_crud.get_species_distribution(db, project.id, wildlife_only=True)
 
     assert _species_names(rows) == {"shark"}
 
 
-def test_event_count_mode_counts_events_per_label(db):
+def test_sequence_count_mode_counts_sequences_per_label(db):
     project = _build_fixture(db)
 
     rows = stats_crud.get_species_distribution(db, project.id, wildlife_only=True)
@@ -159,8 +159,8 @@ def test_max_n_mode_sums_counts(db):
     assert counts == {"leopard": 5, "lion": 1}
 
 
-def test_date_range_filters_events(db):
-    """date_from / date_to restrict which events are counted; date_to
+def test_date_range_filters_sequences(db):
+    """date_from / date_to restrict which sequences are counted; date_to
     is inclusive of the whole end day."""
     project = _build_fixture(db)
 
@@ -218,14 +218,14 @@ def test_variants_stay_separate_at_most_specific(db):
     dep = make_deployment(db, site_id=site.id)
     taxonomy = _add_variant_taxonomy(db, "ARC-v1")
 
-    ev1 = make_event_with_files(
-        db, deployment_id=dep.id, event_start_local=datetime(2024, 1, 2, 8, 0)
+    ev1 = make_sequence_with_files(
+        db, deployment_id=dep.id, sequence_start_local=datetime(2024, 1, 2, 8, 0)
     )
-    ev2 = make_event_with_files(
-        db, deployment_id=dep.id, event_start_local=datetime(2024, 1, 3, 9, 0)
+    ev2 = make_sequence_with_files(
+        db, deployment_id=dep.id, sequence_start_local=datetime(2024, 1, 3, 9, 0)
     )
     for ev, variant in ((ev1, "adult"), (ev2, "juvenile")):
-        obs = _add_observation(db, event_id=ev.id, label=f"red fox {variant}")
+        obs = _add_observation(db, sequence_id=ev.id, label=f"red fox {variant}")
         obs.label_taxonomy_id = taxonomy[variant].id
     db.flush()
 
@@ -246,14 +246,14 @@ def test_variants_merge_into_the_binomial_at_species_rank(db):
     dep = make_deployment(db, site_id=site.id)
     taxonomy = _add_variant_taxonomy(db, "ARC-v1")
 
-    ev1 = make_event_with_files(
-        db, deployment_id=dep.id, event_start_local=datetime(2024, 1, 2, 8, 0)
+    ev1 = make_sequence_with_files(
+        db, deployment_id=dep.id, sequence_start_local=datetime(2024, 1, 2, 8, 0)
     )
-    ev2 = make_event_with_files(
-        db, deployment_id=dep.id, event_start_local=datetime(2024, 1, 3, 9, 0)
+    ev2 = make_sequence_with_files(
+        db, deployment_id=dep.id, sequence_start_local=datetime(2024, 1, 3, 9, 0)
     )
     for ev, variant in ((ev1, "adult"), (ev2, "juvenile")):
-        obs = _add_observation(db, event_id=ev.id, label=f"red fox {variant}")
+        obs = _add_observation(db, sequence_id=ev.id, label=f"red fox {variant}")
         obs.label_taxonomy_id = taxonomy[variant].id
     db.flush()
 
@@ -282,8 +282,8 @@ def test_a_marine_species_keeps_its_own_row_and_taxonomy(db):
     project = make_project(db)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
-    event = make_event_with_files(
-        db, deployment_id=dep.id, event_start_local=datetime(2024, 3, 1, 8, 0)
+    sequence = make_sequence_with_files(
+        db, deployment_id=dep.id, sequence_start_local=datetime(2024, 3, 1, 8, 0)
     )
     tax = LabelTaxonomy(
         classification_model_id="TEST-MODEL",
@@ -296,11 +296,11 @@ def test_a_marine_species_keeps_its_own_row_and_taxonomy(db):
     db.add(tax)
     db.flush()
     named = _add_observation(
-        db, event_id=event.id, label="blacktip", category="elasmobranch"
+        db, sequence_id=sequence.id, label="blacktip", category="elasmobranch"
     )
     named.label_taxonomy_id = tax.id
     _add_observation(
-        db, event_id=event.id, label="elasmobranch", category="elasmobranch"
+        db, sequence_id=sequence.id, label="elasmobranch", category="elasmobranch"
     )
     db.commit()
 
@@ -318,10 +318,10 @@ def test_a_person_row_still_reads_as_its_category(db):
     project = make_project(db)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
-    event = make_event_with_files(
-        db, deployment_id=dep.id, event_start_local=datetime(2024, 3, 1, 8, 0)
+    sequence = make_sequence_with_files(
+        db, deployment_id=dep.id, sequence_start_local=datetime(2024, 3, 1, 8, 0)
     )
-    _add_observation(db, event_id=event.id, label=None, category="person")
+    _add_observation(db, sequence_id=sequence.id, label=None, category="person")
     db.commit()
 
     rows = stats_crud.get_species_distribution(db, project.id)

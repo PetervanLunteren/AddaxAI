@@ -2,7 +2,7 @@
  * Sex, age and behaviour as three stacked bars in one card, ported from
  * AddaxAI Connect.
  *
- * People record these per event on the Counts page and the AI never does,
+ * People record these per sequence on the Counts page and the AI never does,
  * so on most projects every bar reads Unknown. The bars render anyway:
  * an empty bar is a fact about what has been recorded, not a task anyone
  * failed, and the card keeps its shape as data arrives. The caption says

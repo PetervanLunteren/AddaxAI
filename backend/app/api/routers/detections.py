@@ -16,10 +16,10 @@ from sqlalchemy.sql.elements import ColumnElement
 from app.api.crud import detection as detection_crud
 from app.api.crud import file as file_crud
 from app.api.crud import undo as undo_crud
-from app.api.crud.event_observation import (
-    get_event_ids_for_detections,
+from app.api.crud.sequence_observation import (
     get_project_threshold_for_detections,
-    recalculate_max_n_for_events,
+    get_sequence_ids_for_detections,
+    recalculate_max_n_for_sequences,
 )
 from app.api.schemas.detection import (
     DetectionCreateHuman,
@@ -35,7 +35,7 @@ router = APIRouter(prefix="/api/detections", tags=["detections"])
 
 
 def _recalculate_max_n(db: Session, detection_ids: list[str]) -> None:
-    """Recalculate MaxN for events affected by the given detections, and commit.
+    """Recalculate MaxN for sequences affected by the given detections, and commit.
 
     **The commit is unconditional, and that is load-bearing.** `get_db` only
     closes the session, it never commits, so whatever is still pending when
@@ -43,19 +43,19 @@ def _recalculate_max_n(db: Session, detection_ids: list[str]) -> None:
     route that uses it, and `recompute_file_verified` runs before it without
     committing on purpose ("the caller owns the transaction").
 
-    While the commit sat behind an early `return` for "no events", drawing a
-    box on a file that belongs to no event saved the detection and dropped the
+    While the commit sat behind an early `return` for "no sequences", drawing a
+    box on a file that belongs to no sequence saved the detection and dropped the
     rollup beside it: `File.verified` stayed FALSE for a photo the person had
     just judged, and `addaxai-files.csv` exported it that way. A file has no
-    event only when event generation never reached it, e.g. an analysis run
+    sequence only when sequence generation never reached it, e.g. an analysis run
     that failed part way.
 
     Pinned by `test_drawing_a_box_marks_the_file_verified_past_the_request`.
     """
-    event_ids = get_event_ids_for_detections(db, detection_ids)
-    if event_ids:
+    sequence_ids = get_sequence_ids_for_detections(db, detection_ids)
+    if sequence_ids:
         threshold = get_project_threshold_for_detections(db, detection_ids)
-        recalculate_max_n_for_events(db, event_ids, threshold)
+        recalculate_max_n_for_sequences(db, sequence_ids, threshold)
     db.commit()
 
 
@@ -133,27 +133,27 @@ def delete_detections_by_file(
     db: Session = Depends(get_db),
 ):
     """Delete all detections for a file."""
-    # Capture affected events and threshold before deletion
+    # Capture affected sequences and threshold before deletion
     det_ids = [
         d.id for d in db.query(Detection.id).filter(
             Detection.file_id == file_id
         ).all()
     ]
-    affected_event_ids = get_event_ids_for_detections(db, det_ids) if det_ids else []
+    affected_sequence_ids = get_sequence_ids_for_detections(db, det_ids) if det_ids else []
     # Only looked up when it will actually be used, and always before the
     # delete: the lookup joins through the detection rows, so afterwards
     # there is nothing to resolve. This used to be `... else 0.0`, a value
     # that reads as "no threshold" but means "every detection passes".
     threshold = (
         get_project_threshold_for_detections(db, det_ids)
-        if affected_event_ids
+        if affected_sequence_ids
         else None
     )
     count = detection_crud.delete_detections_by_file(db, file_id)
     file_crud.recompute_file_verified(db, [file_id])
     file_crud.recalculate_observation_type(db, file_id)
-    if affected_event_ids:
-        recalculate_max_n_for_events(db, affected_event_ids, threshold)
+    if affected_sequence_ids:
+        recalculate_max_n_for_sequences(db, affected_sequence_ids, threshold)
     # Outside the branch, for the reason spelled out in `_recalculate_max_n`:
     # the rollup above does not commit, and a request that returns with it
     # pending loses it.
@@ -173,14 +173,14 @@ def delete_detection(
         raise HTTPException(status_code=404, detail="Detection not found")
 
     file_id = detection.file_id
-    # Capture event IDs and threshold before deletion
-    affected_event_ids = get_event_ids_for_detections(db, [detection_id])
+    # Capture sequence IDs and threshold before deletion
+    affected_sequence_ids = get_sequence_ids_for_detections(db, [detection_id])
     threshold = get_project_threshold_for_detections(db, [detection_id])
     detection_crud.delete_detection(db, detection_id)
     file_crud.recompute_file_verified(db, [file_id])
     file_crud.recalculate_observation_type(db, file_id)
-    if affected_event_ids:
-        recalculate_max_n_for_events(db, affected_event_ids, threshold)
+    if affected_sequence_ids:
+        recalculate_max_n_for_sequences(db, affected_sequence_ids, threshold)
     db.commit()
 
 
@@ -356,7 +356,7 @@ def bulk_verify_detections(
         )
     )
     # Every sibling is in the card's own file, so the request's own ids
-    # name every file, event and project the verdict touched.
+    # name every file, sequence and project the verdict touched.
     file_crud.recompute_file_verified_for_detections(db, body.detection_ids)
     db.commit()
     # Verifying can flip observation_type (verified detections always pass),

@@ -192,7 +192,7 @@ export function FileDetailModal({
   const queryClient = useQueryClient();
   const [drawMode, setDrawMode] = useState(false);
   const [boxesHidden, setBoxesHidden] = useState(false);
-  // For a playable video: the still or the real clip. The Counts event
+  // For a playable video: the still or the real clip. The Counts sequence
   // modal's pattern.
   const [viewMode, setViewMode] = useState<"frame" | "video">("frame");
   // The frame the still shows: null is the cover frame; a bar click or a
@@ -356,7 +356,7 @@ export function FileDetailModal({
    *  a clip (`steppedFrame`, the Counts modal's step too), one per
    *  press, so a person can see what happened just before or after the
    *  moment on screen. The same pairing as the Counts modal, where the
-   *  plain arrow is the big unit (events there, files here) and Shift
+   *  plain arrow is the big unit (sequences there, files here) and Shift
    *  makes it the small one. A stepped frame is a picked moment like a
    *  ruler click: shown, nothing selected. A photo has one frame, so
    *  this is nothing there. */
@@ -608,7 +608,7 @@ export function FileDetailModal({
   // pays for both from cold. The image is not a query, but the endpoint
   // sends `max-age=86400, immutable`, so loading it the way the canvas
   // does (`canvasImage`, `frameImageUrl`) is all the warming it needs.
-  // Same idea as the Counts viewer prefetching the next event and its
+  // Same idea as the Counts viewer prefetching the next sequence and its
   // filmstrip.
   const nextItem = index === null ? undefined : items[index + 1];
   useEffect(() => {

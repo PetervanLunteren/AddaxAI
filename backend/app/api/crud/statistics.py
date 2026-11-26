@@ -53,11 +53,11 @@ from app.ml.taxonomic_rank import (
 from app.ml.taxonomic_rank import RANK_COLUMNS as _RANK_COLUMNS
 from app.models.deployment import Deployment
 from app.models.detection import Detection
-from app.models.event import Event
-from app.models.event_observation import EventObservation
 from app.models.file import File
 from app.models.label_taxonomy import LabelTaxonomy
 from app.models.project import Project
+from app.models.sequence import Sequence
+from app.models.sequence_observation import SequenceObservation
 from app.models.site import Site
 
 # ---------------------------------------------------------------------------
@@ -105,23 +105,23 @@ def _end_of_day(date_str: str) -> datetime:
     return datetime.combine(date.fromisoformat(date_str), datetime.max.time())
 
 
-def _event_date_clauses(
+def _sequence_date_clauses(
     date_from: str | None, date_to: str | None
 ) -> list:
-    """WHERE clauses bounding Event.event_start_local to the inclusive
+    """WHERE clauses bounding Sequence.sequence_start_local to the inclusive
     [date_from, date_to] day window.
 
-    Shared by every event-based stat so all charts agree on what a date
+    Shared by every sequence-based stat so all charts agree on what a date
     window means. The strings are validated at the router
     (routers/statistics._parse_date), so fromisoformat cannot fail here.
     """
     clauses = []
     if date_from:
         clauses.append(
-            Event.event_start_local >= datetime.fromisoformat(date_from)
+            Sequence.sequence_start_local >= datetime.fromisoformat(date_from)
         )
     if date_to:
-        clauses.append(Event.event_start_local <= _end_of_day(date_to))
+        clauses.append(Sequence.sequence_start_local <= _end_of_day(date_to))
     return clauses
 
 
@@ -139,7 +139,7 @@ def _apply_threshold(query: Select, threshold: float) -> Select:
 
 
 def _wildlife_clause(category_col, label_col):
-    """What counts as wildlife, for EventObservation or Detection columns.
+    """What counts as wildlife, for SequenceObservation or Detection columns.
 
     Not a person or vehicle box, and no label that names something other
     than an animal (blank, bait, false detection, human, ...). A category
@@ -163,10 +163,10 @@ def _scoped_observations_query(
     date_from: str | None,
     date_to: str | None,
 ) -> Select:
-    """EventObservation rows a dashboard card is looking at.
+    """SequenceObservation rows a dashboard card is looking at.
 
     Every label by default, the same as every label filter in the app;
-    picked labels narrow it, then sites and the event date window. The
+    picked labels narrow it, then sites and the sequence date window. The
     router turns an empty label list into a 422, so a pick can never
     quietly widen to everything.
     """
@@ -174,19 +174,19 @@ def _scoped_observations_query(
 
     query = (
         select(*columns)
-        .select_from(EventObservation)
-        .join(Event, Event.id == EventObservation.event_id)
-        .join(Deployment, Event.deployment_id == Deployment.id)
+        .select_from(SequenceObservation)
+        .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
+        .join(Deployment, Sequence.deployment_id == Deployment.id)
         .where(Deployment.project_id == project_id)
     )
     if label_taxonomy_ids is not None:
         query = query.where(
-            EventObservation.label_taxonomy_id.in_(label_taxonomy_ids)
+            SequenceObservation.label_taxonomy_id.in_(label_taxonomy_ids)
         )
     site_clause = site_ids_filter(site_ids)
     if site_clause is not None:
         query = query.where(site_clause)
-    date_clauses = _event_date_clauses(date_from, date_to)
+    date_clauses = _sequence_date_clauses(date_from, date_to)
     if date_clauses:
         query = query.where(*date_clauses)
     return query
@@ -297,13 +297,13 @@ def get_dashboard_overview(
     )
     file_stats = db.execute(file_stats_query).one()
 
-    # Observation count (sum of MaxN across events in the window)
-    date_clauses = _event_date_clauses(date_from, date_to)
+    # Observation count (sum of MaxN across sequences in the window)
+    date_clauses = _sequence_date_clauses(date_from, date_to)
     obs_count_query = (
-        select(func.coalesce(func.sum(EventObservation.effective_count), 0))
-        .select_from(EventObservation)
-        .join(Event, Event.id == EventObservation.event_id)
-        .join(Deployment, Event.deployment_id == Deployment.id)
+        select(func.coalesce(func.sum(SequenceObservation.effective_count), 0))
+        .select_from(SequenceObservation)
+        .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
+        .join(Deployment, Sequence.deployment_id == Deployment.id)
         .where(Deployment.project_id == project_id)
     )
     site_clause = site_ids_filter(site_ids)
@@ -313,18 +313,18 @@ def get_dashboard_overview(
         obs_count_query = obs_count_query.where(*date_clauses)
     total_observations = db.execute(obs_count_query).scalar() or 0
 
-    # Events count (Event -> Deployment)
-    events_query = (
-        select(func.count(distinct(Event.id)))
-        .select_from(Event)
-        .join(Deployment, Event.deployment_id == Deployment.id)
+    # Sequences count (Sequence -> Deployment)
+    sequences_query = (
+        select(func.count(distinct(Sequence.id)))
+        .select_from(Sequence)
+        .join(Deployment, Sequence.deployment_id == Deployment.id)
         .where(Deployment.project_id == project_id)
     )
     if site_clause is not None:
-        events_query = events_query.where(site_clause)
+        sequences_query = sequences_query.where(site_clause)
     if date_clauses:
-        events_query = events_query.where(*date_clauses)
-    total_events = db.execute(events_query).scalar() or 0
+        sequences_query = sequences_query.where(*date_clauses)
+    total_sequences = db.execute(sequences_query).scalar() or 0
 
     # Deployments count
     deployments_query = (
@@ -365,7 +365,7 @@ def get_dashboard_overview(
     return DashboardOverview(
         total_files=file_stats.total_files or 0,
         total_observations=total_observations,
-        total_events=total_events,
+        total_sequences=total_sequences,
         total_deployments=total_deployments,
         total_sites=total_sites,
         trap_nights=trap_nights,
@@ -389,10 +389,10 @@ def get_species_distribution(
     count_mode: str = "events",
     wildlife_only: bool = False,
 ) -> list[SpeciesCount]:
-    """All observed labels, ranked descending by event count or MaxN sum.
+    """All observed labels, ranked descending by sequence count or MaxN sum.
 
     count_mode="events": number of independent events per label.
-    count_mode="max_n": sum of MaxN across events per label.
+    count_mode="max_n": sum of MaxN across sequences per label.
 
     wildlife_only=True drops non-wildlife rows (`_wildlife_clause`): the
     person/vehicle detector categories plus labels in NON_WILDLIFE_CLASSES
@@ -405,7 +405,7 @@ def get_species_distribution(
     the top 10 client-side.
 
     Taxonomic rank modes: aggregates by the requested rank using
-    the label_taxonomy join on EventObservation.label.
+    the label_taxonomy join on SequenceObservation.label.
     """
     # Build label expressions for taxonomic aggregation. `label_expr` is the
     # scientific-preferring key; `common_expr` mirrors it but prefers the
@@ -415,23 +415,23 @@ def get_species_distribution(
         # "Most specific": use pre-computed names from label_taxonomy.
         # Falls back to raw label for non-animal or no-taxonomy entries.
         label_expr = case(
-            (~is_wildlife_category(EventObservation.category), EventObservation.category),
+            (~is_wildlife_category(SequenceObservation.category), SequenceObservation.category),
             else_=func.coalesce(
-                LabelTaxonomy.scientific_name, EventObservation.label
+                LabelTaxonomy.scientific_name, SequenceObservation.label
             ),
         )
         common_expr = case(
-            (~is_wildlife_category(EventObservation.category), EventObservation.category),
+            (~is_wildlife_category(SequenceObservation.category), SequenceObservation.category),
             else_=func.coalesce(
-                LabelTaxonomy.common_name, EventObservation.label
+                LabelTaxonomy.common_name, SequenceObservation.label
             ),
         )
         needs_join = True
     else:
         col_name = _RANK_COLUMNS.get(taxonomic_rank)
         if not col_name:
-            label_expr = EventObservation.label
-            common_expr = EventObservation.label
+            label_expr = SequenceObservation.label
+            common_expr = SequenceObservation.label
             needs_join = False
         else:
             rank_col = getattr(LabelTaxonomy, col_name)
@@ -447,13 +447,13 @@ def get_species_distribution(
                 rank_common = rank_col
 
             label_expr = case(
-                (~is_wildlife_category(EventObservation.category), EventObservation.category),
+                (~is_wildlife_category(SequenceObservation.category), SequenceObservation.category),
                 (rank_display.isnot(None), rank_display),
                 (has_any_taxonomy, literal(HIGHER_LEVEL_TAXA)),
                 else_=literal(NO_TAXONOMY),
             )
             common_expr = case(
-                (~is_wildlife_category(EventObservation.category), EventObservation.category),
+                (~is_wildlife_category(SequenceObservation.category), SequenceObservation.category),
                 (rank_common.isnot(None), rank_common),
                 (has_any_taxonomy, literal(HIGHER_LEVEL_TAXA)),
                 else_=literal(NO_TAXONOMY),
@@ -461,9 +461,9 @@ def get_species_distribution(
             needs_join = True
 
     if count_mode == "max_n":
-        count_expr = func.sum(EventObservation.effective_count)
+        count_expr = func.sum(SequenceObservation.effective_count)
     else:
-        count_expr = func.count(distinct(Event.id))
+        count_expr = func.count(distinct(Sequence.id))
 
     from app.api.crud.deployment import site_ids_filter
 
@@ -476,12 +476,12 @@ def get_species_distribution(
             # deep-link to the Labels page filtered to exactly these (F1).
             # group_concat skips NULLs, so non-taxonomy bars come back empty.
             func.group_concat(
-                distinct(EventObservation.label_taxonomy_id)
+                distinct(SequenceObservation.label_taxonomy_id)
             ).label("taxonomy_ids"),
         )
-        .select_from(EventObservation)
-        .join(Event, Event.id == EventObservation.event_id)
-        .join(Deployment, Event.deployment_id == Deployment.id)
+        .select_from(SequenceObservation)
+        .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
+        .join(Deployment, Sequence.deployment_id == Deployment.id)
         .where(Deployment.project_id == project_id)
         .group_by(label_expr)
         .order_by(count_expr.desc())
@@ -490,20 +490,20 @@ def get_species_distribution(
     if needs_join:
         query = query.outerjoin(
             LabelTaxonomy,
-            LabelTaxonomy.id == EventObservation.label_taxonomy_id,
+            LabelTaxonomy.id == SequenceObservation.label_taxonomy_id,
         )
 
     site_clause = site_ids_filter(site_ids)
     if site_clause is not None:
         query = query.where(site_clause)
 
-    date_clauses = _event_date_clauses(date_from, date_to)
+    date_clauses = _sequence_date_clauses(date_from, date_to)
     if date_clauses:
         query = query.where(*date_clauses)
 
     if wildlife_only:
         query = query.where(
-            _wildlife_clause(EventObservation.category, EventObservation.label)
+            _wildlife_clause(SequenceObservation.category, SequenceObservation.label)
         )
 
     rows = db.execute(query).all()
@@ -637,18 +637,18 @@ def get_activity_pattern(
 
     Scoped like every dashboard card (`_scoped_observations_query`).
     """
-    hour_expr = func.cast(func.strftime("%H", Event.event_start_local), Integer)
+    hour_expr = func.cast(func.strftime("%H", Sequence.sequence_start_local), Integer)
 
     query = (
         _scoped_observations_query(
             [
                 hour_expr.label("hour"),
-                func.sum(EventObservation.effective_count).label("count"),
+                func.sum(SequenceObservation.effective_count).label("count"),
             ],
             project_id, label_taxonomy_ids, site_ids, date_from, date_to,
         )
-        # Date-less events (NULL bounds) have no hour; exclude them.
-        .where(Event.event_start_local.isnot(None))
+        # Date-less sequences (NULL bounds) have no hour; exclude them.
+        .where(Sequence.sequence_start_local.isnot(None))
         .group_by(hour_expr)
         .order_by(hour_expr)
     )
@@ -700,7 +700,7 @@ def get_activity_pattern(
 _DETECTION_TIME_CAP = 5000
 
 
-def _event_decimal_hours_for_species(
+def _sequence_decimal_hours_for_species(
     db: Session,
     project_id: str,
     species: str,
@@ -710,10 +710,10 @@ def _event_decimal_hours_for_species(
     taxonomic_rank: str | None,
 ) -> list[tuple[float, date]]:
     """
-    Pull every event observation matching one species and return
+    Pull every sequence observation matching one species and return
     `(decimal_hour_of_day, local_date)` tuples, each repeated max_n
     times. The repetition matches the existing get_activity_pattern
-    aggregation (MaxN per event).
+    aggregation (MaxN per sequence).
 
     Used by get_activity_overlap to build the input array for the
     circular KDE. The local date travels alongside the hour so the
@@ -723,34 +723,34 @@ def _event_decimal_hours_for_species(
 
     query = (
         select(
-            Event.event_start_local.label("event_start"),
-            EventObservation.effective_count.label("max_n"),
+            Sequence.sequence_start_local.label("sequence_start"),
+            SequenceObservation.effective_count.label("max_n"),
         )
-        .select_from(EventObservation)
-        .join(Event, Event.id == EventObservation.event_id)
-        .join(Deployment, Event.deployment_id == Deployment.id)
+        .select_from(SequenceObservation)
+        .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
+        .join(Deployment, Sequence.deployment_id == Deployment.id)
         .where(Deployment.project_id == project_id)
-        # Date-less events (NULL bounds) have no hour-of-day; exclude
+        # Date-less sequences (NULL bounds) have no hour-of-day; exclude
         # them so decimal-hour extraction never sees None.
-        .where(Event.event_start_local.isnot(None))
+        .where(Sequence.sequence_start_local.isnot(None))
     )
 
     site_clause = site_ids_filter(site_ids)
     if site_clause is not None:
         query = query.where(site_clause)
-    date_clauses = _event_date_clauses(date_from, date_to)
+    date_clauses = _sequence_date_clauses(date_from, date_to)
     if date_clauses:
         query = query.where(*date_clauses)
 
     if not taxonomic_rank or taxonomic_rank in ("raw", "all"):
         display_label = case(
-            (~is_wildlife_category(EventObservation.category), EventObservation.category),
+            (~is_wildlife_category(SequenceObservation.category), SequenceObservation.category),
             else_=func.coalesce(
-                LabelTaxonomy.scientific_name, EventObservation.label
+                LabelTaxonomy.scientific_name, SequenceObservation.label
             ),
         )
         query = query.outerjoin(
-            LabelTaxonomy, LabelTaxonomy.id == EventObservation.label_taxonomy_id
+            LabelTaxonomy, LabelTaxonomy.id == SequenceObservation.label_taxonomy_id
         )
         query = query.where(display_label == species)
     else:
@@ -763,22 +763,22 @@ def _event_decimal_hours_for_species(
             else:
                 rank_display = rank_col
             label_expr = case(
-                (~is_wildlife_category(EventObservation.category), EventObservation.category),
+                (~is_wildlife_category(SequenceObservation.category), SequenceObservation.category),
                 (rank_display.isnot(None), rank_display),
                 (has_any_taxonomy, literal(HIGHER_LEVEL_TAXA)),
                 else_=literal(NO_TAXONOMY),
             )
             query = query.outerjoin(
-                LabelTaxonomy, LabelTaxonomy.id == EventObservation.label_taxonomy_id
+                LabelTaxonomy, LabelTaxonomy.id == SequenceObservation.label_taxonomy_id
             )
             query = query.where(label_expr == species)
         else:
-            query = query.where(EventObservation.label == species)
+            query = query.where(SequenceObservation.label == species)
 
     rows = db.execute(query).all()
     out: list[tuple[float, date]] = []
     for row in rows:
-        dt: datetime = row.event_start
+        dt: datetime = row.sequence_start
         decimal_hour = dt.hour + dt.minute / 60.0 + dt.second / 3600.0
         local_date = dt.date()
         out.extend([(decimal_hour, local_date)] * int(row.max_n))
@@ -891,7 +891,7 @@ def get_activity_overlap(
     # uses it for the clock-mode overlay. The tz name is echoed back
     # so the footer can show which clock the chart is in. The reference
     # date (filter midpoint) is also echoed so the chart can caption
-    # which day's sun events the bands represent.
+    # which day's sun sequences the bands represent.
     sun_bands: SunBands | None = None
     sun_bands_reference_date: date | None = None
     tz_name = (
@@ -917,12 +917,12 @@ def get_activity_overlap(
         or 0
     )
 
-    obs_a = _event_decimal_hours_for_species(
+    obs_a = _sequence_decimal_hours_for_species(
         db, project_id, species_a, site_ids, date_from, date_to, taxonomic_rank
     )
     obs_b: list[tuple[float, date]] = []
     if species_b:
-        obs_b = _event_decimal_hours_for_species(
+        obs_b = _sequence_decimal_hours_for_species(
             db, project_id, species_b, site_ids, date_from, date_to, taxonomic_rank
         )
 
@@ -1161,8 +1161,8 @@ def get_observation_rate_map(
     with summed trap nights and observation counts across all of its
     deployments that pass the active filters.
 
-    Uses the same MaxN-per-event metric as the dashboard so rates are
-    consistent across pages: rate = sum(EventObservation.effective_count) /
+    Uses the same MaxN-per-sequence metric as the dashboard so rates are
+    consistent across pages: rate = sum(SequenceObservation.effective_count) /
     max(1, trap_nights) * 100. Sites with no effort and no observations
     under the active filters are skipped. Sites with effort but zero
     matching observations are kept (hollow markers) so the user can see
@@ -1215,23 +1215,23 @@ def get_observation_rate_map(
     #
     # Date and label filters go into the outer-join ON clauses, NOT a
     # WHERE. Putting them in WHERE would drop deployments that have
-    # events but none matching the filter, because all their joined
+    # sequences but none matching the filter, because all their joined
     # rows would be excluded before the GROUP BY. With the filters in
-    # the ON clause, non-matching events/observations simply produce
+    # the ON clause, non-matching sequences/observations simply produce
     # a NULL row under the outer join, the deployment stays in the
     # result, and sum(max_n) naturally becomes 0 for it. Effort
     # without matching observations is exactly the "empty hex" case
     # we want to render.
-    event_on: list = [Event.deployment_id == Deployment.id]
+    sequence_on: list = [Sequence.deployment_id == Deployment.id]
     if clip_start:
-        event_on.append(Event.event_start_local >= clip_start)
+        sequence_on.append(Sequence.sequence_start_local >= clip_start)
     if clip_end:
         end_of_day = datetime.combine(clip_end, datetime.max.time())
-        event_on.append(Event.event_start_local <= end_of_day)
+        sequence_on.append(Sequence.sequence_start_local <= end_of_day)
 
-    obs_on: list = [EventObservation.event_id == Event.id]
+    obs_on: list = [SequenceObservation.sequence_id == Sequence.id]
     if label_taxonomy_ids:
-        obs_on.append(EventObservation.label_taxonomy_id.in_(label_taxonomy_ids))
+        obs_on.append(SequenceObservation.label_taxonomy_id.in_(label_taxonomy_ids))
 
     site_rows_query = (
         select(
@@ -1239,12 +1239,12 @@ def get_observation_rate_map(
             Site.name.label("site_name"),
             Site.latitude.label("latitude"),
             Site.longitude.label("longitude"),
-            func.coalesce(func.sum(EventObservation.effective_count), 0).label("obs_count"),
+            func.coalesce(func.sum(SequenceObservation.effective_count), 0).label("obs_count"),
         )
         .select_from(Deployment)
         .join(Site, Deployment.site_id == Site.id)
-        .outerjoin(Event, and_(*event_on))
-        .outerjoin(EventObservation, and_(*obs_on))
+        .outerjoin(Sequence, and_(*sequence_on))
+        .outerjoin(SequenceObservation, and_(*obs_on))
         .where(Deployment.id.in_(eligible_dep_ids))
         .group_by(Site.id, Site.name, Site.latitude, Site.longitude)
     )
@@ -1258,39 +1258,39 @@ def get_observation_rate_map(
         breakdown_query = (
             select(
                 Deployment.site_id.label("site_id"),
-                EventObservation.label.label("label"),
-                EventObservation.label_taxonomy_id.label("label_taxonomy_id"),
+                SequenceObservation.label.label("label"),
+                SequenceObservation.label_taxonomy_id.label("label_taxonomy_id"),
                 LabelTaxonomy.scientific_name.label("scientific_name"),
                 LabelTaxonomy.common_name.label("common_name"),
-                func.sum(EventObservation.effective_count).label("count"),
+                func.sum(SequenceObservation.effective_count).label("count"),
             )
-            .select_from(EventObservation)
-            .join(Event, Event.id == EventObservation.event_id)
-            .join(Deployment, Deployment.id == Event.deployment_id)
+            .select_from(SequenceObservation)
+            .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
+            .join(Deployment, Deployment.id == Sequence.deployment_id)
             .outerjoin(
                 LabelTaxonomy,
-                LabelTaxonomy.id == EventObservation.label_taxonomy_id,
+                LabelTaxonomy.id == SequenceObservation.label_taxonomy_id,
             )
             .where(Deployment.id.in_(eligible_dep_ids))
             .where(Deployment.site_id.isnot(None))
             .group_by(
                 Deployment.site_id,
-                EventObservation.label,
-                EventObservation.label_taxonomy_id,
+                SequenceObservation.label,
+                SequenceObservation.label_taxonomy_id,
                 LabelTaxonomy.scientific_name,
                 LabelTaxonomy.common_name,
             )
-            .order_by(func.sum(EventObservation.effective_count).desc())
+            .order_by(func.sum(SequenceObservation.effective_count).desc())
         )
 
         if clip_start:
-            breakdown_query = breakdown_query.where(Event.event_start_local >= clip_start)
+            breakdown_query = breakdown_query.where(Sequence.sequence_start_local >= clip_start)
         if clip_end:
             end_of_day = datetime.combine(clip_end, datetime.max.time())
-            breakdown_query = breakdown_query.where(Event.event_start_local <= end_of_day)
+            breakdown_query = breakdown_query.where(Sequence.sequence_start_local <= end_of_day)
         if label_taxonomy_ids:
             breakdown_query = breakdown_query.where(
-                EventObservation.label_taxonomy_id.in_(label_taxonomy_ids)
+                SequenceObservation.label_taxonomy_id.in_(label_taxonomy_ids)
             )
 
         for row in db.execute(breakdown_query).all():
@@ -1371,16 +1371,16 @@ def get_dashboard_summary(
 ) -> DashboardSummary:
     """Headline figures for the dashboard tiles.
 
-    The Overview reads its trap nights from it, the Explore tab its events,
+    The Overview reads its trap nights from it, the Explore tab its sequences,
     observations and sites for the current selection. Trap nights are
     effort, so labels do not narrow them.
     """
     row = db.execute(
         _scoped_observations_query(
             [
-                func.count(distinct(Event.id)).label("events"),
+                func.count(distinct(Sequence.id)).label("events"),
                 func.coalesce(
-                    func.sum(EventObservation.effective_count), 0
+                    func.sum(SequenceObservation.effective_count), 0
                 ).label("observations"),
                 func.count(distinct(Deployment.site_id)).label("sites"),
             ],
@@ -1418,7 +1418,7 @@ def get_demographics(
             _scoped_observations_query(
                 [
                     column.label("value"),
-                    func.sum(EventObservation.effective_count).label("count"),
+                    func.sum(SequenceObservation.effective_count).label("count"),
                 ],
                 project_id, label_taxonomy_ids, site_ids, date_from, date_to,
             ).group_by(column)
@@ -1429,12 +1429,12 @@ def get_demographics(
             if r.count
         ]
 
-    sex = split(EventObservation.sex)
+    sex = split(SequenceObservation.sex)
     return Demographics(
         observations=sum(c.count for c in sex),
         sex=sex,
-        life_stage=split(EventObservation.life_stage),
-        behavior=split(EventObservation.behavior),
+        life_stage=split(SequenceObservation.life_stage),
+        behavior=split(SequenceObservation.behavior),
     )
 
 

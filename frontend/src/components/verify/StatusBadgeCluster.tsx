@@ -1,6 +1,6 @@
 /**
  * StatusBadgeCluster - top-right corner cluster of status badges for
- * Files / Events cards.
+ * Files / Sequences cards.
  *
  * Three booleans drive up to three circular badges: confirmed (teal),
  * favorited (dark red), flagged (light teal). Stacked right-to-left with

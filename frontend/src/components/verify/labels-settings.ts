@@ -36,17 +36,17 @@ export function persistLabelsSetting(key: string, value: unknown): void {
 const TILE_SIZES: TileSize[] = ["S", "M", "L"];
 
 /** The Files tab's sort modes; mirrors `LabelsFilesSort` on the wire. */
-export type FilesSort = "path" | "events" | "newest" | "oldest" | "random";
+export type FilesSort = "path" | "sequences" | "newest" | "oldest" | "random";
 const FILES_SORTS: FilesSort[] = [
   "path",
-  "events",
+  "sequences",
   "newest",
   "oldest",
   "random",
 ];
 
 /** The Files tab's sort, persisted like the Detections sort so a person
- *  who works by event opens on event sort every time. "random" is a
+ *  who works by sequence opens on sequence sort every time. "random" is a
  *  one-off shuffle, not a way of working, and its seed is session
  *  state, so it is never written: leaving in random reopens on the
  *  last persisted sort. */

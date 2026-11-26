@@ -151,7 +151,7 @@ def get_or_create_crop(
     if not detection:
         return None
 
-    # Event-level observations have no bbox to crop. Caller (the crop
+    # Box-less observations have no bbox to crop. Caller (the crop
     # endpoint) will surface this as a 404; the UI never asks for these
     # because no-bbox rows render without a thumbnail.
     if detection.bbox_x is None:

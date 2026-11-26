@@ -20,7 +20,7 @@ import { SMOOTHING_LEVELS } from "../../lib/smoothing";
 export type SmoothingLevel = "off" | "mild" | "normal" | "aggressive";
 
 export interface AnalysisSettingsValues {
-  event_smoothing: boolean;
+  sequence_smoothing: boolean;
   smoothing_strength: "mild" | "normal" | "aggressive";
   taxonomic_rollup: boolean;
   independence_interval: number;
@@ -61,7 +61,7 @@ export function AnalysisSettingsRows({
 }: {
   values: AnalysisSettingsValues;
   onIntervalChange: (seconds: number) => void;
-  /** "off" clears event_smoothing; a strength enables it at that level. */
+  /** "off" clears sequence_smoothing; a strength enables it at that level. */
   onSmoothingChange: (level: SmoothingLevel) => void;
   onRollupChange: (enabled: boolean) => void;
   /** Smoothing + rollup only make sense with a classification model. */
@@ -83,7 +83,7 @@ export function AnalysisSettingsRows({
         >
           <CaptionedSelect
             value={
-              values.event_smoothing ? values.smoothing_strength : "off"
+              values.sequence_smoothing ? values.smoothing_strength : "off"
             }
             onValueChange={(value) => {
               if (!value) return;

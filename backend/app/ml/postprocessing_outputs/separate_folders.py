@@ -33,10 +33,10 @@ the user organised it, is kept and collisions are avoided. Under
 ``group_by="none"`` there is no species folder, so the output simply
 mirrors the source tree (``output_root/cam01/img.jpg``).
 
-Event grouping (``group_events``):
+Sequence grouping (``group_sequences``):
 
-With ``group_events`` on, every file in an event (a burst / sequence)
-is placed in one shared folder, the species of the event's most
+With ``group_sequences`` on, every file in a sequence (a burst / sequence)
+is placed in one shared folder, the species of the sequence's most
 confident detection, instead of deciding per file. This keeps a
 sequence together even when a stray frame's own top species differs.
 
@@ -122,7 +122,7 @@ from app.ml.detection_visibility import on_visible_frame, visible_detections
 from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
 from app.ml.observation_type import derive_observation_type
 from app.models import Deployment, Detection, File, LabelTaxonomy, Project
-from app.models.event import event_files
+from app.models.sequence import sequence_files
 from app.services.video_frame_service import video_cover
 
 from ._exif_writer import ExifBatch, build_tag_set, is_image_path
@@ -228,18 +228,18 @@ def _build_taxonomy_map(
     return {row.name: row for row in rows}
 
 
-def build_event_primary_labels(
+def build_sequence_primary_labels(
     db: Session,
     project_id: str,
     threshold: float,
     excluded_label_ids: frozenset[str] | None = None,
     scope: MediaScope | None = None,
 ) -> dict[str, str]:
-    """Map each animal file in an event to that event's primary species.
+    """Map each animal file in a sequence to that sequence's primary species.
 
     Primary-species rule, in order:
 
-    1. If the event has any human-verified labelled animal detections, the
+    1. If the sequence has any human-verified labelled animal detections, the
        primary is the *most common* verified species (most verified
        detections; ties broken by highest detection confidence, then label).
        Human verification is the strongest signal, so a confirmed species
@@ -251,18 +251,18 @@ def build_event_primary_labels(
     ``observation_type.strongest_passing_detection`` picks a *file's* subject
     by taking the single strongest box, with no tally at all. The difference is
     the grain, not drift, so do not unify them. A file is one photograph: one
-    look at the animal, nothing to average. An event is dozens of looks at the
+    look at the animal, nothing to average. A sequence is dozens of looks at the
     same animal walking through, and per-frame classification is noisy enough
     that one raccoon read as raccoon / badger / badger / blank / opossum /
     raccoon / blank across seven consecutive frames. The mode cancels that;
     the strongest box would let one misread frame name the whole visit, on the
     folder the user actually sees. See DEVELOPERS.md "What a file is about".
 
-    Only animal files in an event with at least one surviving species label
-    appear in the map. A file in multiple events is assigned to the event of
+    Only animal files in a sequence with at least one surviving species label
+    appear in the map. A file in multiple sequences is assigned to the sequence of
     its own strongest detection (verified first, then confidence).
 
-    Used by primary-only placement with ``group_events`` on to keep a whole
+    Used by primary-only placement with ``group_sequences`` on to keep a whole
     burst in one folder. Mirrored by the Save-step preview (same function),
     so the two always agree.
 
@@ -273,7 +273,7 @@ def build_event_primary_labels(
     """
     rows = db.execute(
         select(
-            event_files.c.event_id,
+            sequence_files.c.sequence_id,
             Detection.file_id,
             Detection.label,
             Detection.label_taxonomy_id,
@@ -281,7 +281,7 @@ def build_event_primary_labels(
             Detection.verified,
         )
         .join(File, File.id == Detection.file_id)
-        .join(event_files, event_files.c.file_id == File.id)
+        .join(sequence_files, sequence_files.c.file_id == File.id)
         .join(Deployment, Deployment.id == File.deployment_id)
         .where(Deployment.project_id == project_id)
         .where(*(scope.deployment_clauses() if scope else []))
@@ -300,11 +300,11 @@ def build_event_primary_labels(
         # placement read the same boxes.
         .where(is_a_real_detection())
         # Verified first, then confidence: the first row per file is that
-        # file's strongest detection, which decides its chosen event.
+        # file's strongest detection, which decides its chosen sequence.
         .order_by(
             Detection.verified.desc(),
             Detection.confidence.desc(),
-            event_files.c.event_id,
+            sequence_files.c.sequence_id,
             Detection.file_id,
         )
     ).all()
@@ -335,20 +335,20 @@ def build_event_primary_labels(
         if r.label is not None and subject_is_species.get(r.file_id)
     ]
 
-    # A file in multiple events belongs to the event of its own strongest
+    # A file in multiple sequences belongs to the sequence of its own strongest
     # detection. Rows are ordered verified-then-confidence, so the first row
     # seen for a file wins.
-    file_event: dict[str, str] = {}
+    file_sequence: dict[str, str] = {}
     for r in rows:
-        file_event.setdefault(r.file_id, r.event_id)
+        file_sequence.setdefault(r.file_id, r.sequence_id)
 
-    # Primary species per event, following the rule in the docstring.
-    per_event: dict[str, list] = defaultdict(list)
+    # Primary species per sequence, following the rule in the docstring.
+    per_sequence: dict[str, list] = defaultdict(list)
     for r in rows:
-        per_event[r.event_id].append(r)
+        per_sequence[r.sequence_id].append(r)
 
-    event_primary: dict[str, str] = {}
-    for event_id, ev_rows in per_event.items():
+    sequence_primary: dict[str, str] = {}
+    for sequence_id, ev_rows in per_sequence.items():
         verified = [r for r in ev_rows if r.verified]
         if verified:
             # Most common verified species; tie -> highest confidence, then
@@ -365,16 +365,16 @@ def build_event_primary_labels(
                 agg.values(),
                 key=lambda a: (a["count"], a["conf"], a["label"]),
             )
-            event_primary[event_id] = best["label"]
+            sequence_primary[sequence_id] = best["label"]
         else:
             # AI's best guess: the single highest-confidence detection.
             top = max(ev_rows, key=lambda r: (r.confidence, r.label))
-            event_primary[event_id] = top.label
+            sequence_primary[sequence_id] = top.label
 
     return {
-        file_id: event_primary[event_id]
-        for file_id, event_id in file_event.items()
-        if event_id in event_primary
+        file_id: sequence_primary[sequence_id]
+        for file_id, sequence_id in file_sequence.items()
+        if sequence_id in sequence_primary
     }
 
 
@@ -468,7 +468,7 @@ def _folder_for_file(
     named by its detector category instead: ``person/``, ``vehicle/``,
     ``blank/``, or ``animal/`` for an unclassified animal, or whatever
     else the detector emits. ``grouped_label``, when set, overrides the
-    per-file choice with the event's main species (``group_events``).
+    per-file choice with the sequence's main species (``group_sequences``).
     The empty string means the output root (``group_by="none"``).
 
     ``obs_type`` is the file's effective observation type at the media
@@ -487,7 +487,7 @@ def _folder_for_file(
             else _leaf_name(label, taxonomy_map.get(label), name_mode)
         )
 
-    # Event grouping: the whole burst shares the event's main species.
+    # Sequence grouping: the whole burst shares the sequence's main species.
     if grouped_label is not None:
         return _folder_for(grouped_label)
 
@@ -654,7 +654,7 @@ def separate_into_folders(
     include_empty: bool = True,
     excluded_label_ids: frozenset[str] | None = None,
     name_mode: NameMode = "common",
-    group_events: bool = True,
+    group_sequences: bool = True,
     species_last: bool = False,
     place_files: bool = True,
     videos_as_stills: bool = False,
@@ -677,8 +677,8 @@ def separate_into_folders(
     chain ``<Class>/<Order>/<Family>/<Genus>/<species>/``; under
     ``group_by="flat"`` a single-segment folder named after the species;
     under ``group_by="none"`` flat at the output root. Non-animal files
-    land in their fixed observation-type folder. ``group_events`` keeps
-    every file of a burst in one folder, the event's main species.
+    land in their fixed observation-type folder. ``group_sequences`` keeps
+    every file of a burst in one folder, the sequence's main species.
 
     Every placement is a copy. ``videos_as_stills`` writes each video as
     its best-frame JPEG instead of the container (the blur case, see
@@ -728,10 +728,10 @@ def separate_into_folders(
     threshold = media_threshold
     taxonomy_map = _build_taxonomy_map(db, project)
 
-    # Empty map = per-file placement; populated = whole events grouped.
-    event_primary: dict[str, str] = {}
-    if group_events:
-        event_primary = build_event_primary_labels(
+    # Empty map = per-file placement; populated = whole sequences grouped.
+    sequence_primary: dict[str, str] = {}
+    if group_sequences:
+        sequence_primary = build_sequence_primary_labels(
             db, project_id, threshold, excluded_label_ids, scope
         )
 
@@ -821,7 +821,7 @@ def separate_into_folders(
                 group_by,
                 excluded_label_ids,
                 name_mode,
-                grouped_label=event_primary.get(file.id),
+                grouped_label=sequence_primary.get(file.id),
             )
 
             # Preserve the original subfolder structure under the species
@@ -901,7 +901,7 @@ def separate_into_folders(
 
     logger.info(
         f"separate_folders: project={project_id} "
-        f"group_by={group_by} group_events={group_events} "
+        f"group_by={group_by} group_sequences={group_sequences} "
         f"species_last={species_last} videos_as_stills={videos_as_stills} "
         f"written={result.written_count} renamed={result.renamed_count} "
         f"missing={result.skipped_missing_source} "

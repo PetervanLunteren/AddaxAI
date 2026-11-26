@@ -2,7 +2,7 @@
  * Verify view — the Counts page body, decoupled from page chrome.
  *
  * Keeps the `Verify*` name because it operates on the verification data
- * model. It renders the event gallery: a filter bar, a grid of
+ * model. It renders the sequence gallery: a filter bar, a grid of
  * `EventCard`s, and the `EventDetailModal` (gallery + tools on the
  * left, panel on the right). The per-detection label-cleanup view lives
  * separately in `LabelsTab` / the Labels page. Mounted in two contexts:
@@ -32,7 +32,7 @@ import {
   SlidersHorizontal,
   Video as VideoIcon,
 } from "lucide-react";
-import { eventsApi } from "../../api/events";
+import { sequencesApi } from "../../api/sequences";
 import { warmFiles } from "./warm-files";
 import { projectQueryOptions } from "../../api/projects";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
@@ -47,14 +47,14 @@ import {
   useSpeciesColorsVersion,
 } from "../../utils/species-colors";
 import type {
-  EventSummary,
-  EventFilterParams,
+  SequenceSummary,
+  SequenceFilterParams,
   VerificationFilter,
   VerifySort,
 } from "../../api/types";
 
-import { EventCollage } from "./EventCollage";
-import { EventDetailModal } from "./EventDetailModal";
+import { SequenceCollage } from "./SequenceCollage";
+import { SequenceDetailModal } from "./SequenceDetailModal";
 import { VerifyFilterBar } from "./VerifyFilterBar";
 import { hasAnyActiveFilter } from "./FilterChips";
 import { WelcomePopover } from "./WelcomePopover";
@@ -79,8 +79,8 @@ const EVENTS_SORT_MODES = ["newest", "oldest", "random"] as const;
 const PAGE_SIZE = 48;
 
 /** Parse filter state from URL search params. */
-function filtersFromSearchParams(sp: URLSearchParams): EventFilterParams {
-  const filters: EventFilterParams = {};
+function filtersFromSearchParams(sp: URLSearchParams): SequenceFilterParams {
+  const filters: SequenceFilterParams = {};
   const sites = sp.get("sites");
   if (sites) filters.site_ids = sites.split(",");
   const from = sp.get("from");
@@ -91,14 +91,14 @@ function filtersFromSearchParams(sp: URLSearchParams): EventFilterParams {
   if (labels) filters.labels = labels.split(",");
   const verification = sp.get("verification") as VerificationFilter | null;
   if (verification && verification !== "all") filters.verification = verification;
-  const flagged = sp.get("flagged") as EventFilterParams["flagged"] | null;
+  const flagged = sp.get("flagged") as SequenceFilterParams["flagged"] | null;
   if (flagged && flagged !== "all") filters.flagged = flagged;
-  const favorited = sp.get("favorited") as EventFilterParams["favorited"] | null;
+  const favorited = sp.get("favorited") as SequenceFilterParams["favorited"] | null;
   if (favorited && favorited !== "all") filters.favorited = favorited;
   // Empty defaults to "hide": most users don't want to scroll blank
-  // tiles / all-blank events, and it's one click to "All". Absent
+  // tiles / all-blank sequences, and it's one click to "All". Absent
   // param ⇒ "hide"; an explicit "all" / "show_only" is persisted.
-  const empty = sp.get("empty") as EventFilterParams["empty"] | null;
+  const empty = sp.get("empty") as SequenceFilterParams["empty"] | null;
   filters.empty = empty ?? "hide";
   const minC = sp.get("min_confidence");
   if (minC !== null) filters.min_confidence = parseFloat(minC);
@@ -116,7 +116,7 @@ function filtersFromSearchParams(sp: URLSearchParams): EventFilterParams {
 }
 
 /** Serialize filter state to URL search params. */
-function filtersToSearchParams(filters: EventFilterParams): URLSearchParams {
+function filtersToSearchParams(filters: SequenceFilterParams): URLSearchParams {
   const sp = new URLSearchParams();
   if (filters.site_ids?.length) sp.set("sites", filters.site_ids.join(","));
   if (filters.date_from) sp.set("from", filters.date_from);
@@ -150,7 +150,7 @@ export interface VerifyViewProps {
 
 export function VerifyView({ projectId }: VerifyViewProps) {
   const [searchParams, setSearchParams] = useSearchParams();
-  // Wide mode: measure the gallery container and fit as many event cards
+  // Wide mode: measure the gallery container and fit as many sequence cards
   // as its width allows. Normal mode keeps the viewport-breakpoint grid.
   // The grid node is held in state (callback ref) so the observer also
   // attaches when the grid mounts after data loads, not just on toggle.
@@ -167,12 +167,12 @@ export function VerifyView({ projectId }: VerifyViewProps) {
     return () => ro.disconnect();
   }, [wide, gridNode]);
   const [page, setPage] = useState(0);
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-  const [showEventsWelcome, setShowEventsWelcome] = useState(
+  const [selectedSequenceId, setSelectedSequenceId] = useState<string | null>(null);
+  const [showSequencesWelcome, setShowSequencesWelcome] = useState(
     () => !localStorage.getItem("addaxai:verifyWelcomeDismissed"),
   );
-  const handleDismissEventsWelcome = useCallback(() => {
-    setShowEventsWelcome(false);
+  const handleDismissSequencesWelcome = useCallback(() => {
+    setShowSequencesWelcome(false);
     localStorage.setItem("addaxai:verifyWelcomeDismissed", "1");
   }, []);
 
@@ -196,17 +196,17 @@ export function VerifyView({ projectId }: VerifyViewProps) {
   const debouncedFilters = useDebouncedValue(filters, FILTER_DEBOUNCE_MS);
 
   const setFilters = useCallback(
-    (next: EventFilterParams) => {
+    (next: SequenceFilterParams) => {
       setSearchParams(filtersToSearchParams(next), { replace: true });
     },
     [setSearchParams],
   );
 
-  // Listen for navigation events from the modal
+  // Listen for navigation sequences from the modal
   useEffect(() => {
     const handler = (e: Event) => {
       const targetId = (e as CustomEvent).detail;
-      if (targetId) setSelectedEventId(targetId);
+      if (targetId) setSelectedSequenceId(targetId);
     };
     window.addEventListener("navigate-event", handler);
     return () => window.removeEventListener("navigate-event", handler);
@@ -220,36 +220,36 @@ export function VerifyView({ projectId }: VerifyViewProps) {
   });
   const detectionThreshold = project?.counting_threshold ?? 0;
 
-  // The unfiltered event count, and how many of those are confirmed for
+  // The unfiltered sequence count, and how many of those are confirmed for
   // the progress pill. Deliberately UNFILTERED: the pill measures
   // progress against the whole project, not the current filter view, so
   // the user can't mistake a narrowed view for "everything confirmed".
-  // Under the ["events"] prefix, so everything that refreshes the event
+  // Under the ["events"] prefix, so everything that refreshes the sequence
   // list (a confirm, a relabel) refreshes the pill with it.
   const { data: totalCountData } = useQuery({
-    queryKey: ["events", "count", projectId],
-    queryFn: () => eventsApi.count(projectId),
+    queryKey: ["sequences", "count", projectId],
+    queryFn: () => sequencesApi.count(projectId),
   });
 
-  // Get filtered event count
+  // Get filtered sequence count
   const isFiltered = hasAnyActiveFilter(filters);
   const isDebouncedFiltered = hasAnyActiveFilter(debouncedFilters);
   const { data: filteredCountData } = useQuery({
-    queryKey: ["event-count-filtered", projectId, debouncedFilters],
-    queryFn: () => eventsApi.count(projectId, debouncedFilters),
+    queryKey: ["sequence-count-filtered", projectId, debouncedFilters],
+    queryFn: () => sequencesApi.count(projectId, debouncedFilters),
     enabled: isDebouncedFiltered,
   });
 
-  // Get events with debounced filters
+  // Get sequences with debounced filters
   const {
-    data: events,
+    data: sequences,
     isLoading,
     isFetching,
     isPlaceholderData,
   } = useQuery({
-    queryKey: ["events", projectId, page, debouncedFilters],
+    queryKey: ["sequences", projectId, page, debouncedFilters],
     queryFn: () =>
-      eventsApi.list({
+      sequencesApi.list({
         project_id: projectId,
         skip: page * PAGE_SIZE,
         limit: PAGE_SIZE,
@@ -258,19 +258,19 @@ export function VerifyView({ projectId }: VerifyViewProps) {
     placeholderData: (prev) => prev,
   });
 
-  // Warm the next page while this one is being worked: its event rows,
+  // Warm the next page while this one is being worked: its sequence rows,
   // then each card's collage files and thumbnails (`warmFiles`), so
   // clicking Next paints instantly instead of starting cold. Skipped
   // while the current page is the held-over placeholder, so the
   // prefetch never competes with the fetch the user is waiting on.
   useEffect(() => {
-    if (!events || isPlaceholderData || events.length < PAGE_SIZE) return;
+    if (!sequences || isPlaceholderData || sequences.length < PAGE_SIZE) return;
     const nextPage = page + 1;
     queryClient
       .prefetchQuery({
-        queryKey: ["events", projectId, nextPage, debouncedFilters],
+        queryKey: ["sequences", projectId, nextPage, debouncedFilters],
         queryFn: () =>
-          eventsApi.list({
+          sequencesApi.list({
             project_id: projectId,
             skip: nextPage * PAGE_SIZE,
             limit: PAGE_SIZE,
@@ -278,8 +278,8 @@ export function VerifyView({ projectId }: VerifyViewProps) {
           }),
       })
       .then(() => {
-        const next = queryClient.getQueryData<EventSummary[]>([
-          "events",
+        const next = queryClient.getQueryData<SequenceSummary[]>([
+          "sequences",
           projectId,
           nextPage,
           debouncedFilters,
@@ -289,16 +289,16 @@ export function VerifyView({ projectId }: VerifyViewProps) {
           (next ?? []).flatMap((e) => e.collage_file_ids ?? []),
         );
       });
-  }, [events, isPlaceholderData, page, debouncedFilters, projectId, queryClient]);
+  }, [sequences, isPlaceholderData, page, debouncedFilters, projectId, queryClient]);
 
-  // Repaint the event cards when the project's colour map lands.
+  // Repaint the sequence cards when the project's colour map lands.
   useSpeciesColorsVersion();
 
-  const totalEvents = totalCountData?.count ?? 0;
-  const filteredEvents = isFiltered
-    ? (filteredCountData?.count ?? totalEvents)
-    : totalEvents;
-  const hasMore = events && events.length === PAGE_SIZE;
+  const totalSequences = totalCountData?.count ?? 0;
+  const filteredSequences = isFiltered
+    ? (filteredCountData?.count ?? totalSequences)
+    : totalSequences;
+  const hasMore = sequences && sequences.length === PAGE_SIZE;
 
   return (
     <div className="space-y-4">
@@ -308,9 +308,9 @@ export function VerifyView({ projectId }: VerifyViewProps) {
         projectId={projectId}
         classificationModelId={project?.classification_model_id}
         detectionFloor={detectionThreshold}
-        countBy="event"
+        countBy="sequence"
       />
-      {totalEvents > 0 && (
+      {totalSequences > 0 && (
         <VerifyToolbar>
           {/* Left: sort. Right: meta icons + progress, matching the
               Labels grid's toolbar grouping. */}
@@ -319,7 +319,7 @@ export function VerifyView({ projectId }: VerifyViewProps) {
             seed={filters.seed ?? null}
             availableSorts={EVENTS_SORT_MODES}
             onChange={(next, seed) => {
-              const updated: EventFilterParams = { ...filters };
+              const updated: SequenceFilterParams = { ...filters };
               if (next === "newest") delete updated.sort;
               else updated.sort = next;
               if (seed === null) delete updated.seed;
@@ -335,7 +335,7 @@ export function VerifyView({ projectId }: VerifyViewProps) {
               active={wide}
             />
             {/* Shared brightness/contrast (viewer-tools store); the
-                collage tiles and the event modal follow the same value. */}
+                collage tiles and the sequence modal follow the same value. */}
             <Popover>
               <PopoverTrigger asChild>
                 <button
@@ -354,33 +354,33 @@ export function VerifyView({ projectId }: VerifyViewProps) {
             <VerifyGuideLink step="counts" />
             <div className="ml-2">
               <VerifyProgressPill
-                pct={((totalCountData?.confirmed ?? 0) / totalEvents) * 100}
+                pct={((totalCountData?.confirmed ?? 0) / totalSequences) * 100}
                 label="confirmed"
               />
             </div>
           </div>
         </VerifyToolbar>
       )}
-      {/* Event cards */}
+      {/* Sequence cards */}
       {isLoading ? (
         <div className="flex items-center justify-center h-64">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
-      ) : !events || events.length === 0 ? (
+      ) : !sequences || sequences.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16 text-center">
             <Layers className="h-12 w-12 text-muted-foreground/50 mb-4" />
             <p className="text-lg font-medium text-muted-foreground">
-              {totalEvents === 0
+              {totalSequences === 0
                 ? "No events yet"
                 : "No events match your filters"}
             </p>
             <p className="text-sm text-muted-foreground mt-1 max-w-md">
-              {totalEvents === 0
+              {totalSequences === 0
                 ? "Events are generated automatically when you run a deployment analysis. They group your camera trap images by time based on the project's independence interval."
                 : "Try adjusting or clearing your filters to see more events."}
             </p>
-            {totalEvents > 0 && (
+            {totalSequences > 0 && (
               <Button
                 variant="outline"
                 size="sm"
@@ -407,12 +407,12 @@ export function VerifyView({ projectId }: VerifyViewProps) {
                 : undefined
             }
           >
-            {events.map((event) => (
-              <EventCard
-                key={event.id}
-                event={event}
+            {sequences.map((sequence) => (
+              <SequenceCard
+                key={sequence.id}
+                sequence={sequence}
                 detectionThreshold={detectionThreshold}
-                onClick={() => setSelectedEventId(event.id)}
+                onClick={() => setSelectedSequenceId(sequence.id)}
               />
             ))}
           </div>
@@ -429,9 +429,9 @@ export function VerifyView({ projectId }: VerifyViewProps) {
             </Button>
             <span className="text-sm text-muted-foreground">
               Showing {page * PAGE_SIZE + 1}-
-              {page * PAGE_SIZE + events.length}
+              {page * PAGE_SIZE + sequences.length}
               {" of "}
-              {isFiltered ? filteredEvents : totalEvents} events
+              {isFiltered ? filteredSequences : totalSequences} sequences
               {isFetching && " (loading...)"}
             </span>
             <Button
@@ -446,45 +446,45 @@ export function VerifyView({ projectId }: VerifyViewProps) {
         </>
       )}
 
-      {/* Event detail modal */}
-      <EventDetailModal
-        eventId={selectedEventId}
+      {/* Sequence detail modal */}
+      <SequenceDetailModal
+        sequenceId={selectedSequenceId}
         projectId={projectId}
-        isOpen={!!selectedEventId}
-        onClose={() => setSelectedEventId(null)}
+        isOpen={!!selectedSequenceId}
+        onClose={() => setSelectedSequenceId(null)}
         filters={debouncedFilters}
       />
 
       <WelcomePopover
-        open={showEventsWelcome && totalEvents > 0}
-        onDismiss={handleDismissEventsWelcome}
+        open={showSequencesWelcome && totalSequences > 0}
+        onDismiss={handleDismissSequencesWelcome}
       />
     </div>
   );
 }
 
-function EventCard({
-  event,
+function SequenceCard({
+  sequence,
   detectionThreshold,
   onClick,
 }: {
-  event: EventSummary;
+  sequence: SequenceSummary;
   detectionThreshold: number;
   onClick: () => void;
 }) {
   // Render observational datetimes as the camera's wall-clock time, not
   // the viewer's browser-local time. See lib/datetime.ts.
-  const startDate = formatCameraDate(event.event_start_local, {
+  const startDate = formatCameraDate(sequence.sequence_start_local, {
     month: "short",
     day: "numeric",
   });
-  const startTime = formatCameraTime(event.event_start_local);
-  const endDate = formatCameraDate(event.event_end_local, {
+  const startTime = formatCameraTime(sequence.sequence_start_local);
+  const endDate = formatCameraDate(sequence.sequence_end_local, {
     month: "short",
     day: "numeric",
   });
-  const endTime = formatCameraTime(event.event_end_local);
-  const sameTime = event.event_start_local === event.event_end_local;
+  const endTime = formatCameraTime(sequence.sequence_end_local);
+  const sameTime = sequence.sequence_start_local === sequence.sequence_end_local;
   const sameDay = startDate === endDate;
 
   const dateTimeStr = sameTime
@@ -496,12 +496,12 @@ function EventCard({
   // Drop species chips whose display name duplicates an observation
   // badge ("Vehicle" / "Person") that's already on this card.
   const observationBadgeNames = new Set<string>(
-    event.observation_types.filter(
+    sequence.observation_types.filter(
       (t) => t === "person" || t === "vehicle",
     ),
   );
-  const speciesLabels = event.labels.filter((sp) => {
-    const display = (speciesLabelMap(event)[sp] || sp).toLowerCase();
+  const speciesLabels = sequence.labels.filter((sp) => {
+    const display = (speciesLabelMap(sequence)[sp] || sp).toLowerCase();
     return !observationBadgeNames.has(display);
   });
 
@@ -509,7 +509,7 @@ function EventCard({
   // (label_taxonomy_id when present, else the raw label), so the count
   // joins to each chip. The peak frame per species carries the count.
   const countByKey = new Map<string, number>();
-  for (const mf of event.max_n_frames) {
+  for (const mf of sequence.max_n_frames) {
     const key = mf.label_taxonomy_id ?? mf.label;
     if (!key) continue;
     countByKey.set(key, Math.max(countByKey.get(key) ?? 0, mf.effective_count));
@@ -521,12 +521,12 @@ function EventCard({
       onClick={onClick}
     >
       <StatusBadgeCluster
-        confirmed={event.is_confirmed}
-        favorited={event.any_file_favorited}
-        flagged={event.any_file_flagged}
+        confirmed={sequence.is_confirmed}
+        favorited={sequence.any_file_favorited}
+        flagged={sequence.any_file_flagged}
       />
-      <EventCollage
-        fileIds={event.collage_file_ids}
+      <SequenceCollage
+        fileIds={sequence.collage_file_ids}
         detectionThreshold={detectionThreshold}
       />
 
@@ -535,7 +535,7 @@ function EventCard({
             unobstructed. Same order as FileCard. [&>*]:rounded-sm
             overrides the Badge default rounded-full. */}
         <div className="flex flex-wrap gap-1 [&>*]:rounded-sm">
-          {event.observation_types
+          {sequence.observation_types
             .filter((t) => t === "person" || t === "vehicle")
             .map((t) => {
               const badge = getObservationBadge(t);
@@ -565,7 +565,7 @@ function EventCard({
                     }}
                   >
                     <span className="truncate">
-                      {speciesLabelMap(event)[sp] ||
+                      {speciesLabelMap(sequence)[sp] ||
                         sp.charAt(0).toUpperCase() + sp.slice(1)}
                     </span>
                     {count > 0 && (
@@ -598,31 +598,31 @@ function EventCard({
               row 2 — site name (font-medium, own row, omitted when absent)
               row 3 — date · time on the left, content-summary chip on the right
             The chip shows what's inside the event: image/video count.
-            Mixed events drop the icon and use the compact "N img + M vid"
+            Mixed sequences drop the icon and use the compact "N img + M vid"
             form because both icons in one chip looks crowded. */}
-        {event.site_name && (
-          <div className="text-sm font-medium truncate">{event.site_name}</div>
+        {sequence.site_name && (
+          <div className="text-sm font-medium truncate">{sequence.site_name}</div>
         )}
         <div className="flex items-center justify-between gap-1.5 text-xs text-muted-foreground">
           <span>{dateTimeStr}</span>
           <span className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-muted-foreground/40 px-1.5 py-0.5 text-[10px] font-medium">
-            {event.image_count > 0 && event.video_count === 0 && (
+            {sequence.image_count > 0 && sequence.video_count === 0 && (
               <>
                 <ImageIcon className="h-3 w-3" />
-                {event.image_count}{" "}
-                {event.image_count === 1 ? "image" : "images"}
+                {sequence.image_count}{" "}
+                {sequence.image_count === 1 ? "image" : "images"}
               </>
             )}
-            {event.video_count > 0 && event.image_count === 0 && (
+            {sequence.video_count > 0 && sequence.image_count === 0 && (
               <>
                 <VideoIcon className="h-3 w-3" />
-                {event.video_count}{" "}
-                {event.video_count === 1 ? "video" : "videos"}
+                {sequence.video_count}{" "}
+                {sequence.video_count === 1 ? "video" : "videos"}
               </>
             )}
-            {event.image_count > 0 && event.video_count > 0 && (
+            {sequence.image_count > 0 && sequence.video_count > 0 && (
               <>
-                {event.image_count} img + {event.video_count} vid
+                {sequence.image_count} img + {sequence.video_count} vid
               </>
             )}
           </span>

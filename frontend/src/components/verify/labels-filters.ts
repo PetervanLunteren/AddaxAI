@@ -14,7 +14,7 @@
 
 import type {
   EmptyFilter,
-  EventFilterParams,
+  SequenceFilterParams,
   FavoritedFilter,
   FlaggedFilter,
 } from "../../api/types";
@@ -119,7 +119,7 @@ export function lblFiltersToSearchParams(
 }
 
 /** Adapt to the shape `VerifyFilterBar` speaks. */
-export function toFilterBarFilters(f: LabelsFilterState): EventFilterParams {
+export function toFilterBarFilters(f: LabelsFilterState): SequenceFilterParams {
   return {
     site_ids: f.site_ids,
     date_from: f.date_from,
@@ -140,7 +140,7 @@ export function toFilterBarFilters(f: LabelsFilterState): EventFilterParams {
 
 /** Adapt back from what `VerifyFilterBar` emits. */
 export function fromFilterBarFilters(
-  fp: EventFilterParams,
+  fp: SequenceFilterParams,
   current: LabelsFilterState,
 ): LabelsFilterState {
   return {

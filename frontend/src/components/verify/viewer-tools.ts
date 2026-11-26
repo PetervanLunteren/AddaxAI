@@ -86,7 +86,7 @@ export interface FileTriage {
 /**
  * The flag and like writes. The `["file"]` invalidation is common to
  * every host; `onChanged` carries a host's own extras (the Counts modal
- * refreshes its event caches, the grids their liked/flagged filters).
+ * refreshes its sequence caches, the grids their liked/flagged filters).
  * Instantiated by the host, not the rail, so a keyboard shortcut (F)
  * and the rail's buttons share one mutation and cannot drift.
  */

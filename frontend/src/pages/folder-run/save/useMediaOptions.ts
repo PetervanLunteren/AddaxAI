@@ -14,7 +14,7 @@ import { useMemo, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { deploymentsApi } from "../../../api/deployments";
-import { eventsApi } from "../../../api/events";
+import { sequencesApi } from "../../../api/sequences";
 import { exportApi } from "../../../api/export";
 import { projectsApi } from "../../../api/projects";
 import type { OutputPreview } from "../../../api/folder-runs";
@@ -114,7 +114,7 @@ export function useMediaOptions({
   const [separate, setSeparate] = useState<SeparateState>(() => ({
     enabled: alwaysEnabled || (persisted?.mediaEnabled ?? false),
     groupBy: persisted?.groupBy ?? "flat",
-    groupEvents: persisted?.groupEvents ?? true,
+    groupSequences: persisted?.groupSequences ?? true,
     speciesLast: persisted?.speciesLast ?? false,
     copyEmpties: persisted?.copyEmpties ?? false,
     mediaThreshold: null,
@@ -153,8 +153,8 @@ export function useMediaOptions({
     enabled: !!projectId,
   });
   const { data: filterOptions } = useQuery({
-    queryKey: ["event-filter-options", projectId],
-    queryFn: () => eventsApi.getFilterOptions(projectId),
+    queryKey: ["sequence-filter-options", projectId],
+    queryFn: () => sequencesApi.getFilterOptions(projectId),
     enabled: !!projectId,
   });
   // The label tree counted by file, so the picker reads "N files" per
@@ -163,7 +163,7 @@ export function useMediaOptions({
   const shape = filterOptions?.label_tree ?? null;
   const { data: fileCounts } = useQuery({
     queryKey: ["label-counts", projectId, "file"],
-    queryFn: () => eventsApi.getLabelCounts(projectId, "file"),
+    queryFn: () => sequencesApi.getLabelCounts(projectId, "file"),
     enabled: !!projectId && !!shape,
   });
   const labelTree = useMemo<LabelTree | null>(
@@ -224,7 +224,7 @@ export function useMediaOptions({
       // folder-run card on for the next run.
       ...(alwaysEnabled ? {} : { mediaEnabled: separate.enabled }),
       groupBy: separate.groupBy,
-      groupEvents: separate.groupEvents,
+      groupSequences: separate.groupSequences,
       speciesLast: separate.speciesLast,
       copyEmpties: separate.copyEmpties,
       drawBoxes: visualise.enabled,

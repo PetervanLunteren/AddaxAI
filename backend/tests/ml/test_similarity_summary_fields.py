@@ -55,8 +55,8 @@ def _row(**over):
         "deployment_id": "dep-1", "captured_at_local": "2026-03-14 09:12:00",
         "width_px": 1920, "height_px": 1080,
         "file_flagged": 0, "file_favorited": 0, "site_name": "Reef A",
-        "event_id": "event-1", "event_sequence": 1,
-        "event_start_local": "2026-03-14 09:00:00",
+        "sequence_id": "sequence-1", "sequence_position": 1,
+        "sequence_start_local": "2026-03-14 09:00:00",
     }
     values.update(over)
     conn = sqlite3.connect(":memory:")
@@ -97,7 +97,7 @@ def test_every_selected_column_is_copied_into_meta(script):
     not_needed = {
         "detection_id",  # passed separately
         "bbox_x", "bbox_y", "bbox_width", "bbox_height",  # kept, see below
-        "event_sequence",  # ordering only, never rendered
+        "sequence_position",  # ordering only, never rendered
     }
     row = _row()
     meta = script._row_to_meta(row)

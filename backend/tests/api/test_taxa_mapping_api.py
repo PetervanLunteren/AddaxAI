@@ -15,14 +15,14 @@ from app.ml.taxonomy_db import (
     populate_taxonomy_from_csv,
     resolve_taxonomy_id,
 )
-from app.models import Detection, Event, EventObservation, File
+from app.models import Detection, File, Sequence, SequenceObservation
 from app.models.label_taxonomy import LabelTaxonomy
 from tests.conftest import (
     make_deployment,
     make_detection,
-    make_event_with_files,
     make_file,
     make_project,
+    make_sequence_with_files,
 )
 
 TAXONOMY = """\
@@ -321,13 +321,13 @@ def test_a_list_relinks_its_labels_and_removing_it_gives_them_back(client, db, m
     project = make_project(db, classification_model_id=model_id)
     model_row = _model_row(db, model_id)
     detection = _detection(db, project, label_taxonomy_id=model_row.id)
-    event = make_event_with_files(
+    sequence = make_sequence_with_files(
         db,
         deployment_id=db.get(File, detection.file_id).deployment_id,
-        event_start_local=datetime(2024, 1, 1, 12),
+        sequence_start_local=datetime(2024, 1, 1, 12),
     )
-    observation = EventObservation(
-        event_id=event.id,
+    observation = SequenceObservation(
+        sequence_id=sequence.id,
         label="impala",
         label_taxonomy_id=model_row.id,
         category="animal",
@@ -340,7 +340,7 @@ def test_a_list_relinks_its_labels_and_removing_it_gives_them_back(client, db, m
     db.expire_all()
     own = _own_row(db, project)
     assert db.get(Detection, detection.id).label_taxonomy_id == own.id
-    assert db.get(EventObservation, observation.id).label_taxonomy_id == own.id
+    assert db.get(SequenceObservation, observation.id).label_taxonomy_id == own.id
 
     resp = client.patch(f"/api/projects/{project.id}", json={"taxa_mapping": None})
     assert resp.status_code == 200, resp.text
@@ -348,7 +348,7 @@ def test_a_list_relinks_its_labels_and_removing_it_gives_them_back(client, db, m
     assert _own_row(db, project) is None
     assert _own_row(db, project, "bird of prey") is None
     assert db.get(Detection, detection.id).label_taxonomy_id == model_row.id
-    assert db.get(EventObservation, observation.id).label_taxonomy_id == model_row.id
+    assert db.get(SequenceObservation, observation.id).label_taxonomy_id == model_row.id
     # SQL NULL, not the JSON text null, as the model says "no list" is.
     stored = db.execute(
         text("SELECT taxa_mapping IS NULL FROM projects WHERE id = :id"), {"id": project.id}
@@ -377,31 +377,31 @@ def test_what_a_person_checked_keeps_its_row_through_list_changes(client, db, mo
     )
     unverified = _detection(db, project, label_taxonomy_id=own.id)
     deployment_id = db.get(File, verified.file_id).deployment_id
-    signed_event = make_event_with_files(
-        db, deployment_id=deployment_id, event_start_local=datetime(2024, 1, 1, 12)
+    signed_sequence = make_sequence_with_files(
+        db, deployment_id=deployment_id, sequence_start_local=datetime(2024, 1, 1, 12)
     )
-    signed_event.confirmed = True
-    open_event = make_event_with_files(
-        db, deployment_id=deployment_id, event_start_local=datetime(2024, 1, 2, 12)
+    signed_sequence.confirmed = True
+    open_sequence = make_sequence_with_files(
+        db, deployment_id=deployment_id, sequence_start_local=datetime(2024, 1, 2, 12)
     )
 
-    def observation(event, **kw):
-        obs = EventObservation(
-            event_id=event.id, label="impala", label_taxonomy_id=own.id,
+    def observation(sequence, **kw):
+        obs = SequenceObservation(
+            sequence_id=sequence.id, label="impala", label_taxonomy_id=own.id,
             category="animal", max_n=1, **kw,
         )
         db.add(obs)
         return obs
 
-    signed = observation(signed_event)
-    counted = observation(open_event, human_count=3)
-    open_obs = observation(open_event)
+    signed = observation(signed_sequence)
+    counted = observation(open_sequence, human_count=3)
+    open_obs = observation(open_sequence)
     db.commit()
     checked = [
         (Detection, verified.id),
         (Detection, track_box.id),
-        (EventObservation, signed.id),
-        (EventObservation, counted.id),
+        (SequenceObservation, signed.id),
+        (SequenceObservation, counted.id),
     ]
 
     resp = client.patch(f"/api/projects/{project.id}", json={"taxa_mapping": None})
@@ -414,7 +414,7 @@ def test_what_a_person_checked_keeps_its_row_through_list_changes(client, db, mo
     assert retired.classification_model_id == RETIRED + own.id
     assert [db.get(m, i).label_taxonomy_id for m, i in checked] == [own.id] * 4
     assert db.get(Detection, unverified.id).label_taxonomy_id == model_row.id
-    assert db.get(EventObservation, open_obs.id).label_taxonomy_id == model_row.id
+    assert db.get(SequenceObservation, open_obs.id).label_taxonomy_id == model_row.id
     assert resolve_taxonomy_id("impala", project.id, db) == model_row.id
     assert _own_row(db, project, "bird of prey") is None
 
@@ -427,8 +427,8 @@ def test_what_a_person_checked_keeps_its_row_through_list_changes(client, db, mo
     # Once nothing checked uses it, a list without the label drops it.
     db.get(Detection, verified.id).verified = False
     db.get(Detection, track_box.id).classification_method = None
-    db.get(Event, signed_event.id).confirmed = False
-    db.get(EventObservation, counted.id).human_count = None
+    db.get(Sequence, signed_sequence.id).confirmed = False
+    db.get(SequenceObservation, counted.id).human_count = None
     db.commit()
     client.patch(f"/api/projects/{project.id}", json={"taxa_mapping": _mapping(ROWS[1:])})
     db.expire_all()

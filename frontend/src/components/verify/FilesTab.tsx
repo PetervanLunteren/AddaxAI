@@ -121,7 +121,7 @@ const FILES_SHORTCUTS: readonly Shortcut[] = [
 ];
 const FILES_SORT_MODES: readonly VerifySort[] = [
   "path",
-  "events",
+  "sequences",
   "newest",
   "oldest",
   "random",
@@ -221,7 +221,7 @@ export function FilesTab({
           verified: f.verified,
           width_px: f.width_px ?? null,
           height_px: f.height_px ?? null,
-          event_id: null,
+          sequence_id: null,
         });
       })
       .catch((err: Error) => toast.error(err.message));
@@ -792,29 +792,29 @@ export function FilesTab({
         (e.key === "e" || e.key === "E") &&
         !e.ctrlKey &&
         !e.metaKey &&
-        sort === "events"
+        sort === "sequences"
       ) {
-        // Same key as the crop grid: select the first event on this
+        // Same key as the crop grid: select the first sequence on this
         // page that still has an unverified file, whole burst at once,
         // and bring it into view. A no-op in the other sorts, where
-        // events are not contiguous.
+        // sequences are not contiguous.
         e.preventDefault();
         let i = 0;
         while (i < items.length) {
-          const eventId = items[i].event_id;
+          const sequenceId = items[i].sequence_id;
           let j = i;
-          while (j < items.length && items[j].event_id === eventId) j++;
+          while (j < items.length && items[j].sequence_id === sequenceId) j++;
           const run = items.slice(i, j);
           if (run.some((f) => !f.verified)) {
             const ids = run.map((f) => f.id);
             anchorRef.current = ids[0];
             setSelected(new Set(ids));
-            // The event's divider to the top of the viewport, exactly
+            // The sequence's divider to the top of the viewport, exactly
             // where the crop grid's E puts it (`scrollToDetection`
             // targets the divider row with align "start"), so the two
             // tabs land the eye in the same place.
             const divider = document.querySelector(
-              `[data-event-divider="${eventId ?? "none"}"]`,
+              `[data-event-divider="${sequenceId ?? "none"}"]`,
             );
             (divider ?? document.querySelector(`[data-file-id="${ids[0]}"]`))
               ?.scrollIntoView({ block: "start" });
@@ -985,8 +985,8 @@ export function FilesTab({
             onSelect={handleSelect}
             detectionThreshold={project?.counting_threshold ?? 0}
             tileSize={tileSize}
-            groupByEvent={sort === "events"}
-            onSelectEvent={(ids) => setSelected(new Set(ids))}
+            groupBySequence={sort === "sequences"}
+            onSelectSequence={(ids) => setSelected(new Set(ids))}
             onBackgroundClick={clearSelection}
             onOpen={(item: LabelsFileItem) =>
               setOpenIndex(items.findIndex((i) => i.id === item.id))

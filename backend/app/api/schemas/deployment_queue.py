@@ -32,7 +32,7 @@ class DeploymentQueueBase(BaseModel):
         False,
         description=(
             "The subfolders are dependent cameras: cluster "
-            "events across them and count effort once"
+            "sequences across them and count effort once"
         ),
     )
     camera_offsets: dict[str, int] = Field(

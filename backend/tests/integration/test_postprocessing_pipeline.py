@@ -286,7 +286,7 @@ def test_label_exclusion_applied_before_smoothing(deployment_scaffold):
 
     # Set up project with exclusion
     s["project"].excluded_classes = ["lion"]
-    s["project"].event_smoothing = True
+    s["project"].sequence_smoothing = True
     # Smoothing needs a classifier to reconcile; without one it is skipped.
     s["project"].classification_model_id = "CLS-TEST"
     s["project"].taxonomic_rollup = False
@@ -372,7 +372,7 @@ def _postprocess_with_lion_excluded(s: dict, *, rollup: bool) -> None:
 
     project = s["project"]
     project.excluded_classes = ["lion"]
-    project.event_smoothing = False
+    project.sequence_smoothing = False
     project.taxonomic_rollup = rollup
     db.flush()
 
@@ -459,7 +459,7 @@ def test_a_box_the_model_rejected_keeps_its_label_with_rollup_off(
         s, label_map={"1": "false detection", "2": "zebra", "3": "giraffe"}
     )
     project = s["project"]
-    project.event_smoothing = False
+    project.sequence_smoothing = False
     project.taxonomic_rollup = False
     db.flush()
 
@@ -1056,7 +1056,7 @@ def test_an_unticked_files_rejected_boxes_reprocess_cleanly(deployment_scaffold)
 
 
 def test_smoothing_is_skipped_without_a_classifier(deployment_scaffold):
-    """Smoothing reconciles classifier labels across an event. With no
+    """Smoothing reconciles classifier labels across a sequence. With no
     classifier there is nothing to smooth, and the smoother would only
     trip over a detector whose class is not "animal" (SharkTrack's
     elasmobranch raised KeyError inside MegaDetector)."""
@@ -1064,7 +1064,7 @@ def test_smoothing_is_skipped_without_a_classifier(deployment_scaffold):
     db, deploy_dir = s["db"], s["deploy_dir"]
     _load_basic_images(s)
     s["project"].classification_model_id = None
-    s["project"].event_smoothing = True
+    s["project"].sequence_smoothing = True
     db.flush()
 
     with (
@@ -1136,7 +1136,7 @@ def test_every_frame_takes_the_species_its_track_voted_for(deployment_scaffold):
     s = deployment_scaffold
     json_path, _ = _tracked_clip(s)
     project = MagicMock(
-        event_smoothing=False, taxonomic_rollup=False, excluded_classes=[],
+        sequence_smoothing=False, taxonomic_rollup=False, excluded_classes=[],
         classification_model_id=None, country_code=None, state_code=None,
         taxa_mapping=None,
     )

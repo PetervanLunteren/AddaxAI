@@ -20,7 +20,7 @@ from app.db.types import UtcDateTime
 
 if TYPE_CHECKING:
     from .detection import Detection
-    from .event_observation import EventObservation
+    from .sequence_observation import SequenceObservation
 
 
 class LabelTaxonomy(Base):
@@ -69,8 +69,8 @@ class LabelTaxonomy(Base):
     detections: Mapped[list["Detection"]] = relationship(
         "Detection", back_populates="label_taxonomy"
     )
-    observations: Mapped[list["EventObservation"]] = relationship(
-        "EventObservation", back_populates="label_taxonomy"
+    observations: Mapped[list["SequenceObservation"]] = relationship(
+        "SequenceObservation", back_populates="label_taxonomy"
     )
 
     __table_args__ = (

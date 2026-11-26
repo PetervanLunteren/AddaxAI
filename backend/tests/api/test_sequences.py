@@ -1,4 +1,4 @@
-"""Tests for the /api/events endpoints."""
+"""Tests for the /api/sequences endpoints."""
 
 import uuid
 from datetime import datetime
@@ -7,94 +7,94 @@ from unittest.mock import patch
 from tests.conftest import (
     make_deployment,
     make_detection,
-    make_event_with_files,
     make_project,
+    make_sequence_with_files,
     make_site,
     make_track,
     make_video_box,
 )
 
 
-def test_generate_events(client, db):
+def test_generate_sequences(client, db):
     p = make_project(db)
     with patch(
-        "app.api.routers.events.event_crud.generate_events_for_project",
+        "app.api.routers.sequences.sequence_crud.generate_sequences_for_project",
         return_value=5,
     ):
-        resp = client.post("/api/events/generate", json={"project_id": p.id})
+        resp = client.post("/api/sequences/generate", json={"project_id": p.id})
     assert resp.status_code == 200
-    assert resp.json()["event_count"] == 5
+    assert resp.json()["sequence_count"] == 5
 
 
-def test_generate_events_project_not_found(client):
+def test_generate_sequences_project_not_found(client):
     with patch(
-        "app.api.routers.events.event_crud.generate_events_for_project",
+        "app.api.routers.sequences.sequence_crud.generate_sequences_for_project",
         side_effect=ValueError("Project not found"),
     ):
-        resp = client.post("/api/events/generate", json={"project_id": "nonexistent"})
+        resp = client.post("/api/sequences/generate", json={"project_id": "nonexistent"})
     assert resp.status_code == 404
 
 
-def test_list_events_empty(client, db):
+def test_list_sequences_empty(client, db):
     p = make_project(db)
-    resp = client.get(f"/api/events?project_id={p.id}")
+    resp = client.get(f"/api/sequences?project_id={p.id}")
     assert resp.status_code == 200
     assert resp.json() == []
 
 
-def test_get_event_count(client, db):
+def test_get_sequence_count(client, db):
     p = make_project(db)
-    resp = client.get(f"/api/events/count?project_id={p.id}")
+    resp = client.get(f"/api/sequences/count?project_id={p.id}")
     assert resp.status_code == 200
     assert resp.json() == {"count": 0, "confirmed": 0}
 
 
 def test_get_verification_stats(client, db):
     p = make_project(db)
-    resp = client.get(f"/api/events/verification-stats?project_id={p.id}")
+    resp = client.get(f"/api/sequences/verification-stats?project_id={p.id}")
     assert resp.status_code == 200
     assert resp.json() == {
-        "events_confirmed": 0,
-        "events_total": 0,
+        "sequences_confirmed": 0,
+        "sequences_total": 0,
         "total_detections": 0,
         "verified_detections": 0,
     }
 
 
-def test_get_event_not_found(client):
-    resp = client.get("/api/events/nonexistent")
+def test_get_sequence_not_found(client):
+    resp = client.get("/api/sequences/nonexistent")
     assert resp.status_code == 404
 
 
-def test_get_event_with_files(client, db):
+def test_get_sequence_with_files(client, db):
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    ev = make_event_with_files(
+    ev = make_sequence_with_files(
         db,
         deployment_id=d.id,
-        event_start_local=datetime(2024, 1, 1, 12, 0),
+        sequence_start_local=datetime(2024, 1, 1, 12, 0),
     )
-    resp = client.get(f"/api/events/{ev.id}")
+    resp = client.get(f"/api/sequences/{ev.id}")
     assert resp.status_code == 200
     data = resp.json()
     assert data["id"] == ev.id
     assert len(data["files"]) == 1
 
 
-def test_get_event_carries_the_videos_tracks_without_a_query_per_file(client, db):
-    """The Counts modal's timeline reads each file's tracks off the event
+def test_get_sequence_carries_the_videos_tracks_without_a_query_per_file(client, db):
+    """The Counts modal's timeline reads each file's tracks off the sequence
     response. They load with the files, not one lazy query per file."""
     from sqlalchemy import event as sa_event
 
-    from app.api.crud.event import get_event_with_files
+    from app.api.crud.sequence import get_sequence_with_files
     from tests.conftest import make_detection, make_file, make_track
 
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    ev = make_event_with_files(
-        db, deployment_id=d.id, event_start_local=datetime(2024, 1, 1, 12, 0)
+    ev = make_sequence_with_files(
+        db, deployment_id=d.id, sequence_start_local=datetime(2024, 1, 1, 12, 0)
     )
     video = make_file(
         db, deployment_id=d.id, file_type="video", file_format="mp4",
@@ -104,8 +104,8 @@ def test_get_event_carries_the_videos_tracks_without_a_query_per_file(client, db
     make_detection(db, file_id=video.id, frame_number=60, track_id=track.id)
     from sqlalchemy import insert
 
-    from app.models.event import event_files
-    db.execute(insert(event_files).values(event_id=ev.id, file_id=video.id, sequence_number=9))
+    from app.models.sequence import sequence_files
+    db.execute(insert(sequence_files).values(sequence_id=ev.id, file_id=video.id, position=9))
     db.commit()
     ev_id, video_id = ev.id, video.id
     db.expunge_all()
@@ -118,35 +118,35 @@ def test_get_event_carries_the_videos_tracks_without_a_query_per_file(client, db
     engine = db.get_bind()
     sa_event.listen(engine, "before_cursor_execute", record)
     try:
-        loaded = get_event_with_files(db, ev_id)
+        loaded = get_sequence_with_files(db, ev_id)
         tracks_by_file = {f.id: [t.track_key for t in f.tracks] for f in loaded.files}
     finally:
         sa_event.remove(engine, "before_cursor_execute", record)
     assert tracks_by_file[video_id] == [1]
-    # event (+deployment, site), files, tracks: three selects. The boxes
+    # sequence (+deployment, site), files, tracks: three selects. The boxes
     # are not loaded here since 2026-11-02; the router fetches each
     # file's cards through `file_payload`.
     assert len(statements) == 3, statements
 
-    resp = client.get(f"/api/events/{ev_id}")
+    resp = client.get(f"/api/sequences/{ev_id}")
     assert resp.status_code == 200
     wire = {f["id"]: f for f in resp.json()["files"]}
     assert [t["track_key"] for t in wire[video_id]["tracks"]] == [1]
 
 
-def test_get_event_files_same_second_sort_alphabetically(client, db):
+def test_get_sequence_files_same_second_sort_alphabetically(client, db):
     # Burst shots often share one second-resolution EXIF timestamp; the
     # filmstrip must then fall back to the sequential camera filenames.
-    from app.models.event import event_files as event_files_table
+    from app.models.sequence import sequence_files as sequence_files_table
     from tests.conftest import make_file
 
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    ev = make_event_with_files(
+    ev = make_sequence_with_files(
         db,
         deployment_id=d.id,
-        event_start_local=datetime(2024, 1, 1, 12, 0),
+        sequence_start_local=datetime(2024, 1, 1, 12, 0),
         files_verified=[],
     )
     ts = datetime(2024, 1, 1, 12, 0, 7)
@@ -159,13 +159,13 @@ def test_get_event_files_same_second_sort_alphabetically(client, db):
             file_path=f"/cam01/{name}",
         )
         db.execute(
-            event_files_table.insert().values(
-                event_id=ev.id, file_id=f.id, sequence_number=seq
+            sequence_files_table.insert().values(
+                sequence_id=ev.id, file_id=f.id, position=seq
             )
         )
     db.commit()
 
-    resp = client.get(f"/api/events/{ev.id}")
+    resp = client.get(f"/api/sequences/{ev.id}")
     assert resp.status_code == 200
     paths = [f["file_path"] for f in resp.json()["files"]]
     assert paths == [
@@ -175,17 +175,17 @@ def test_get_event_files_same_second_sort_alphabetically(client, db):
     ]
 
 
-def test_get_adjacent_events(client, db):
+def test_get_adjacent_sequences(client, db):
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    ev = make_event_with_files(
+    ev = make_sequence_with_files(
         db,
         deployment_id=d.id,
-        event_start_local=datetime(2024, 1, 1, 12, 0),
+        sequence_start_local=datetime(2024, 1, 1, 12, 0),
     )
     resp = client.get(
-        f"/api/events/{ev.id}/adjacent?project_id={p.id}"
+        f"/api/sequences/{ev.id}/adjacent?project_id={p.id}"
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -193,37 +193,37 @@ def test_get_adjacent_events(client, db):
     assert "next_id" in data
 
 
-def _event_with_detection(db, deployment_id, start):
-    """Helper: event + one file + one visible detection so the project
-    threshold filter doesn't drop the event."""
-    ev = make_event_with_files(
+def _sequence_with_detection(db, deployment_id, start):
+    """Helper: sequence + one file + one visible detection so the project
+    threshold filter doesn't drop the sequence."""
+    ev = make_sequence_with_files(
         db,
         deployment_id=deployment_id,
-        event_start_local=start,
+        sequence_start_local=start,
     )
     make_detection(db, file_id=ev.files[0].id, confidence=0.9)
     db.commit()
     return ev
 
 
-def test_adjacent_events_walk_through_events_without_a_capture_time(client, db):
-    """Most BRUV clips carry no capture time, so their events sort by
+def test_adjacent_sequences_walk_through_sequences_without_a_capture_time(client, db):
+    """Most BRUV clips carry no capture time, so their sequences sort by
     SQLite's rule, NULL before every value: last under "newest", first
     under "oldest", by id among themselves. The arrows must reach them
     and leave them; until 2026-11-03 asking for the neighbours of such
-    an event answered 500, and the dated events never pointed at them."""
+    a sequence answered 500, and the dated sequences never pointed at them."""
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    newer = _event_with_detection(db, d.id, datetime(2024, 1, 2, 12, 0))
-    older = _event_with_detection(db, d.id, datetime(2024, 1, 1, 12, 0))
-    undated = _event_with_detection(db, d.id, datetime(2024, 1, 3, 12, 0))
-    undated.event_start_local = None
-    undated.event_end_local = None
+    newer = _sequence_with_detection(db, d.id, datetime(2024, 1, 2, 12, 0))
+    older = _sequence_with_detection(db, d.id, datetime(2024, 1, 1, 12, 0))
+    undated = _sequence_with_detection(db, d.id, datetime(2024, 1, 3, 12, 0))
+    undated.sequence_start_local = None
+    undated.sequence_end_local = None
     db.commit()
 
-    def adjacent(event_id, sort):
-        resp = client.get(f"/api/events/{event_id}/adjacent?project_id={p.id}&sort={sort}")
+    def adjacent(sequence_id, sort):
+        resp = client.get(f"/api/sequences/{sequence_id}/adjacent?project_id={p.id}&sort={sort}")
         assert resp.status_code == 200, resp.text
         body = resp.json()
         return body["previous_id"], body["next_id"]
@@ -238,49 +238,49 @@ def test_adjacent_events_walk_through_events_without_a_capture_time(client, db):
     assert adjacent(newer.id, "oldest") == (older.id, None)
 
 
-def test_events_filter_flagged_exists_on_any_file(client, db):
+def test_sequences_filter_flagged_exists_on_any_file(client, db):
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    ev_with_flag = _event_with_detection(db, d.id, datetime(2024, 1, 1, 12, 0))
-    ev_without = _event_with_detection(db, d.id, datetime(2024, 1, 2, 12, 0))
+    ev_with_flag = _sequence_with_detection(db, d.id, datetime(2024, 1, 1, 12, 0))
+    ev_without = _sequence_with_detection(db, d.id, datetime(2024, 1, 2, 12, 0))
     flagged_file = ev_with_flag.files[0]
     client.patch(f"/api/files/{flagged_file.id}", json={"flagged": True})
 
-    resp = client.get(f"/api/events?project_id={p.id}&flagged=flagged")
+    resp = client.get(f"/api/sequences?project_id={p.id}&flagged=flagged")
     assert resp.status_code == 200
     ids = [row["id"] for row in resp.json()]
     assert ev_with_flag.id in ids
     assert ev_without.id not in ids
 
 
-def test_events_filter_favorited_exists_on_any_file(client, db):
+def test_sequences_filter_favorited_exists_on_any_file(client, db):
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    ev_fav = _event_with_detection(db, d.id, datetime(2024, 1, 1, 12, 0))
-    ev_none = _event_with_detection(db, d.id, datetime(2024, 1, 2, 12, 0))
+    ev_fav = _sequence_with_detection(db, d.id, datetime(2024, 1, 1, 12, 0))
+    ev_none = _sequence_with_detection(db, d.id, datetime(2024, 1, 2, 12, 0))
     fav_file = ev_fav.files[0]
     client.patch(f"/api/files/{fav_file.id}", json={"favorited": True})
 
-    resp = client.get(f"/api/events?project_id={p.id}&favorited=favorited")
+    resp = client.get(f"/api/sequences?project_id={p.id}&favorited=favorited")
     assert resp.status_code == 200
     ids = [row["id"] for row in resp.json()]
     assert ev_fav.id in ids
     assert ev_none.id not in ids
 
 
-def test_events_filter_label_confidence_range(client, db):
+def test_sequences_filter_label_confidence_range(client, db):
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    ev_high = make_event_with_files(
+    ev_high = make_sequence_with_files(
         db, deployment_id=d.id,
-        event_start_local=datetime(2024, 1, 1, 12, 0),
+        sequence_start_local=datetime(2024, 1, 1, 12, 0),
     )
-    ev_low = make_event_with_files(
+    ev_low = make_sequence_with_files(
         db, deployment_id=d.id,
-        event_start_local=datetime(2024, 1, 2, 12, 0),
+        sequence_start_local=datetime(2024, 1, 2, 12, 0),
     )
     make_detection(
         db, file_id=ev_high.files[0].id, confidence=0.9, label_confidence=0.9,
@@ -291,27 +291,27 @@ def test_events_filter_label_confidence_range(client, db):
     db.commit()
 
     resp = client.get(
-        f"/api/events?project_id={p.id}&min_label_confidence=0.5"
+        f"/api/sequences?project_id={p.id}&min_label_confidence=0.5"
     )
     ids = [row["id"] for row in resp.json()]
     assert ev_high.id in ids
     assert ev_low.id not in ids
 
 
-def test_events_filter_label_confidence_keeps_unclassified(client, db):
+def test_sequences_filter_label_confidence_keeps_unclassified(client, db):
     """The classification range filters classified boxes only. A box the
     classifier never scored passes it at both ends: it used to fail the
     SQL comparison and vanish the moment the slider left its floor."""
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    classified = make_event_with_files(
+    classified = make_sequence_with_files(
         db, deployment_id=d.id,
-        event_start_local=datetime(2024, 1, 1, 12, 0),
+        sequence_start_local=datetime(2024, 1, 1, 12, 0),
     )
-    unclassified = make_event_with_files(
+    unclassified = make_sequence_with_files(
         db, deployment_id=d.id,
-        event_start_local=datetime(2024, 1, 2, 12, 0),
+        sequence_start_local=datetime(2024, 1, 2, 12, 0),
     )
     make_detection(
         db, file_id=classified.files[0].id, confidence=0.9, label_confidence=0.3,
@@ -322,92 +322,92 @@ def test_events_filter_label_confidence_keeps_unclassified(client, db):
     db.commit()
 
     resp = client.get(
-        f"/api/events?project_id={p.id}&min_label_confidence=0.5"
+        f"/api/sequences?project_id={p.id}&min_label_confidence=0.5"
     )
     ids = [row["id"] for row in resp.json()]
     assert classified.id not in ids
     assert unclassified.id in ids
 
     resp = client.get(
-        f"/api/events?project_id={p.id}&max_label_confidence=0.2"
+        f"/api/sequences?project_id={p.id}&max_label_confidence=0.2"
     )
     ids = [row["id"] for row in resp.json()]
     assert classified.id not in ids
     assert unclassified.id in ids
 
 
-def test_events_filter_empty_show_only_and_hide(client, db):
-    """Empty event = every file in it has observation_type='blank'."""
+def test_sequences_filter_empty_show_only_and_hide(client, db):
+    """Empty sequence = every file in it has observation_type='blank'."""
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    ev_animal = _event_with_detection(db, d.id, datetime(2024, 1, 1, 12, 0))
-    ev_blank = _event_with_detection(db, d.id, datetime(2024, 1, 2, 12, 0))
+    ev_animal = _sequence_with_detection(db, d.id, datetime(2024, 1, 1, 12, 0))
+    ev_blank = _sequence_with_detection(db, d.id, datetime(2024, 1, 2, 12, 0))
     # Mark all files in ev_blank as observation_type='blank'.
     for f in ev_blank.files:
         f.observation_type = "blank"
     db.commit()
 
-    resp = client.get(f"/api/events?project_id={p.id}&empty=show_only")
+    resp = client.get(f"/api/sequences?project_id={p.id}&empty=show_only")
     ids = [row["id"] for row in resp.json()]
     assert ev_blank.id in ids
     assert ev_animal.id not in ids
 
-    resp = client.get(f"/api/events?project_id={p.id}&empty=hide")
+    resp = client.get(f"/api/sequences?project_id={p.id}&empty=hide")
     ids = [row["id"] for row in resp.json()]
     assert ev_animal.id in ids
     assert ev_blank.id not in ids
 
 
-def test_event_summary_aggregates_any_file_flagged_and_favorited(client, db):
+def test_sequence_summary_aggregates_any_file_flagged_and_favorited(client, db):
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    ev = _event_with_detection(db, d.id, datetime(2024, 1, 1, 12, 0))
+    ev = _sequence_with_detection(db, d.id, datetime(2024, 1, 1, 12, 0))
     f = ev.files[0]
     client.patch(f"/api/files/{f.id}", json={"flagged": True, "favorited": True})
 
-    resp = client.get(f"/api/events?project_id={p.id}")
+    resp = client.get(f"/api/sequences?project_id={p.id}")
     assert resp.status_code == 200
     summary = next(row for row in resp.json() if row["id"] == ev.id)
     assert summary["any_file_flagged"] is True
     assert summary["any_file_favorited"] is True
 
 
-def _setup_three_events(db):
-    """Three events with distinct start times for sort tests."""
+def _setup_three_sequences(db):
+    """Three sequences with distinct start times for sort tests."""
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    older = _event_with_detection(db, d.id, datetime(2024, 1, 1, 12, 0))
-    middle = _event_with_detection(db, d.id, datetime(2024, 2, 1, 12, 0))
-    newer = _event_with_detection(db, d.id, datetime(2024, 3, 1, 12, 0))
+    older = _sequence_with_detection(db, d.id, datetime(2024, 1, 1, 12, 0))
+    middle = _sequence_with_detection(db, d.id, datetime(2024, 2, 1, 12, 0))
+    newer = _sequence_with_detection(db, d.id, datetime(2024, 3, 1, 12, 0))
     return p, older, middle, newer
 
 
-def test_events_sort_oldest(client, db):
-    p, older, middle, newer = _setup_three_events(db)
+def test_sequences_sort_oldest(client, db):
+    p, older, middle, newer = _setup_three_sequences(db)
 
-    resp = client.get(f"/api/events?project_id={p.id}&sort=oldest")
+    resp = client.get(f"/api/sequences?project_id={p.id}&sort=oldest")
     ids = [row["id"] for row in resp.json()]
     assert ids == [older.id, middle.id, newer.id]
 
 
-def test_events_sort_random_stable_with_seed(client, db):
-    p, *_ = _setup_three_events(db)
+def test_sequences_sort_random_stable_with_seed(client, db):
+    p, *_ = _setup_three_sequences(db)
 
-    a = client.get(f"/api/events?project_id={p.id}&sort=random&seed=42").json()
-    b = client.get(f"/api/events?project_id={p.id}&sort=random&seed=42").json()
+    a = client.get(f"/api/sequences?project_id={p.id}&sort=random&seed=42").json()
+    b = client.get(f"/api/sequences?project_id={p.id}&sort=random&seed=42").json()
     assert [r["id"] for r in a] == [r["id"] for r in b]
 
-    # Three events have 6 permutations, so any specific seed pair has a
+    # Three sequences have 6 permutations, so any specific seed pair has a
     # 1/6 chance of producing the same order. Probe seeds until we find
     # one that genuinely differs from seed 42, rather than asserting a
     # hard-coded pair and hoping for the best.
     base_ids = [r["id"] for r in a]
     for trial in range(43, 100):
         other = client.get(
-            f"/api/events?project_id={p.id}&sort=random&seed={trial}",
+            f"/api/sequences?project_id={p.id}&sort=random&seed={trial}",
         ).json()
         if [r["id"] for r in other] != base_ids:
             break
@@ -418,18 +418,18 @@ def test_events_sort_random_stable_with_seed(client, db):
         )
 
 
-def test_events_sort_cls_low_pushes_nulls_last(client, db):
+def test_sequences_sort_cls_low_pushes_nulls_last(client, db):
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    low = make_event_with_files(
-        db, deployment_id=d.id, event_start_local=datetime(2024, 1, 1, 12, 0),
+    low = make_sequence_with_files(
+        db, deployment_id=d.id, sequence_start_local=datetime(2024, 1, 1, 12, 0),
     )
-    high = make_event_with_files(
-        db, deployment_id=d.id, event_start_local=datetime(2024, 2, 1, 12, 0),
+    high = make_sequence_with_files(
+        db, deployment_id=d.id, sequence_start_local=datetime(2024, 2, 1, 12, 0),
     )
-    null = make_event_with_files(
-        db, deployment_id=d.id, event_start_local=datetime(2024, 3, 1, 12, 0),
+    null = make_sequence_with_files(
+        db, deployment_id=d.id, sequence_start_local=datetime(2024, 3, 1, 12, 0),
     )
     make_detection(
         db, file_id=low.files[0].id, confidence=0.9, label_confidence=0.2,
@@ -442,44 +442,44 @@ def test_events_sort_cls_low_pushes_nulls_last(client, db):
     )
     db.commit()
 
-    resp = client.get(f"/api/events?project_id={p.id}&sort=cls_low")
+    resp = client.get(f"/api/sequences?project_id={p.id}&sort=cls_low")
     ids = [row["id"] for row in resp.json()]
     assert ids == [low.id, high.id, null.id]
 
 
-def test_events_adjacent_respects_sort(client, db):
-    p, older, middle, newer = _setup_three_events(db)
+def test_sequences_adjacent_respects_sort(client, db):
+    p, older, middle, newer = _setup_three_sequences(db)
 
     # Oldest-first: opening "older" → next is "middle".
     resp = client.get(
-        f"/api/events/{older.id}/adjacent?project_id={p.id}&sort=oldest"
+        f"/api/sequences/{older.id}/adjacent?project_id={p.id}&sort=oldest"
     ).json()
     assert resp["next_id"] == middle.id
     assert resp["previous_id"] is None
 
     # Newest-first (default): opening "older" → next is None.
     resp = client.get(
-        f"/api/events/{older.id}/adjacent?project_id={p.id}"
+        f"/api/sequences/{older.id}/adjacent?project_id={p.id}"
     ).json()
     assert resp["next_id"] is None
     assert resp["previous_id"] == middle.id
 
 
-def test_events_sort_invalid_value_returns_400(client, db):
+def test_sequences_sort_invalid_value_returns_400(client, db):
     p = make_project(db)
     db.commit()
 
-    resp = client.get(f"/api/events?project_id={p.id}&sort=bogus")
+    resp = client.get(f"/api/sequences?project_id={p.id}&sort=bogus")
     assert resp.status_code == 400
 
 
 # ---------------------------------------------------------------------------
-# Collage file IDs (event card collage layout)
+# Collage file IDs (sequence card collage layout)
 # ---------------------------------------------------------------------------
 
 from types import SimpleNamespace  # noqa: E402
 
-from app.api.crud.event import _build_collage_file_ids  # noqa: E402
+from app.api.crud.sequence import _build_collage_file_ids  # noqa: E402
 
 
 def _fake_file(file_id: str, confidences: list[float]) -> SimpleNamespace:
@@ -538,35 +538,35 @@ def test_collage_handles_files_with_no_detections():
     assert _build_collage_file_ids([], files) == ["b", "a"]
 
 
-def test_event_summary_includes_collage_file_ids(client, db):
-    """The events list endpoint exposes collage_file_ids on every summary."""
+def test_sequence_summary_includes_collage_file_ids(client, db):
+    """The sequences list endpoint exposes collage_file_ids on every summary."""
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    ev = _event_with_detection(db, d.id, datetime(2024, 1, 1, 12, 0))
+    ev = _sequence_with_detection(db, d.id, datetime(2024, 1, 1, 12, 0))
 
-    resp = client.get(f"/api/events?project_id={p.id}")
+    resp = client.get(f"/api/sequences?project_id={p.id}")
     assert resp.status_code == 200
     body = resp.json()
     assert len(body) == 1
     summary = body[0]
     assert summary["id"] == ev.id
-    # No EventObservation rows in this fixture, so the only padding source
+    # No SequenceObservation rows in this fixture, so the only padding source
     # is the file by max detection confidence: one file → one collage tile.
     assert summary["collage_file_ids"] == [ev.files[0].id]
 
 
-def test_event_verify_and_count_endpoints(client, db):
+def test_sequence_verify_and_count_endpoints(client, db):
     """The Observations-page flow: read counts, verify, edit a count
     (which clears the sign-off), and add a species the AI missed."""
-    from app.api.crud.event_observation import calculate_max_n_for_event
+    from app.api.crud.sequence_observation import calculate_max_n_for_sequence
     from app.models.label_taxonomy import LabelTaxonomy
 
     p = make_project(db, counting_threshold=0.5)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    ev = make_event_with_files(
-        db, deployment_id=d.id, event_start_local=datetime(2024, 1, 1, 12)
+    ev = make_sequence_with_files(
+        db, deployment_id=d.id, sequence_start_local=datetime(2024, 1, 1, 12)
     )
     det = make_detection(
         db, file_id=ev.files[0].id, category="animal", label="cow",
@@ -586,10 +586,10 @@ def test_event_verify_and_count_endpoints(client, db):
     # to reach the database before it runs. Every production caller has
     # committed by this point.
     db.flush()
-    calculate_max_n_for_event(db, ev.id, 0.5)
+    calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.commit()
 
-    data = client.get(f"/api/events/{ev.id}").json()
+    data = client.get(f"/api/sequences/{ev.id}").json()
     assert data["confirmed"] is False
     assert len(data["observations"]) == 1
     obs = data["observations"][0]
@@ -599,20 +599,20 @@ def test_event_verify_and_count_endpoints(client, db):
     obs_id = obs["id"]
 
     data = client.patch(
-        f"/api/events/{ev.id}/confirm", json={"confirmed": True}
+        f"/api/sequences/{ev.id}/confirm", json={"confirmed": True}
     ).json()
     assert data["confirmed"] is True
 
     # Bumping a count clears the sign-off.
     data = client.patch(
-        f"/api/events/{ev.id}/observations/{obs_id}", json={"count": 3}
+        f"/api/sequences/{ev.id}/observations/{obs_id}", json={"count": 3}
     ).json()
     assert data["observations"][0]["effective_count"] == 3
     assert data["confirmed"] is False
 
     # Add a species the AI never detected.
     data = client.post(
-        f"/api/events/{ev.id}/observations",
+        f"/api/sequences/{ev.id}/observations",
         json={"category": "animal", "label": "fox", "count": 2},
     ).json()
     by_label = {o["label"]: o for o in data["observations"]}
@@ -620,8 +620,8 @@ def test_event_verify_and_count_endpoints(client, db):
 
     # Reset to the AI proposal: the human-only fox row is gone, the cow
     # override is cleared back to its MaxN, and the sign-off is cleared.
-    client.patch(f"/api/events/{ev.id}/confirm", json={"confirmed": True})
-    data = client.post(f"/api/events/{ev.id}/observations/reset").json()
+    client.patch(f"/api/sequences/{ev.id}/confirm", json={"confirmed": True})
+    data = client.post(f"/api/sequences/{ev.id}/observations/reset").json()
     assert data["confirmed"] is False
     assert len(data["observations"]) == 1
     assert data["observations"][0]["label"] == "cow"
@@ -651,7 +651,7 @@ def test_filter_options_reports_min_label_confidence(client, db):
     box(dog, 0.9, 0.42)
     box(cat, 0.8, 0.30)
     box(cat, 0.2, 0.05)  # below the threshold: not shown
-    url = f"/api/events/filter-options?project_id={p.id}"
+    url = f"/api/sequences/filter-options?project_id={p.id}"
     assert client.get(url).json()["min_label_confidence"] == 0.30
 
     box(dog, 0.2, 0.07, verified=True)  # below, but verified: shown
@@ -662,7 +662,7 @@ def test_filter_options_min_label_confidence_null_when_unclassified(client, db):
     from tests.conftest import make_project
 
     p = make_project(db)
-    resp = client.get(f"/api/events/filter-options?project_id={p.id}")
+    resp = client.get(f"/api/sequences/filter-options?project_id={p.id}")
     assert resp.status_code == 200
     assert resp.json()["min_label_confidence"] is None
 
@@ -691,7 +691,7 @@ def test_filter_options_hides_video_labels_without_a_card(db):
     ungated it offered species living only on boxes the grid never
     renders (an untracked box has no card), and picking one returned
     nothing."""
-    from app.api.crud.event import get_filter_options
+    from app.api.crud.sequence import get_filter_options
     from app.models import File
 
     p = make_project(db, classification_model_id="EUR-DF-v1-3")
@@ -728,7 +728,7 @@ def test_filter_options_hides_video_labels_without_a_card(db):
 
 def test_filter_options_keeps_every_image_label(db):
     """Images have no frames, so nothing about the gate may touch them."""
-    from app.api.crud.event import get_filter_options
+    from app.api.crud.sequence import get_filter_options
     from app.models import File
 
     p = make_project(db, classification_model_id="EUR-DF-v1-3")
@@ -757,15 +757,15 @@ def test_filter_options_keeps_every_image_label(db):
 # ── Verification progress counts only what the grid can show ─────────
 
 
-def _video_event(db, project, frames, card_frame=10, verified_frames=()):
-    """One event holding one video with one `deer` track: a box on each
+def _video_sequence(db, project, frames, card_frame=10, verified_frames=()):
+    """One sequence holding one video with one `deer` track: a box on each
     of `frames`, the track's representative frame (its card) being
     `card_frame`, which must be one of them. Boxes whose frame is in
     `verified_frames` are marked verified. The cover picture is the same
     frame; nothing is judged on it."""
     from app.models import File
-    from app.models.event import Event
-    from app.models.event import event_files as event_files_table
+    from app.models.sequence import Sequence
+    from app.models.sequence import sequence_files as sequence_files_table
 
     s = make_site(db, project_id=project.id)
     d = make_deployment(db, site_id=s.id)
@@ -803,18 +803,18 @@ def _video_event(db, project, frames, card_frame=10, verified_frames=()):
             verified=frame in verified_frames,
         )
 
-    ev = Event(
+    ev = Sequence(
         id=f"ev-{uuid.uuid4().hex[:8]}",
         deployment_id=d.id,
-        event_start_local=datetime(2024, 1, 1, 12, 0),
-        event_end_local=datetime(2024, 1, 1, 12, 0),
+        sequence_start_local=datetime(2024, 1, 1, 12, 0),
+        sequence_end_local=datetime(2024, 1, 1, 12, 0),
         file_count=1,
     )
     db.add(ev)
     db.flush()
     db.execute(
-        event_files_table.insert().values(
-            event_id=ev.id, file_id=f.id, sequence_number=0
+        sequence_files_table.insert().values(
+            sequence_id=ev.id, file_id=f.id, position=0
         )
     )
     db.flush()
@@ -828,9 +828,9 @@ def test_verification_stats_count_one_card_per_track(client, db):
     left a video project stuck at 19% with every card on screen already
     verified, and unable to reach 100% however much work the user did."""
     p = make_project(db, classification_model_id="EUR-DF-v1-3")
-    _video_event(db, p, frames=[5, 10, 20])
+    _video_sequence(db, p, frames=[5, 10, 20])
 
-    resp = client.get(f"/api/events/verification-stats?project_id={p.id}")
+    resp = client.get(f"/api/sequences/verification-stats?project_id={p.id}")
     assert resp.status_code == 200
     assert resp.json()["total_detections"] == 1
 
@@ -838,10 +838,10 @@ def test_verification_stats_count_one_card_per_track(client, db):
 def test_verification_stats_reach_100_percent_when_grid_is_done(client, db):
     """Verifying every card the grid shows must read as fully verified."""
     p = make_project(db, classification_model_id="EUR-DF-v1-3")
-    _video_event(db, p, frames=[5, 10, 20], verified_frames=(10,))
+    _video_sequence(db, p, frames=[5, 10, 20], verified_frames=(10,))
 
     data = client.get(
-        f"/api/events/verification-stats?project_id={p.id}"
+        f"/api/sequences/verification-stats?project_id={p.id}"
     ).json()
     assert data["verified_detections"] == 1
     assert data["total_detections"] == 1
@@ -854,10 +854,10 @@ def test_verification_stats_do_not_count_a_verified_sibling_twice(client, db):
     of a verified track into a row of its own and push the denominator
     back up the moment the user did the work."""
     p = make_project(db, classification_model_id="EUR-DF-v1-3")
-    _video_event(db, p, frames=[5, 10, 20], verified_frames=(5, 10))
+    _video_sequence(db, p, frames=[5, 10, 20], verified_frames=(5, 10))
 
     data = client.get(
-        f"/api/events/verification-stats?project_id={p.id}"
+        f"/api/sequences/verification-stats?project_id={p.id}"
     ).json()
     assert data["total_detections"] == 1
     assert data["verified_detections"] == 1
@@ -866,8 +866,8 @@ def test_verification_stats_do_not_count_a_verified_sibling_twice(client, db):
 def test_verification_stats_keep_every_image_detection(client, db):
     """Images have no frames, so nothing about the gate may touch them."""
     from app.models import File
-    from app.models.event import Event
-    from app.models.event import event_files as event_files_table
+    from app.models.sequence import Sequence
+    from app.models.sequence import sequence_files as sequence_files_table
 
     p = make_project(db, classification_model_id="EUR-DF-v1-3")
     s = make_site(db, project_id=p.id)
@@ -885,24 +885,24 @@ def test_verification_stats_keep_every_image_detection(client, db):
     for _ in range(3):
         make_detection(db, file_id=f.id, confidence=0.9)
 
-    ev = Event(
+    ev = Sequence(
         id="ev-img-verification-stats",
         deployment_id=d.id,
-        event_start_local=datetime(2024, 1, 1, 12, 0),
-        event_end_local=datetime(2024, 1, 1, 12, 0),
+        sequence_start_local=datetime(2024, 1, 1, 12, 0),
+        sequence_end_local=datetime(2024, 1, 1, 12, 0),
         file_count=1,
     )
     db.add(ev)
     db.flush()
     db.execute(
-        event_files_table.insert().values(
-            event_id=ev.id, file_id=f.id, sequence_number=0
+        sequence_files_table.insert().values(
+            sequence_id=ev.id, file_id=f.id, position=0
         )
     )
     db.flush()
 
     data = client.get(
-        f"/api/events/verification-stats?project_id={p.id}"
+        f"/api/sequences/verification-stats?project_id={p.id}"
     ).json()
     assert data["total_detections"] == 3
 
@@ -911,7 +911,7 @@ def test_progress_by_label_counts_one_card_per_track(client, db):
     """The dashboard's per-species rows break down the same population as
     the bar above them, so they carry the same gate."""
     p = make_project(db, classification_model_id="EUR-DF-v1-3")
-    _f, tax = _video_event(db, p, frames=[5, 10, 20], verified_frames=(10,))
+    _f, tax = _video_sequence(db, p, frames=[5, 10, 20], verified_frames=(10,))
 
     resp = client.get(
         f"/api/statistics/verification-progress-by-label?project_id={p.id}"
@@ -922,76 +922,76 @@ def test_progress_by_label_counts_one_card_per_track(client, db):
     assert rows[tax.scientific_name]["verified"] == 1
 
 
-def _blank_event(db, project, when=datetime(2024, 1, 2, 12, 0)):
-    """One event whose only file is blank: no detections, and the
+def _blank_sequence(db, project, when=datetime(2024, 1, 2, 12, 0)):
+    """One sequence whose only file is blank: no detections, and the
     observation type the ingest writes when nothing passed."""
-    from app.models.event import Event
-    from app.models.event import event_files as event_files_table
+    from app.models.sequence import Sequence
+    from app.models.sequence import sequence_files as sequence_files_table
     from tests.conftest import make_file
 
     s = make_site(db, project_id=project.id)
     d = make_deployment(db, site_id=s.id)
     f = make_file(db, deployment_id=d.id, observation_type="blank")
 
-    ev = Event(
+    ev = Sequence(
         id=f"ev-blank-{uuid.uuid4().hex[:8]}",
         deployment_id=d.id,
-        event_start_local=when,
-        event_end_local=when,
+        sequence_start_local=when,
+        sequence_end_local=when,
         file_count=1,
     )
     db.add(ev)
     db.flush()
     db.execute(
-        event_files_table.insert().values(
-            event_id=ev.id, file_id=f.id, sequence_number=0
+        sequence_files_table.insert().values(
+            sequence_id=ev.id, file_id=f.id, position=0
         )
     )
     db.flush()
     return ev
 
 
-def test_verification_stats_leave_out_the_blank_events(client, db):
-    """The Counts grid hides all-blank events, so the pill's denominator
+def test_verification_stats_leave_out_the_blank_sequences(client, db):
+    """The Counts grid hides all-blank sequences, so the pill's denominator
     must not hold them either: counting them would offer the user work
     they are never shown and can never confirm, and an 80%-blank project
     could never pass 20% "counts confirmed".
 
     What delivers this is the project threshold clause, not the `empty`
-    filter: `_apply_event_filters` keeps only events holding at least one
-    detection over the floor, and a blank event has none. So the property
+    filter: `_apply_sequence_filters` keeps only sequences holding at least one
+    detection over the floor, and a blank sequence has none. So the property
     is pinned here rather than in the filter, because a change to that
     clause is what would silently break it."""
     p = make_project(db, classification_model_id="EUR-DF-v1-3")
-    _video_event(db, p, frames=[10])
-    _blank_event(db, p)
+    _video_sequence(db, p, frames=[10])
+    _blank_sequence(db, p)
 
     data = client.get(
-        f"/api/events/verification-stats?project_id={p.id}"
+        f"/api/sequences/verification-stats?project_id={p.id}"
     ).json()
-    assert data["events_total"] == 1
+    assert data["sequences_total"] == 1
 
 
 def test_verification_stats_reach_100_percent_with_blanks_around(client, db):
-    """Confirming every event the grid shows must read as fully done,
-    however many blank events sit beside them."""
-    from app.models.event import Event
+    """Confirming every sequence the grid shows must read as fully done,
+    however many blank sequences sit beside them."""
+    from app.models.sequence import Sequence
 
     p = make_project(db, classification_model_id="EUR-DF-v1-3")
-    _video_event(db, p, frames=[10])
-    _blank_event(db, p)
-    db.query(Event).filter(
-        Event.id.notlike("ev-blank-%")
+    _video_sequence(db, p, frames=[10])
+    _blank_sequence(db, p)
+    db.query(Sequence).filter(
+        Sequence.id.notlike("ev-blank-%")
     ).update({"confirmed": True}, synchronize_session=False)
     db.flush()
 
     data = client.get(
-        f"/api/events/verification-stats?project_id={p.id}"
+        f"/api/sequences/verification-stats?project_id={p.id}"
     ).json()
-    assert data["events_confirmed"] == 1
-    assert data["events_total"] == 1
+    assert data["sequences_confirmed"] == 1
+    assert data["sequences_total"] == 1
     # The Counts page and the dashboard read the same two numbers here.
-    count = client.get(f"/api/events/count?project_id={p.id}").json()
+    count = client.get(f"/api/sequences/count?project_id={p.id}").json()
     assert count == {"count": 1, "confirmed": 1}
 
 
@@ -999,13 +999,13 @@ def test_observation_attributes_and_split_endpoints(client, db):
     """The cohort flow over the wire: the four fields are on every row,
     a demographic edit unconfirms, a note does not, a value outside the
     vocabulary is refused, and split gives a second row of the species."""
-    from app.api.crud.event_observation import calculate_max_n_for_event
+    from app.api.crud.sequence_observation import calculate_max_n_for_sequence
 
     p = make_project(db, counting_threshold=0.5)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    ev = make_event_with_files(
-        db, deployment_id=d.id, event_start_local=datetime(2024, 1, 1, 12)
+    ev = make_sequence_with_files(
+        db, deployment_id=d.id, sequence_start_local=datetime(2024, 1, 1, 12)
     )
     for _ in range(3):
         make_detection(
@@ -1013,10 +1013,10 @@ def test_observation_attributes_and_split_endpoints(client, db):
             confidence=0.9,
         )
     db.flush()
-    calculate_max_n_for_event(db, ev.id, 0.5)
+    calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.commit()
 
-    data = client.get(f"/api/events/{ev.id}").json()
+    data = client.get(f"/api/sequences/{ev.id}").json()
     (obs,) = data["observations"]
     # The wire carries the four fields, null until set (a frontend type is
     # not evidence; see DEVELOPERS.md).
@@ -1025,16 +1025,16 @@ def test_observation_attributes_and_split_endpoints(client, db):
     }
     assert data["notes"] is None
 
-    client.patch(f"/api/events/{ev.id}/confirm", json={"confirmed": True})
-    # A note is on the event and never unconfirms.
+    client.patch(f"/api/sequences/{ev.id}/confirm", json={"confirmed": True})
+    # A note is on the sequence and never unconfirms.
     data = client.patch(
-        f"/api/events/{ev.id}/notes", json={"notes": "by the fence"}
+        f"/api/sequences/{ev.id}/notes", json={"notes": "by the fence"}
     ).json()
     assert data["confirmed"] is True
     assert data["notes"] == "by the fence"
-    assert client.patch("/api/events/nope/notes", json={"notes": "x"}).status_code == 404
+    assert client.patch("/api/sequences/nope/notes", json={"notes": "x"}).status_code == 404
 
-    url = f"/api/events/{ev.id}/observations/{obs['id']}/attributes"
+    url = f"/api/sequences/{ev.id}/observations/{obs['id']}/attributes"
 
     data = client.patch(url, json={"sex": "male", "behavior": "foraging"}).json()
     assert data["confirmed"] is False
@@ -1049,34 +1049,34 @@ def test_observation_attributes_and_split_endpoints(client, db):
     assert client.patch(url, json={"life_stage": "calf"}).status_code == 422
 
     data = client.post(
-        f"/api/events/{ev.id}/observations/{obs['id']}/split"
+        f"/api/sequences/{ev.id}/observations/{obs['id']}/split"
     ).json()
     counts = [(o["label"], o["effective_count"], o["max_n"]) for o in data["observations"]]
     assert counts == [("cow", 2, 3), ("cow", 1, 0)]
 
     assert client.post(
-        f"/api/events/{ev.id}/observations/nope/split"
+        f"/api/sequences/{ev.id}/observations/nope/split"
     ).status_code == 404
 
 
-def test_observation_endpoints_refuse_a_row_from_another_event(client, db):
-    from app.api.crud.event_observation import calculate_max_n_for_event
+def test_observation_endpoints_refuse_a_row_from_another_sequence(client, db):
+    from app.api.crud.sequence_observation import calculate_max_n_for_sequence
 
     p = make_project(db, counting_threshold=0.5)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    ev = make_event_with_files(
-        db, deployment_id=d.id, event_start_local=datetime(2024, 1, 1, 12)
+    ev = make_sequence_with_files(
+        db, deployment_id=d.id, sequence_start_local=datetime(2024, 1, 1, 12)
     )
-    other = make_event_with_files(
-        db, deployment_id=d.id, event_start_local=datetime(2024, 1, 2, 12)
+    other = make_sequence_with_files(
+        db, deployment_id=d.id, sequence_start_local=datetime(2024, 1, 2, 12)
     )
     make_detection(db, file_id=ev.files[0].id, category="animal", label="cow", confidence=0.9)
     db.flush()
-    calculate_max_n_for_event(db, ev.id, 0.5)
+    calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.commit()
-    (obs,) = client.get(f"/api/events/{ev.id}").json()["observations"]
-    base = f"/api/events/{other.id}/observations/{obs['id']}"
+    (obs,) = client.get(f"/api/sequences/{ev.id}").json()["observations"]
+    base = f"/api/sequences/{other.id}/observations/{obs['id']}"
     assert client.post(f"{base}/split").status_code == 404
     assert client.patch(f"{base}/attributes", json={"sex": "male"}).status_code == 404
     assert client.patch(base, json={"count": 4}).status_code == 404
@@ -1085,23 +1085,23 @@ def test_observation_endpoints_refuse_a_row_from_another_event(client, db):
         f"{base}/relabel", json={"category": "animal", "label": "deer"}
     )
     assert relabel.status_code == 404
-    (unchanged,) = client.get(f"/api/events/{ev.id}").json()["observations"]
+    (unchanged,) = client.get(f"/api/sequences/{ev.id}").json()["observations"]
     assert (unchanged["effective_count"], unchanged["sex"]) == (1, None)
 
 
 def test_set_human_observations_replaces_the_human_layer(client, db):
-    """"Same as last" over the wire: the event's visible rows become
+    """"Same as last" over the wire: the sequence's visible rows become
     exactly the posted cohorts. A demographic-free row lands on the AI row
     of its species (its MaxN survives), cohorts with demographics become
     human-only rows, two identical cohorts stay two rows, an AI species
     the rows do not cover drops to count 0, and the sign-off clears."""
-    from app.api.crud.event_observation import calculate_max_n_for_event
+    from app.api.crud.sequence_observation import calculate_max_n_for_sequence
 
     p = make_project(db, counting_threshold=0.5)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    ev = make_event_with_files(
-        db, deployment_id=d.id, event_start_local=datetime(2024, 1, 1, 12)
+    ev = make_sequence_with_files(
+        db, deployment_id=d.id, sequence_start_local=datetime(2024, 1, 1, 12)
     )
     for _ in range(3):
         make_detection(
@@ -1113,9 +1113,9 @@ def test_set_human_observations_replaces_the_human_layer(client, db):
         confidence=0.9,
     )
     db.flush()
-    calculate_max_n_for_event(db, ev.id, 0.5)
+    calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.commit()
-    client.patch(f"/api/events/{ev.id}/confirm", json={"confirmed": True})
+    client.patch(f"/api/sequences/{ev.id}/confirm", json={"confirmed": True})
 
     rows = [
         {"category": "animal", "label": "cow", "count": 2},
@@ -1130,7 +1130,7 @@ def test_set_human_observations_replaces_the_human_layer(client, db):
         {"category": "animal", "label": "badger", "count": 1, "sex": "female"},
     ]
     data = client.put(
-        f"/api/events/{ev.id}/observations", json={"observations": rows}
+        f"/api/sequences/{ev.id}/observations", json={"observations": rows}
     ).json()
     assert data["confirmed"] is False
     got = [
@@ -1145,28 +1145,28 @@ def test_set_human_observations_replaces_the_human_layer(client, db):
 
 
 def test_set_human_observations_refusals(client, db):
-    """404 for an unknown event; an empty list, a zero count and a value
+    """404 for an unknown sequence; an empty list, a zero count and a value
     outside the vocabulary are refused with nothing touched."""
-    from app.api.crud.event_observation import calculate_max_n_for_event
+    from app.api.crud.sequence_observation import calculate_max_n_for_sequence
 
     p = make_project(db, counting_threshold=0.5)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    ev = make_event_with_files(
-        db, deployment_id=d.id, event_start_local=datetime(2024, 1, 1, 12)
+    ev = make_sequence_with_files(
+        db, deployment_id=d.id, sequence_start_local=datetime(2024, 1, 1, 12)
     )
     make_detection(
         db, file_id=ev.files[0].id, category="animal", label="cow",
         confidence=0.9,
     )
     db.flush()
-    calculate_max_n_for_event(db, ev.id, 0.5)
+    calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.commit()
 
     ok = {"observations": [{"category": "animal", "label": "cow", "count": 1}]}
-    assert client.put("/api/events/nope/observations", json=ok).status_code == 404
+    assert client.put("/api/sequences/nope/observations", json=ok).status_code == 404
 
-    url = f"/api/events/{ev.id}/observations"
+    url = f"/api/sequences/{ev.id}/observations"
     assert client.put(url, json={"observations": []}).status_code == 422
     assert client.put(
         url, json={"observations": [{"category": "animal", "count": 0}]}
@@ -1179,7 +1179,7 @@ def test_set_human_observations_refusals(client, db):
     # A label_taxonomy_id that names no row is a 422 naming the field, not
     # the bare 500 the foreign key used to surface, on every observation
     # write that accepts the id.
-    (obs,) = client.get(f"/api/events/{ev.id}").json()["observations"]
+    (obs,) = client.get(f"/api/sequences/{ev.id}").json()["observations"]
     bad_row = {
         "category": "animal", "label": "cow", "count": 1,
         "label_taxonomy_id": "not-a-row",
@@ -1191,21 +1191,21 @@ def test_set_human_observations_refusals(client, db):
         json={"category": "animal", "label": "deer", "label_taxonomy_id": "not-a-row"},
     ).status_code == 422
 
-    (obs,) = client.get(f"/api/events/{ev.id}").json()["observations"]
+    (obs,) = client.get(f"/api/sequences/{ev.id}").json()["observations"]
     assert (obs["label"], obs["effective_count"], obs["sex"]) == ("cow", 1, None)
 
 
-def test_get_event_labels_files_with_their_camera_for_paired_deployments(client, db):
+def test_get_sequence_labels_files_with_their_camera_for_paired_deployments(client, db):
     """Each file of a paired deployment carries its subfolder name so the
     filmstrip can show which camera it came from. Root files and files of
     unpaired deployments get None."""
-    from app.models.event import event_files as event_files_table
+    from app.models.sequence import sequence_files as sequence_files_table
     from tests.conftest import make_file
 
     p = make_project(db)
     paired = make_deployment(db, project_id=p.id, folder_path="/data/station", paired_cameras=True)
-    ev = make_event_with_files(
-        db, deployment_id=paired.id, event_start_local=datetime(2024, 1, 1, 12, 0)
+    ev = make_sequence_with_files(
+        db, deployment_id=paired.id, sequence_start_local=datetime(2024, 1, 1, 12, 0)
     )
     first = ev.files[0]
     first.file_path = "/data/station/cam_a/a.jpg"
@@ -1222,32 +1222,32 @@ def test_get_event_labels_files_with_their_camera_for_paired_deployments(client,
         captured_at_local=datetime(2024, 1, 1, 12, 0, 2),
     )
     for f in (nested, root):
-        db.execute(event_files_table.insert().values(event_id=ev.id, file_id=f.id))
+        db.execute(sequence_files_table.insert().values(sequence_id=ev.id, file_id=f.id))
     db.commit()
 
-    data = client.get(f"/api/events/{ev.id}").json()
+    data = client.get(f"/api/sequences/{ev.id}").json()
     assert [f["camera"] for f in data["files"]] == ["cam_a", "cam_b", None]
 
     unpaired = make_deployment(db, project_id=p.id, folder_path="/data/other")
-    ev2 = make_event_with_files(
-        db, deployment_id=unpaired.id, event_start_local=datetime(2024, 1, 1, 12, 0)
+    ev2 = make_sequence_with_files(
+        db, deployment_id=unpaired.id, sequence_start_local=datetime(2024, 1, 1, 12, 0)
     )
     ev2.files[0].file_path = "/data/other/cam_a/a.jpg"
     db.commit()
-    data = client.get(f"/api/events/{ev2.id}").json()
+    data = client.get(f"/api/sequences/{ev2.id}").json()
     assert data["files"][0]["camera"] is None
 
 
-def test_event_detail_carries_where_and_when_the_max_n_was_counted(client, db):
+def test_sequence_detail_carries_where_and_when_the_max_n_was_counted(client, db):
     """The Counts page jumps a video to its MaxN frame and shows the time
-    it stands for, plus when the species was first seen in the event.
+    it stands for, plus when the species was first seen in the sequence.
     All derived from the frame and the file time; a photo has no frame."""
     from datetime import datetime
 
     from sqlalchemy import insert
 
-    from app.api.crud.event_observation import calculate_max_n_for_event
-    from app.models.event import event_files
+    from app.api.crud.sequence_observation import calculate_max_n_for_sequence
+    from app.models.sequence import sequence_files
     from tests.conftest import (
         make_deployment,
         make_detection,
@@ -1270,12 +1270,12 @@ def test_event_detail_carries_where_and_when_the_max_n_was_counted(client, db):
         db, deployment_id=dep.id, file_path="/fake/photo.jpg",
         captured_at_local=datetime(2026, 6, 1, 9, 5, 0),
     )
-    event = make_event_with_files(
-        db, deployment_id=dep.id, event_start_local=datetime(2026, 6, 1, 9)
+    sequence = make_sequence_with_files(
+        db, deployment_id=dep.id, sequence_start_local=datetime(2026, 6, 1, 9)
     )
     for seq, f in enumerate((video, photo), start=10):
         db.execute(
-            insert(event_files).values(event_id=event.id, file_id=f.id, sequence_number=seq)
+            insert(sequence_files).values(sequence_id=sequence.id, file_id=f.id, position=seq)
         )
     # Shark: two at frame 900 (30 s in), one at frame 60. First seen at
     # frame 60. One shark is tracked from 60 to 900 (its card on 60), a
@@ -1295,10 +1295,10 @@ def test_event_detail_carries_where_and_when_the_max_n_was_counted(client, db):
     # Fox on the photo only.
     make_detection(db, file_id=photo.id, label="fox")
     db.flush()
-    calculate_max_n_for_event(db, event.id, 0.2)
+    calculate_max_n_for_sequence(db, sequence.id, 0.2)
     db.commit()
 
-    resp = client.get(f"/api/events/{event.id}")
+    resp = client.get(f"/api/sequences/{sequence.id}")
     assert resp.status_code == 200
     by_label = {o["label"]: o for o in resp.json()["observations"]}
 

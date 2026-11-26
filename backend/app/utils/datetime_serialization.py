@@ -1,7 +1,7 @@
 """
 Datetime serialization helpers.
 
-Observational datetimes (File.captured_at_local, Event.event_start_local,
+Observational datetimes (File.captured_at_local, Sequence.sequence_start_local,
 etc.) are stored as naive wall-clock time in the project's local camera
 timezone. When sending them over the wire, we attach the UTC offset that
 applies on that specific calendar date in the project timezone so that

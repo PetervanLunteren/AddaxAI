@@ -24,7 +24,7 @@ DetectionCategory = str
 class DetectionBase(BaseModel):
     """Base schema with common detection fields.
 
-    Bounding box fields are nullable to accommodate event-level
+    Bounding box fields are nullable to accommodate box-less
     observations (a user noting "deer seen in this clip" without a
     frame-anchored ROI). The four coordinates must be all-set or
     all-null per row; the `validate_bbox_all_or_nothing` validator

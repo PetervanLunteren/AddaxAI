@@ -158,7 +158,7 @@ def test_a_file_without_pixel_dimensions_has_no_crop_box(client, db):
 
 
 def test_a_box_with_no_geometry_is_left_out(client, db):
-    """Event-level rows carry no bbox and cannot be a card."""
+    """Box-less rows carry no bbox and cannot be a card."""
     _, video, track = _clip(db)
     real = make_detection(db, file_id=video.id, frame_number=30, track_id=track.id)
     boxless = make_detection(db, file_id=video.id, frame_number=60, track_id=track.id)

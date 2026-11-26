@@ -78,7 +78,7 @@ export function EditDeploymentDialog({
   const [tags, setTags] = useState<Record<string, string>>(deployment.tags ?? {});
   const [offsetModalOpen, setOffsetModalOpen] = useState(false);
   const [showAddSiteModal, setShowAddSiteModal] = useState(false);
-  // A paired-cameras change regroups the deployment's events in the
+  // A paired-cameras change regroups the deployment's sequences in the
   // PATCH and then needs a reprocess so smoothing runs on the new
   // grouping. Same job and same modal as saving analysis settings.
   const [reprocessJobId, setReprocessJobId] = useState<string | null>(null);
@@ -110,7 +110,7 @@ export function EditDeploymentDialog({
     effectiveCameraOffsets,
     deployment.camera_offsets ?? {}
   );
-  // Both change the event grouping: the PATCH regroups, then a reprocess
+  // Both change the sequence grouping: the PATCH regroups, then a reprocess
   // re-runs smoothing on the new grouping.
   const needsReprocess = pairedChanged || cameraOffsetsChanged;
 
@@ -124,10 +124,10 @@ export function EditDeploymentDialog({
       queryKey: ["deployments", deployment.id, "info"],
     });
     // Offset changes shift every File.captured_at_local in the
-    // deployment, which feeds events, dashboard charts, the
+    // deployment, which feeds sequences, dashboard charts, the
     // verification grid, and timeline insights. Invalidate broadly
     // so views that read off file timestamps refresh too.
-    queryClient.invalidateQueries({ queryKey: ["events"] });
+    queryClient.invalidateQueries({ queryKey: ["sequences"] });
     queryClient.invalidateQueries({ queryKey: ["files"] });
     queryClient.invalidateQueries({ queryKey: ["statistics"] });
   };
@@ -142,7 +142,7 @@ export function EditDeploymentDialog({
         notes: notes.trim() || null,
         tags,
       });
-      // The PATCH already regrouped the events; the reprocess re-runs
+      // The PATCH already regrouped the sequences; the reprocess re-runs
       // smoothing on them. Null when the project has no classifications.
       return needsReprocess ? await startReprocessIfNeeded(projectId) : null;
     },
@@ -161,7 +161,7 @@ export function EditDeploymentDialog({
     onComplete: (data) => {
       setReprocessJobId(null);
       warnIfDeploymentsSkipped(data);
-      // The reprocess rewrote labels and events project-wide.
+      // The reprocess rewrote labels and sequences project-wide.
       invalidateProjectData(queryClient, projectId);
       invalidateAfterSave();
       onOpenChange(false);
@@ -241,7 +241,7 @@ export function EditDeploymentDialog({
             </div>
 
             {/* Paired cameras. Changing it regroups this deployment's
-                events on save, so say what that costs before the click. */}
+                sequences on save, so say what that costs before the click. */}
             <div className="space-y-3">
               <PairedCamerasCheckbox
                 checked={pairedCameras}

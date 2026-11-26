@@ -26,7 +26,6 @@ from app.api.routers import (
     deployment_queue_router,
     deployments_router,
     detections_router,
-    events_router,
     export_router,
     files_router,
     folder_runs_router,
@@ -36,6 +35,7 @@ from app.api.routers import (
     ml_models_router,
     packages_router,
     projects_router,
+    sequences_router,
     setup_router,
     sites_router,
     statistics_router,
@@ -495,7 +495,7 @@ def create_app() -> FastAPI:
     app.include_router(deployments_router)
     app.include_router(deployment_queue_router)
     app.include_router(detections_router)
-    app.include_router(events_router)
+    app.include_router(sequences_router)
     app.include_router(export_router)
     app.include_router(files_router)
     app.include_router(folder_runs_router)

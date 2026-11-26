@@ -1,5 +1,5 @@
 """
-Event schemas for API requests and responses.
+Sequence schemas for API requests and responses.
 """
 
 from datetime import datetime
@@ -31,21 +31,21 @@ class MaxNFrame(BaseModel):
         return serialize_local_datetime(value)
 
 
-class EventSummary(BaseModel):
-    """Event summary for browse card display."""
+class SequenceSummary(BaseModel):
+    """Sequence summary for browse card display."""
 
     id: str
     deployment_id: str
-    # Null when the event's files have no extractable capture time. Missing
+    # Null when the sequence's files have no extractable capture time. Missing
     # capture time is tolerated, not fatal (see DEVELOPERS.md datetime conventions);
-    # these events drop out of time-based features but must still serialize.
-    event_start_local: datetime | None
-    event_end_local: datetime | None
+    # these sequences drop out of time-based features but must still serialize.
+    sequence_start_local: datetime | None
+    sequence_end_local: datetime | None
     file_count: int
     thumbnail_file_id: str | None
-    # Up to four file IDs used for the event-card collage. First slots
+    # Up to four file IDs used for the sequence-card collage. First slots
     # come from `max_n_frames` (one per dominant species), remaining
-    # slots are padded by max detection confidence. Empty for events
+    # slots are padded by max detection confidence. Empty for sequences
     # with no files.
     collage_file_ids: list[str] = []
     max_n_frames: list[MaxNFrame]
@@ -62,8 +62,8 @@ class EventSummary(BaseModel):
     total_count: int
     verified_maxn_count: int
     total_maxn_count: int
-    # Human confirmation of the event's species and counts, stored on
-    # Event.confirmed (the "Confirm" action on the Observations page). The
+    # Human confirmation of the sequence's species and counts, stored on
+    # Sequence.confirmed (the "Confirm" action on the Observations page). The
     # verified_count / verified_maxn_count fields above are file-level
     # secondary detail.
     is_confirmed: bool
@@ -71,15 +71,15 @@ class EventSummary(BaseModel):
     any_file_flagged: bool
     any_file_favorited: bool
 
-    # event_start_local / event_end_local are naive wall-clock times in
+    # sequence_start_local / sequence_end_local are naive wall-clock times in
     # the project's local camera timezone (see DEVELOPERS.md).
-    @field_serializer("event_start_local", "event_end_local")
-    def _serialize_event_local(self, value: datetime | None) -> str | None:
+    @field_serializer("sequence_start_local", "sequence_end_local")
+    def _serialize_sequence_local(self, value: datetime | None) -> str | None:
         return serialize_local_datetime(value)
 
 
-class EventObservationItem(BaseModel):
-    """One cohort row of an event's count list (the Counts-page count
+class SequenceObservationItem(BaseModel):
+    """One cohort row of a sequence's count list (the Counts-page count
     editor). `effective_count` is the human-authoritative count
     (`human_count` if set, else the AI-derived `max_n`). A human-only row
     (a species the AI missed, or a cohort split off by hand) has max_n=0.
@@ -98,7 +98,7 @@ class EventObservationItem(BaseModel):
     behavior: str | None
     # Where and when the AI's MaxN was counted: the file, its frame (null
     # for a photo) and the wall-clock time; and when the species was
-    # first seen in the event. All null on a human-only row, and the
+    # first seen in the sequence. All null on a human-only row, and the
     # times null when the files carry no capture time.
     max_n_file_id: str | None = None
     max_n_frame_number: int | None = None
@@ -110,51 +110,51 @@ class EventObservationItem(BaseModel):
         return serialize_local_datetime(value)
 
 
-class EventWithFiles(BaseModel):
-    """Event with all files and their detections."""
+class SequenceWithFiles(BaseModel):
+    """Sequence with all files and their detections."""
 
     id: str
     deployment_id: str
-    # Null when the event's files have no extractable capture time. Missing
+    # Null when the sequence's files have no extractable capture time. Missing
     # capture time is tolerated, not fatal (see DEVELOPERS.md datetime conventions);
-    # these events drop out of time-based features but must still serialize.
-    event_start_local: datetime | None
-    event_end_local: datetime | None
+    # these sequences drop out of time-based features but must still serialize.
+    sequence_start_local: datetime | None
+    sequence_end_local: datetime | None
     file_count: int
     max_n_frames: list[MaxNFrame]
     # Human confirmation of the species and counts ("Confirm" action).
     confirmed: bool = False
     # Per-species count list (AI + human-only), highest count first.
-    observations: list[EventObservationItem] = []
-    # A person's free text about the visit (Event.notes).
+    observations: list[SequenceObservationItem] = []
+    # A person's free text about the visit (Sequence.notes).
     notes: str | None
     created_at_utc: datetime
     site_name: str | None = None
     files: list[FileWithDetections]
 
-    @field_serializer("event_start_local", "event_end_local")
-    def _serialize_event_local(self, value: datetime | None) -> str | None:
+    @field_serializer("sequence_start_local", "sequence_end_local")
+    def _serialize_sequence_local(self, value: datetime | None) -> str | None:
         return serialize_local_datetime(value)
 
     class Config:
         from_attributes = True
 
 
-class GenerateEventsRequest(BaseModel):
-    """Request body for event generation."""
+class GenerateSequencesRequest(BaseModel):
+    """Request body for sequence generation."""
 
     project_id: str
 
 
-class GenerateEventsResponse(BaseModel):
-    """Response for event generation."""
+class GenerateSequencesResponse(BaseModel):
+    """Response for sequence generation."""
 
-    event_count: int
+    sequence_count: int
     message: str
 
 
-class AdjacentEventsResponse(BaseModel):
-    """Response for adjacent event navigation."""
+class AdjacentSequencesResponse(BaseModel):
+    """Response for adjacent sequence navigation."""
 
     previous_id: str | None
     next_id: str | None
@@ -170,16 +170,16 @@ class DateRange(BaseModel):
     max: datetime
 
 
-class EventVerificationStats(BaseModel):
-    """What a reprocess must not lose, across the filtered events: the
-    confirmed events and the verified cards on them.
+class SequenceVerificationStats(BaseModel):
+    """What a reprocess must not lose, across the filtered sequences: the
+    confirmed sequences and the verified cards on them.
 
-    The Counts page and the dashboard read the event half from
-    `/api/events/count`, which does not walk the detections.
+    The Counts page and the dashboard read the sequence half from
+    `/api/sequences/count`, which does not walk the detections.
     """
 
-    events_confirmed: int
-    events_total: int
+    sequences_confirmed: int
+    sequences_total: int
     total_detections: int
     verified_detections: int
 
@@ -205,7 +205,7 @@ class LabelTree(BaseModel):
     all_leaf_ids: list[str]
 
 
-class EventFilterOptions(BaseModel):
+class SequenceFilterOptions(BaseModel):
     """Everything about the labels a project has, in one pass over its
     boxes. Changes only when labels change, so the pages share it."""
 

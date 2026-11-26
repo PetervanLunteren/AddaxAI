@@ -2,7 +2,7 @@
 
 Image and video verification feel the same: a clip's still is a canvas
 like a photo (2026-11-03). What the backend adds is the track, so every
-surface that reads tracks and cards (MaxN per file and per event, the
+surface that reads tracks and cards (MaxN per file and per sequence, the
 tile chips, the timeline, the sign-off, the exports) sees the drawn box
 without a rule of its own. Its key counts down from -1, out of the
 tracker's reach on a re-ingest.
@@ -10,17 +10,17 @@ tracker's reach on a re-ingest.
 
 from datetime import datetime
 
-from app.api.crud.event_observation import (
-    calculate_max_n_for_event,
-    list_event_observations,
+from app.api.crud.sequence_observation import (
+    calculate_max_n_for_sequence,
+    list_sequence_observations,
 )
 from app.models import Detection, Track
 from tests.conftest import (
     make_deployment,
     make_detection,
-    make_event_with_files,
     make_file,
     make_project,
+    make_sequence_with_files,
     make_site,
     make_track,
 )
@@ -132,28 +132,28 @@ def test_a_drawn_box_is_a_card_of_the_clip_and_raises_max_at_once_on_its_frame(c
     assert elasmobranchs(after) == [(2, 60)]
 
 
-def test_a_labelled_drawn_box_puts_its_species_in_the_event_count(client, db):
-    """The event's MaxN admits a video species through a card. A drawn box
+def test_a_labelled_drawn_box_puts_its_species_in_the_sequence_count(client, db):
+    """The sequence's MaxN admits a video species through a card. A drawn box
     is its track's card and the person's own label, so a species the AI
     never saw gets its row with a count of one."""
     project = make_project(db)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
-    ev = make_event_with_files(db, deployment_id=dep.id,
-                               event_start_local=datetime(2024, 1, 1, 12))
+    ev = make_sequence_with_files(db, deployment_id=dep.id,
+                               sequence_start_local=datetime(2024, 1, 1, 12))
     video = ev.files[0]
     video.file_type, video.file_format, video.frame_rate, video.best_frame_number = (
         "video", "mp4", 30.0, 60,
     )
     db.commit()
-    calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    calculate_max_n_for_sequence(db, ev.id, project.counting_threshold)
     db.commit()
-    assert list_event_observations(db, ev.id) == []
+    assert list_sequence_observations(db, ev.id) == []
 
     _draw(client, video, label="turtle")
 
     db.expire_all()
-    assert [(o.label, o.max_n) for o in list_event_observations(db, ev.id)] == [("turtle", 1)]
+    assert [(o.label, o.max_n) for o in list_sequence_observations(db, ev.id)] == [("turtle", 1)]
 
 
 def test_deleting_a_drawn_box_drops_its_empty_track(client, db):

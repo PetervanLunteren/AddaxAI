@@ -7,7 +7,7 @@
  * species, so they go stale together. One helper so no call site can
  * refresh one and forget the others.
  *
- * `cancelRefetch: false`: a caller that also refreshes the event queries
+ * `cancelRefetch: false`: a caller that also refreshes the sequence queries
  * has already started the filter options, after the same write. Starting
  * them again would make the backend read the project's boxes twice.
  */
@@ -15,22 +15,22 @@
 import type { Query, QueryClient } from "@tanstack/react-query";
 
 export function invalidateLabelQueries(queryClient: QueryClient): void {
-  for (const key of ["event-filter-options", "label-counts", "statistics"]) {
+  for (const key of ["sequence-filter-options", "label-counts", "statistics"]) {
     void queryClient.invalidateQueries({ queryKey: [key] }, { cancelRefetch: false });
   }
 }
 
 /**
- * Every event-family query: the event list and count (["events", ...]),
- * one event (["event", id]), the filtered count
- * (["event-count-filtered", ...]) and the filter options
- * (["event-filter-options", ...]). A plain ["events"] prefix
+ * Every sequence-family query: the sequence list and count (["sequences", ...]),
+ * one sequence (["sequence", id]), the filtered count
+ * (["sequence-count-filtered", ...]) and the filter options
+ * (["sequence-filter-options", ...]). A plain ["sequences"] prefix
  * misses the singular keys, which once left the Counts page stale after a
  * relabel.
  */
-export function isEventFamilyQuery(query: Query): boolean {
+export function isSequenceFamilyQuery(query: Query): boolean {
   const key = query.queryKey[0];
-  return typeof key === "string" && key.startsWith("event");
+  return typeof key === "string" && key.startsWith("sequence");
 }
 
 /**
@@ -56,7 +56,7 @@ let verifySettleTimer: ReturnType<typeof setTimeout> | undefined;
  * default is "Unverified"). On a large project each of those is a pass
  * over every box, so they refetch once,
  * `VERIFY_SETTLE_MS` after the last verify, instead of once per click.
- * The event-family queries only go stale: the Counts page refetches them
+ * The sequence-family queries only go stale: the Counts page refetches them
  * when it is next opened, and the Labels page has nothing to redraw.
  */
 export function invalidateAfterVerify(
@@ -65,7 +65,7 @@ export function invalidateAfterVerify(
   verifiedFilterOn: boolean,
 ): void {
   void queryClient.invalidateQueries({
-    predicate: isEventFamilyQuery,
+    predicate: isSequenceFamilyQuery,
     refetchType: "none",
   });
   clearTimeout(verifySettleTimer);
@@ -83,7 +83,7 @@ export function invalidateAfterVerify(
  * changed. A verify waits for the clicks to stop (`invalidateAfterVerify`).
  * A change of label refreshes at once: it can add or remove a species, so
  * the filter options, the label counts, the progress, the cohorts and the
- * event queries all move. The event queries go first, so the filter
+ * sequence queries all move. The sequence queries go first, so the filter
  * options they include are already on their way when
  * `invalidateLabelQueries` reaches them (its `cancelRefetch: false`).
  *
@@ -99,7 +99,7 @@ export function invalidateAfterDetectionAction(
     invalidateAfterVerify(queryClient, projectId, verifiedFilterOn);
     return;
   }
-  void queryClient.invalidateQueries({ predicate: isEventFamilyQuery });
+  void queryClient.invalidateQueries({ predicate: isSequenceFamilyQuery });
   invalidateLabelQueries(queryClient);
   void queryClient.invalidateQueries({ queryKey: ["labels-progress", projectId] });
   void queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
@@ -112,7 +112,7 @@ export function invalidateAfterDetectionAction(
  * name and colour of every detection that carries it, so the surfaces that
  * draw those (the label picker, the filter tree, the colour map, and the
  * canvases in the detail modals, which read their boxes from the file /
- * event queries) all go stale together. One helper so an edit can never
+ * sequence queries) all go stale together. One helper so an edit can never
  * refresh some of them and leave the canvas showing the old label.
  *
  * It does not reach the Labels grid, which renders from a sort mutation
@@ -130,6 +130,6 @@ export function invalidateAfterLabelEdit(
   // The detail-modal canvases read their boxes from these, so a rename or
   // rank change shows on the picture without a hard reload.
   void queryClient.invalidateQueries({ queryKey: ["file"] });
-  void queryClient.invalidateQueries({ queryKey: ["event"] });
-  void queryClient.invalidateQueries({ queryKey: ["events"] });
+  void queryClient.invalidateQueries({ queryKey: ["sequence"] });
+  void queryClient.invalidateQueries({ queryKey: ["sequences"] });
 }

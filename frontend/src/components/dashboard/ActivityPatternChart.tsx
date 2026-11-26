@@ -277,7 +277,7 @@ export const ActivityPatternChart: React.FC<ActivityPatternChartProps> = ({
         info={
           <>
             <p>
-              Observations by hour of day (each event's confirmed
+              Observations by hour of day (each sequence's confirmed
               count, or the AI's count where not yet confirmed) of
               the labels, sites and dates chosen above.
             </p>

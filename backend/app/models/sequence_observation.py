@@ -1,11 +1,11 @@
 """
-EventObservation model - per-cohort MaxN counts within events.
+SequenceObservation model - per-cohort MaxN counts within sequences.
 
 MaxN is the maximum number of individuals of a species visible in any
-single image within an event. This prevents double-counting animals
+single image within a sequence. This prevents double-counting animals
 that appear across multiple frames.
 
-A row is one cohort: a species in an event, with a count and optional
+A row is one cohort: a species in a sequence, with a count and optional
 sex / life stage / behaviour. The AI seeds one row per species; a person
 can label that row in place or split it into several cohorts (4 males and
 2 females of one species are two rows). See DEVELOPERS.md, "Observation
@@ -28,27 +28,27 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
-    from .event import Event
     from .file import File
     from .label_taxonomy import LabelTaxonomy
+    from .sequence import Sequence
 
 
-class EventObservation(Base):
+class SequenceObservation(Base):
     """
     One cohort of one species (or category like person/vehicle) within
-    an event, with its count and the image where the AI's peak count was
+    a sequence, with its count and the image where the AI's peak count was
     observed. Several rows per species are allowed: they differ in sex,
     life stage or behaviour, or are what a person split off.
     """
 
-    __tablename__ = "event_observations"
+    __tablename__ = "sequence_observations"
 
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    event_id: Mapped[str] = mapped_column(
+    sequence_id: Mapped[str] = mapped_column(
         String(36),
-        ForeignKey("events.id", ondelete="CASCADE"),
+        ForeignKey("sequences.id", ondelete="CASCADE"),
         nullable=False,
     )
     label: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -59,7 +59,7 @@ class EventObservation(Base):
     )
     category: Mapped[str] = mapped_column(String(50), nullable=False)
     # AI/box-derived MaxN: the maximum number of this species visible in
-    # any single frame within the event.
+    # any single frame within the sequence.
     max_n: Mapped[int] = mapped_column(Integer, nullable=False)
     max_n_file_id: Mapped[str | None] = mapped_column(
         String(36),
@@ -71,7 +71,7 @@ class EventObservation(Base):
     # the column existed. Its wall-clock time is derived where shown:
     # file time plus frame over frame rate (utils.media_dates.frame_time).
     max_n_frame_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # Human-set count of individuals for this species in the event. When
+    # Human-set count of individuals for this species in the sequence. When
     # not null it overrides `max_n` for stats and exports (the effective
     # count is `human_count` if set, else `max_n`), letting a verifier
     # record individuals no single frame shows. Mirrors Camtrap-DP /
@@ -86,12 +86,12 @@ class EventObservation(Base):
     sex: Mapped[str | None] = mapped_column(String(20), nullable=True)
     life_stage: Mapped[str | None] = mapped_column(String(20), nullable=True)
     behavior: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    # Free text lives on the event (`Event.notes`), not here: a remark is
-    # almost always about the visit, and one box per event beats one per row.
+    # Free text lives on the sequence (`Sequence.notes`), not here: a remark is
+    # almost always about the visit, and one box per sequence beats one per row.
 
     # Relationships
-    event: Mapped["Event"] = relationship(
-        "Event", back_populates="observations"
+    sequence: Mapped["Sequence"] = relationship(
+        "Sequence", back_populates="observations"
     )
     max_n_file: Mapped["File | None"] = relationship("File")
     label_taxonomy: Mapped["LabelTaxonomy | None"] = relationship(
@@ -103,7 +103,7 @@ class EventObservation(Base):
         """Human-authoritative count: `human_count` if set, else `max_n`.
 
         Usable both in Python (`obs.effective_count`) and in SQL
-        aggregations (`func.sum(EventObservation.effective_count)`), so
+        aggregations (`func.sum(SequenceObservation.effective_count)`), so
         stats and exports share one definition of "the count".
         """
         return self.human_count if self.human_count is not None else self.max_n
@@ -112,22 +112,22 @@ class EventObservation(Base):
     def effective_count(cls):  # noqa: N805
         return func.coalesce(cls.human_count, cls.max_n)
 
-    # No unique constraint on (event_id, label_taxonomy_id): cohorts of one
+    # No unique constraint on (sequence_id, label_taxonomy_id): cohorts of one
     # species are several rows. Migration a1b2c3d4e5f7 dropped
-    # `uq_event_obs_event_taxonomy`.
+    # `uq_sequence_obs_sequence_taxonomy`.
     __table_args__ = (
-        Index("idx_event_obs_event", "event_id"),
-        Index("idx_event_obs_label", "label"),
-        Index("idx_event_obs_label_taxonomy", "label_taxonomy_id"),
+        Index("idx_sequence_obs_sequence", "sequence_id"),
+        Index("idx_sequence_obs_label", "label"),
+        Index("idx_sequence_obs_label_taxonomy", "label_taxonomy_id"),
         # Not for queries: this is the child key of the ON DELETE SET NULL
         # FK to files. Without it SQLite scans this whole table once per
         # deleted file row, which made re-running a large folder run take
         # hours. See DEVELOPERS.md, "Deleting analysis data".
-        Index("idx_event_obs_max_n_file", "max_n_file_id"),
+        Index("idx_sequence_obs_max_n_file", "max_n_file_id"),
     )
 
     def __repr__(self) -> str:
         return (
-            f"<EventObservation(event_id={self.event_id}, "
+            f"<SequenceObservation(sequence_id={self.sequence_id}, "
             f"label={self.label}, max_n={self.max_n})>"
         )

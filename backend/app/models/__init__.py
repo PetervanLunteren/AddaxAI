@@ -6,12 +6,12 @@ from .deployment import Deployment
 from .deployment_queue import DeploymentQueue
 from .detection import Detection
 from .detection_embedding import DetectionEmbedding
-from .event import Event, event_files
-from .event_observation import EventObservation
 from .file import File
 from .job import Job
 from .label_taxonomy import LabelTaxonomy
 from .project import Project
+from .sequence import Sequence, sequence_files
+from .sequence_observation import SequenceObservation
 from .site import Site
 from .track import Track
 
@@ -22,13 +22,13 @@ __all__ = [
     "DeploymentQueue",
     "Detection",
     "DetectionEmbedding",
-    "Event",
-    "EventObservation",
+    "Sequence",
+    "SequenceObservation",
     "File",
     "Job",
     "Project",
     "Site",
     "LabelTaxonomy",
     "Track",
-    "event_files",
+    "sequence_files",
 ]

@@ -12,7 +12,7 @@ This module implements the split operation:
    slice, video_frames subtree) into each child subfolder.
 3. Validate the copies on disk.
 4. In a single DB transaction: create child `Deployment` rows, reassign files,
-   reassign events (duplicating events that straddle multiple children), and
+   reassign sequences (duplicating sequences that straddle multiple children), and
    delete the parent row.
 5. Delete the parent's old `.addaxai` artifacts.
 
@@ -44,12 +44,12 @@ from app.models import (
     AuditLog,
     Deployment,
     DeploymentQueue,
-    Event,
-    EventObservation,
     File,
     Job,
+    Sequence,
+    SequenceObservation,
 )
-from app.models.event import event_files
+from app.models.sequence import sequence_files
 from app.utils.fs_hidden import mkdir_hidden_addaxai
 
 logger = get_logger(__name__)
@@ -614,48 +614,48 @@ def _rewrite_frame_path(
     )
 
 
-def _reassign_events(
+def _reassign_sequences(
     db: Session,
     parent: Deployment,
     child_deployments: dict[str, Deployment],
     file_to_bucket: dict[str, _TargetBucket],
 ) -> None:
     """
-    For every event on the parent deployment, group its files by target child
-    and either reassign the event (single-group case) or duplicate it into
-    per-child events preserving observations and verified flags.
+    For every sequence on the parent deployment, group its files by target child
+    and either reassign the sequence (single-group case) or duplicate it into
+    per-child sequences preserving observations and verified flags.
 
     Observations are duplicated as-is. When an observation's max_n_file_id
     points to a file that ended up in a different child, we null it out on
     the side where that file no longer lives (the other side keeps the
     pointer so the peak-frame display stays intact where possible).
     """
-    events = list(parent.events)
-    for event in events:
+    sequences = list(parent.sequences)
+    for sequence in sequences:
         groups: dict[str, list[File]] = {}
-        event_file_list = list(event.files)
-        for f in event_file_list:
+        sequence_file_list = list(sequence.files)
+        for f in sequence_file_list:
             bucket = file_to_bucket.get(f.id)
             if bucket is None:
                 continue
             groups.setdefault(str(bucket.folder_path), []).append(f)
 
         if not groups:
-            # Event has no files or none that fall under any child. Drop it.
-            db.delete(event)
+            # Sequence has no files or none that fall under any child. Drop it.
+            db.delete(sequence)
             continue
 
         if len(groups) == 1:
             only_folder = next(iter(groups))
             # Use the relationship attribute (not the FK column) so the
-            # event is removed from parent.events via back_populates sync.
-            event.deployment = child_deployments[only_folder]
+            # sequence is removed from parent.sequences via back_populates sync.
+            sequence.deployment = child_deployments[only_folder]
             continue
 
-        # Straddle case: create one new Event per child, duplicate
-        # observations, then delete the original (which cascades event_files
+        # Straddle case: create one new Sequence per child, duplicate
+        # observations, then delete the original (which cascades sequence_files
         # and observations via ondelete=CASCADE on their FKs).
-        observations = list(event.observations)
+        observations = list(sequence.observations)
         for folder_str, files_here in groups.items():
             child_dep = child_deployments[folder_str]
             here_ids = {f.id for f in files_here}
@@ -664,31 +664,31 @@ def _reassign_events(
                 for f in files_here
                 if f.captured_at_local is not None
             ]
-            new_event = Event(
+            new_sequence = Sequence(
                 deployment_id=child_dep.id,
-                event_start_local=(
-                    min(timestamps) if timestamps else event.event_start_local
+                sequence_start_local=(
+                    min(timestamps) if timestamps else sequence.sequence_start_local
                 ),
-                event_end_local=(
-                    max(timestamps) if timestamps else event.event_end_local
+                sequence_end_local=(
+                    max(timestamps) if timestamps else sequence.sequence_end_local
                 ),
                 file_count=len(files_here),
                 # Observations are duplicated as-is, so the human's
-                # confirmation still holds for each child event. The note
+                # confirmation still holds for each child sequence. The note
                 # too: a remark is never lost, at worst it sits on one
                 # child more than it should.
-                confirmed=event.confirmed,
-                notes=event.notes,
+                confirmed=sequence.confirmed,
+                notes=sequence.notes,
             )
-            db.add(new_event)
+            db.add(new_sequence)
             db.flush()
 
             for seq, f in enumerate(files_here):
                 db.execute(
-                    event_files.insert().values(
-                        event_id=new_event.id,
+                    sequence_files.insert().values(
+                        sequence_id=new_sequence.id,
                         file_id=f.id,
-                        sequence_number=seq,
+                        position=seq,
                     )
                 )
 
@@ -697,8 +697,8 @@ def _reassign_events(
                 if max_n_file_id is not None and max_n_file_id not in here_ids:
                     max_n_file_id = None
                 db.add(
-                    EventObservation(
-                        event_id=new_event.id,
+                    SequenceObservation(
+                        sequence_id=new_sequence.id,
                         label=obs.label,
                         label_taxonomy_id=obs.label_taxonomy_id,
                         category=obs.category,
@@ -713,7 +713,7 @@ def _reassign_events(
                     )
                 )
 
-        db.delete(event)
+        db.delete(sequence)
 
 
 def _audit_split(
@@ -881,7 +881,7 @@ def split_deployment(
                             t.crop_path = new_crop
         db.flush()
 
-        _reassign_events(
+        _reassign_sequences(
             db, parent, child_deployments, file_to_bucket
         )
         db.flush()
@@ -902,9 +902,9 @@ def split_deployment(
             .values(deployment_id=None)
         )
 
-        # Sanity: parent should now have no files and no events pointing at
+        # Sanity: parent should now have no files and no sequences pointing at
         # it. Expire the collections so any lingering cache cannot cascade.
-        db.expire(parent, ["files", "events"])
+        db.expire(parent, ["files", "sequences"])
         db.delete(parent)
         db.commit()
     except Exception:

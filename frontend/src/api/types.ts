@@ -53,7 +53,7 @@ export interface ProjectCreate {
   media_filter: MediaFilter;
   counting_threshold: number;
   classification_gate: number;
-  event_smoothing: boolean;
+  sequence_smoothing: boolean;
   smoothing_strength: string;
   taxonomic_rollup: boolean;
   independence_interval: number;
@@ -86,7 +86,7 @@ export interface ProjectUpdate {
   media_filter?: MediaFilter | null;
   counting_threshold?: number | null;
   classification_gate?: number | null;
-  event_smoothing?: boolean | null;
+  sequence_smoothing?: boolean | null;
   smoothing_strength?: string | null;
   taxonomic_rollup?: boolean | null;
   independence_interval?: number | null;
@@ -120,7 +120,7 @@ export interface ProjectResponse {
   media_filter: MediaFilter;
   counting_threshold: number;
   classification_gate: number;
-  event_smoothing: boolean;
+  sequence_smoothing: boolean;
   smoothing_strength: string;
   taxonomic_rollup: boolean;
   independence_interval: number;
@@ -260,7 +260,7 @@ export interface SiteInfo {
   files: SiteFileCounts;
   total_size_bytes: number;
   verification: SiteVerification;
-  event_count: number;
+  sequence_count: number;
   observation_count: number;
   detection_categories: ClassCounts;
   top_species: SiteTopSpecies[];
@@ -310,7 +310,7 @@ export interface DeploymentResponse {
   notes: string | null;
   tags: Record<string, string>;
   datetime_offset_seconds: number | null;
-  /** The subfolders are dependent cameras: events cluster
+  /** The subfolders are dependent cameras: sequences cluster
    * across them and effort counts once. */
   paired_cameras: boolean;
   /** Per-camera seconds on top of datetime_offset_seconds, keyed by
@@ -332,7 +332,7 @@ export interface DeploymentUpdate {
   notes?: string | null;
   tags?: Record<string, string> | null;
   datetime_offset_seconds?: number | null;
-  /** Changing it regroups the deployment's events at once. */
+  /** Changing it regroups the deployment's sequences at once. */
   paired_cameras?: boolean;
   /** Changing a camera's offset shifts that subfolder and regroups. */
   camera_offsets?: Record<string, number>;
@@ -380,7 +380,7 @@ export interface GroupBrokenResponse {
 
 export interface DeploymentStatsOnly {
   file_count: number;
-  event_count: number;
+  sequence_count: number;
   detection_count: number;
 }
 
@@ -416,8 +416,8 @@ export interface DeploymentInfo {
   /** Sum of File.size_bytes across files in this deployment. */
   total_size_bytes: number;
   verification: DeploymentVerification;
-  event_count: number;
-  /** Sum of EventObservation.max_n across all events in this deployment. */
+  sequence_count: number;
+  /** Sum of SequenceObservation.max_n across all sequences in this deployment. */
   observation_count: number;
   detection_categories: ClassCounts;
   top_species: DeploymentTopSpecies[];
@@ -512,7 +512,7 @@ export interface DetectionResponse {
    * human-drawn box. No UI rule reads it: a box is a box. It is on the
    * wire for exports and debugging. */
   job_id: string | null;
-  /** All four bbox fields are null together for event-level observations
+  /** All four bbox fields are null together for box-less observations
    * (a species seen in a video clip without a frame-anchored ROI). For
    * AI-produced and user-drawn detections they are all set. */
   bbox_x: number | null;
@@ -637,8 +637,8 @@ export interface FileWithDetections extends FileResponse {
   camera?: string | null;
 }
 
-// Shared verify-tab filter type. Binary (plus "all"): an event is
-// verified when all its MaxN frames are verified (blank events fall
+// Shared verify-tab filter type. Binary (plus "all"): a sequence is
+// verified when all its MaxN frames are verified (blank sequences fall
 // back to "any file verified"); a file is verified when File.verified
 // is true; an observation is verified when Detection.verified is true.
 export type VerificationFilter =
@@ -653,19 +653,19 @@ export type EmptyFilter = "all" | "show_only" | "hide";
 
 /** Sort modes shared across the verify tabs.
  *
- * The Events / Files galleries use `newest` / `oldest` / `random`; the
+ * The Sequences / Files galleries use `newest` / `oldest` / `random`; the
  * Observations grid uses `similarity` / `events` (see `LabelSort`). */
 export type VerifySort =
   | "newest"
   | "oldest"
   | "random"
   | "similarity"
-  | "events"
+  | "sequences"
   // Files tab only. Orders by file path, which groups one camera's
   // photos together because the path starts with its folder.
   | "path";
 
-export interface EventFilterParams {
+export interface SequenceFilterParams {
   site_ids?: string[];
   date_from?: string;
   date_to?: string;
@@ -690,7 +690,7 @@ export interface EventFilterParams {
 
 /** Everything about the labels a project has, in one request that
  *  changes only when labels change, so every page shares it. */
-export interface EventFilterOptions {
+export interface SequenceFilterOptions {
   labels: string[];
   date_range: { min: string; max: string } | null;
   scientific_labels?: Record<string, string>;
@@ -721,11 +721,11 @@ export interface MaxNFrame {
   max_n_time: string | null;
 }
 
-/** One cohort row of an event's count list (the Counts-page count editor).
+/** One cohort row of a sequence's count list (the Counts-page count editor).
  *  A human-only row (a species the AI missed, or a cohort split off by
  *  hand) has `max_n: 0`. The demographics are null until set; their
  *  values come from `lib/observation-attributes.ts`. */
-export interface EventObservationItem {
+export interface SequenceObservationItem {
   id: string;
   category: string;
   label: string | null;
@@ -738,7 +738,7 @@ export interface EventObservationItem {
   life_stage: string | null;
   behavior: string | null;
   /** Where and when the AI's MaxN was counted (file, frame for a video,
-   * camera-local time) and when the species was first seen in the event.
+   * camera-local time) and when the species was first seen in the sequence.
    * All null on a human-only row; times null without capture times. */
   max_n_file_id: string | null;
   max_n_frame_number: number | null;
@@ -766,18 +766,18 @@ export interface ObservationAttributesPatch {
   behavior?: string | null;
 }
 
-// Event types
-export interface EventSummary {
+// Sequence types
+export interface SequenceSummary {
   id: string;
   deployment_id: string;
   /** ISO 8601 with the project's local UTC offset. */
-  event_start_local: string | null;
-  event_end_local: string | null;
+  sequence_start_local: string | null;
+  sequence_end_local: string | null;
   file_count: number;
   thumbnail_file_id: string | null;
-  /** Up to four file IDs picked by the backend for the event-card collage:
+  /** Up to four file IDs picked by the backend for the sequence-card collage:
    *  one frame per dominant species first, then padded by max detection
-   *  confidence. Empty when the event has no files. */
+   *  confidence. Empty when the sequence has no files. */
   collage_file_ids: string[];
   max_n_frames: MaxNFrame[];
   site_name: string | null;
@@ -794,27 +794,27 @@ export interface EventSummary {
   verified_maxn_count: number;
   total_maxn_count: number;
   /**
-   * Human confirmation of the event's species and counts (stored on
-   * Event.confirmed, the "Confirm" action on the Observations page).
-   * Drives the corner confirmed badge on event cards.
+   * Human confirmation of the sequence's species and counts (stored on
+   * Sequence.confirmed, the "Confirm" action on the Observations page).
+   * Drives the corner confirmed badge on sequence cards.
    */
   is_confirmed: boolean;
   any_file_flagged: boolean;
   any_file_favorited: boolean;
 }
 
-export interface EventWithFiles {
+export interface SequenceWithFiles {
   id: string;
   deployment_id: string;
   /** ISO 8601 with the project's local UTC offset. */
-  event_start_local: string | null;
-  event_end_local: string | null;
+  sequence_start_local: string | null;
+  sequence_end_local: string | null;
   file_count: number;
   max_n_frames: MaxNFrame[];
   /** Human confirmation of the species and counts ("Confirm" action). */
   confirmed: boolean;
   /** Per-species count list (AI + human-only), highest count first. */
-  observations: EventObservationItem[];
+  observations: SequenceObservationItem[];
   /** A person's free text about the visit. */
   notes: string | null;
   created_at_utc: string;
@@ -822,22 +822,22 @@ export interface EventWithFiles {
   files: FileWithDetections[];
 }
 
-/** The events that pass a filter, and how many of them are confirmed. */
-export interface EventCounts {
+/** The sequences that pass a filter, and how many of them are confirmed. */
+export interface SequenceCounts {
   count: number;
-  /** Events the user has confirmed (Event.confirmed). */
+  /** Sequences the user has confirmed (Sequence.confirmed). */
   confirmed: number;
 }
 
-/** What a reprocess must keep: confirmed events and verified cards. */
-export interface EventVerificationStats {
-  events_confirmed: number;
-  events_total: number;
+/** What a reprocess must keep: confirmed sequences and verified cards. */
+export interface SequenceVerificationStats {
+  sequences_confirmed: number;
+  sequences_total: number;
   total_detections: number;
   verified_detections: number;
 }
 
-export interface AdjacentEventsResponse {
+export interface AdjacentSequencesResponse {
   previous_id: string | null;
   next_id: string | null;
   next_unconfirmed_id: string | null;
@@ -992,7 +992,7 @@ export interface LabelFilters {
  * The dropdown offers `similarity` and `events`. `suggestions` is a
  * cohort-grouped review mode reachable only via the toolbar's review
  * pill, never the dropdown. */
-export type LabelSort = "similarity" | "events" | "suggestions";
+export type LabelSort = "similarity" | "sequences" | "suggestions";
 
 export interface SortRequest {
   filters?: LabelFilters;
@@ -1038,13 +1038,13 @@ export interface DetectionSummary {
   deployment_id: string | null;
   /** ISO 8601 with the project's local UTC offset. */
   captured_at_local: string | null;
-  /** Event this detection's file belongs to. Drives the "By event" sort,
-   * the event dividers, and the detail modal's sequence strip. Null when
-   * event clustering has not run for the deployment. */
-  event_id: string | null;
-  /** Start time of `event_id`, naive camera-local. Used as the event
+  /** Sequence this detection's file belongs to. Drives the "By event" sort,
+   * the sequence dividers, and the detail modal's sequence strip. Null when
+   * sequence clustering has not run for the deployment. */
+  sequence_id: string | null;
+  /** Start time of `event_id`, naive camera-local. Used as the sequence
    * divider's header label. */
-  event_start_local: string | null;
+  sequence_start_local: string | null;
   crop_url: string;
   crop_bbox: CropBbox | null;
   /** Video detections carry their frame index; image detections are null. */
@@ -1083,7 +1083,7 @@ export interface TrackDetectionsResponse {
 export interface SortResponse {
   detections: DetectionSummary[];
   /** Detections the sort returned. Equals `total_loaded` for the
-   * similarity and event sorts; the suggestions sort narrows to cohort
+   * similarity and sequence sorts; the suggestions sort narrows to cohort
    * members, so it returns far fewer. Never use this to detect a cap. */
   total_detections: number;
   /** Rows this run actually loaded, i.e. min(total_matching, cap). When
@@ -1141,8 +1141,8 @@ export interface LabelsFileItem {
   /** Pixel size; the grid shapes its tiles to the page's majority ratio. */
   width_px: number | null;
   height_px: number | null;
-  /** Filled only under sort=events, for the grid's divider rows. */
-  event_id: string | null;
+  /** Filled only under sort=sequences, for the grid's divider rows. */
+  sequence_id: string | null;
 }
 
 export interface LabelsFilesResponse {
@@ -1170,7 +1170,7 @@ export interface LabelsFilesParams {
   max_confidence?: number;
   min_label_confidence?: number;
   max_label_confidence?: number;
-  sort?: "path" | "events" | "newest" | "oldest" | "random";
+  sort?: "path" | "sequences" | "newest" | "oldest" | "random";
   seed?: number | null;
   skip?: number;
   limit?: number;

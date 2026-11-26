@@ -154,7 +154,7 @@ def _failure_entries(deployment: Deployment) -> list[dict]:
 
 def _bbox_for_detection(det: Detection) -> list[float] | None:
     """Return the bbox in the canonical [x, y, w, h] order, or None
-    for event-level observations where every bbox coordinate is null.
+    for box-less observations where every bbox coordinate is null.
 
     All four fields are constrained to be set-or-null together (see
     DEVELOPERS.md and the bbox-nullable migration); we still defend
@@ -312,7 +312,7 @@ def write_recognition_json(
 
             bbox = _bbox_for_detection(det)
             if bbox is None:
-                # Event-level observation — no spatial annotation to
+                # Box-less observation — no spatial annotation to
                 # write. The canonical Timelapse / AddaxAI JSON has
                 # no representation for this, so we skip.
                 continue
@@ -466,7 +466,7 @@ def write_recognition_json(
                 "classification_gate": project.classification_gate,
                 "country_code": project.country_code,
                 "state_code": project.state_code,
-                "event_smoothing": project.event_smoothing,
+                "event_smoothing": project.sequence_smoothing,
                 "smoothing_strength": project.smoothing_strength,
                 "taxonomic_rollup": project.taxonomic_rollup,
                 "independence_interval_seconds": project.independence_interval,

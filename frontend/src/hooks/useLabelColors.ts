@@ -13,13 +13,13 @@
 
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { eventsApi } from "../api/events";
+import { sequencesApi } from "../api/sequences";
 import { setLabelColors } from "../utils/species-colors";
 
 export function useLabelColors(projectId: string | undefined): void {
   const { data } = useQuery({
-    queryKey: ["event-filter-options", projectId],
-    queryFn: () => eventsApi.getFilterOptions(projectId!),
+    queryKey: ["sequence-filter-options", projectId],
+    queryFn: () => sequencesApi.getFilterOptions(projectId!),
     enabled: !!projectId,
   });
   const colors = data?.label_colors;

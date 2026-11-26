@@ -210,7 +210,7 @@ def site_info(
     Investigation-level payload for the Sites → Info sheet.
 
     Aggregates across every deployment at this site: file and size
-    totals, verification progress, event / observation counts, the
+    totals, verification progress, sequence / observation counts, the
     detection-category breakdown, top species, trap nights, rate, and
     the first and last capture timestamps. Returns 404 if the site
     does not exist.

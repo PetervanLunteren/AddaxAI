@@ -617,10 +617,10 @@ def test_legacy_video_without_frames_processed_omits_field(db, tmp_path):
     assert "frames_processed" not in entry
 
 
-def test_event_level_observation_dropped(db, tmp_path):
+def test_sequence_level_observation_dropped(db, tmp_path):
     """A detection with no bbox cannot be serialised in the canonical
     shape (there's no place for it in the schema), so it is dropped."""
-    project = make_project(db, name="rj-event")
+    project = make_project(db, name="rj-sequence")
     dep = make_deployment(
         db,
         project_id=project.id,

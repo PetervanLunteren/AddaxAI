@@ -18,7 +18,7 @@ import type { TaxonomyNode } from "../api/types";
 export function pruneTaxonomyTree(
   tree: TaxonomyNode[],
   keepSet: Set<string>,
-  eventCounts?: Map<string, number>
+  sequenceCounts?: Map<string, number>
 ): TaxonomyNode[] {
   const prune = (nodes: TaxonomyNode[]): TaxonomyNode[] => {
     const result: TaxonomyNode[] = [];
@@ -26,7 +26,7 @@ export function pruneTaxonomyTree(
       if (!node.children || node.children.length === 0) {
         // Leaf: keep only if in the set
         if (keepSet.has(node.id)) {
-          const count = eventCounts?.get(node.id);
+          const count = sequenceCounts?.get(node.id);
           result.push(count != null ? { ...node, count } : { ...node });
         }
       } else {

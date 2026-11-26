@@ -32,11 +32,11 @@ import {
   DETECTION_CONFIDENCE_ADVICE,
   formatConfidencePct as pct,
 } from "../../lib/confidence";
-import type { EventFilterParams } from "../../api/types";
+import type { SequenceFilterParams } from "../../api/types";
 
 interface ConfidenceRangeFilterProps {
-  filters: EventFilterParams;
-  onChange: (next: EventFilterParams) => void;
+  filters: SequenceFilterParams;
+  onChange: (next: SequenceFilterParams) => void;
   /** Project's counting_threshold; the det slider's resting position
    * when no filter is set, and its clamp in ``floorMode="clamp"``. */
   detectionFloor: number;

@@ -7,7 +7,7 @@ from pathlib import Path
 from sqlalchemy import func, select
 
 from app.api.crud.deployment_split import split_deployment as crud_split_deployment
-from app.models import Deployment, DeploymentQueue, Event, EventObservation, File
+from app.models import Deployment, DeploymentQueue, File, Sequence, SequenceObservation
 from tests.conftest import (
     make_deployment,
     make_file,
@@ -433,38 +433,38 @@ def test_split_slices_results_json_and_removes_parent_dir(
 
 
 # ---------------------------------------------------------------------------
-# Events
+# Sequences
 # ---------------------------------------------------------------------------
 
 
-def test_split_reassigns_single_group_event(client, db, tmp_path):
+def test_split_reassigns_single_group_sequence(client, db, tmp_path):
     root, d = _seed_deployment_with_files(
         db, tmp_path, {"siteA": 2, "siteB": 2}
     )
-    # Event linking two siteA files only.
+    # Sequence linking two siteA files only.
     a_files = list(
         db.execute(
             select(File).where(File.file_path.like(f"{root}/siteA/%"))
         ).scalars()
     )
-    from app.models.event import event_files
-    ev = Event(
+    from app.models.sequence import sequence_files
+    ev = Sequence(
         deployment_id=d.id,
-        event_start_local=datetime(2024, 1, 5, 10, 0),
-        event_end_local=datetime(2024, 1, 5, 10, 30),
+        sequence_start_local=datetime(2024, 1, 5, 10, 0),
+        sequence_end_local=datetime(2024, 1, 5, 10, 30),
         file_count=len(a_files),
     )
     db.add(ev)
     db.flush()
     for seq, f in enumerate(a_files):
         db.execute(
-            event_files.insert().values(
-                event_id=ev.id, file_id=f.id, sequence_number=seq
+            sequence_files.insert().values(
+                sequence_id=ev.id, file_id=f.id, position=seq
             )
         )
     db.add(
-        EventObservation(
-            event_id=ev.id, label="deer", category="animal", max_n=1
+        SequenceObservation(
+            sequence_id=ev.id, label="deer", category="animal", max_n=1
         )
     )
     db.commit()
@@ -477,21 +477,21 @@ def test_split_reassigns_single_group_event(client, db, tmp_path):
     )
     assert resp.status_code == 200
 
-    # The event moved to the siteA child.
+    # The sequence moved to the siteA child.
     children = list(db.execute(select(Deployment)).scalars())
     site_a_child = next(
         c for c in children if c.folder_path == str(root / "siteA")
     )
-    events_for_a = list(
+    sequences_for_a = list(
         db.execute(
-            select(Event).where(Event.deployment_id == site_a_child.id)
+            select(Sequence).where(Sequence.deployment_id == site_a_child.id)
         ).scalars()
     )
-    assert len(events_for_a) == 1
+    assert len(sequences_for_a) == 1
     obs = list(
         db.execute(
-            select(EventObservation).where(
-                EventObservation.event_id == events_for_a[0].id
+            select(SequenceObservation).where(
+                SequenceObservation.sequence_id == sequences_for_a[0].id
             )
         ).scalars()
     )
@@ -499,33 +499,33 @@ def test_split_reassigns_single_group_event(client, db, tmp_path):
     assert obs[0].label == "deer"
 
 
-def test_split_duplicates_straddling_event(client, db, tmp_path):
+def test_split_duplicates_straddling_sequence(client, db, tmp_path):
     root, d = _seed_deployment_with_files(
         db, tmp_path, {"siteA": 2, "siteB": 2}
     )
     files = list(db.execute(select(File)).scalars())
-    # Attach an event that straddles both children.
-    from app.models.event import event_files
-    ev = Event(
+    # Attach a sequence that straddles both children.
+    from app.models.sequence import sequence_files
+    ev = Sequence(
         deployment_id=d.id,
-        event_start_local=datetime(2024, 1, 5, 10, 0),
-        event_end_local=datetime(2024, 1, 5, 10, 30),
+        sequence_start_local=datetime(2024, 1, 5, 10, 0),
+        sequence_end_local=datetime(2024, 1, 5, 10, 30),
         file_count=len(files),
     )
     db.add(ev)
     db.flush()
     for seq, f in enumerate(files):
         db.execute(
-            event_files.insert().values(
-                event_id=ev.id, file_id=f.id, sequence_number=seq
+            sequence_files.insert().values(
+                sequence_id=ev.id, file_id=f.id, position=seq
             )
         )
     peak_file = next(
         f for f in files if f.file_path.startswith(str(root / "siteA"))
     )
     db.add(
-        EventObservation(
-            event_id=ev.id,
+        SequenceObservation(
+            sequence_id=ev.id,
             label="deer",
             category="animal",
             max_n=3,
@@ -545,15 +545,15 @@ def test_split_duplicates_straddling_event(client, db, tmp_path):
     by_folder = {c.folder_path: c for c in children}
     ev_a = list(
         db.execute(
-            select(Event).where(
-                Event.deployment_id == by_folder[str(root / "siteA")].id
+            select(Sequence).where(
+                Sequence.deployment_id == by_folder[str(root / "siteA")].id
             )
         ).scalars()
     )
     ev_b = list(
         db.execute(
-            select(Event).where(
-                Event.deployment_id == by_folder[str(root / "siteB")].id
+            select(Sequence).where(
+                Sequence.deployment_id == by_folder[str(root / "siteB")].id
             )
         ).scalars()
     )
@@ -562,15 +562,15 @@ def test_split_duplicates_straddling_event(client, db, tmp_path):
 
     obs_a = list(
         db.execute(
-            select(EventObservation).where(
-                EventObservation.event_id == ev_a[0].id
+            select(SequenceObservation).where(
+                SequenceObservation.sequence_id == ev_a[0].id
             )
         ).scalars()
     )
     obs_b = list(
         db.execute(
-            select(EventObservation).where(
-                EventObservation.event_id == ev_b[0].id
+            select(SequenceObservation).where(
+                SequenceObservation.sequence_id == ev_b[0].id
             )
         ).scalars()
     )
@@ -583,17 +583,17 @@ def test_split_duplicates_straddling_event(client, db, tmp_path):
 
 def test_split_preserves_human_count_and_confirmation(client, db, tmp_path):
     """Human counts and the confirmed flag are holy: a split copies
-    observations, so a confirmed event with a human count override must
+    observations, so a confirmed sequence with a human count override must
     survive on every child."""
     root, d = _seed_deployment_with_files(
         db, tmp_path, {"siteA": 2, "siteB": 2}
     )
     files = list(db.execute(select(File)).scalars())
-    from app.models.event import event_files
-    ev = Event(
+    from app.models.sequence import sequence_files
+    ev = Sequence(
         deployment_id=d.id,
-        event_start_local=datetime(2024, 1, 5, 10, 0),
-        event_end_local=datetime(2024, 1, 5, 10, 30),
+        sequence_start_local=datetime(2024, 1, 5, 10, 0),
+        sequence_end_local=datetime(2024, 1, 5, 10, 30),
         file_count=len(files),
         confirmed=True,
     )
@@ -601,14 +601,14 @@ def test_split_preserves_human_count_and_confirmation(client, db, tmp_path):
     db.flush()
     for seq, f in enumerate(files):
         db.execute(
-            event_files.insert().values(
-                event_id=ev.id, file_id=f.id, sequence_number=seq
+            sequence_files.insert().values(
+                sequence_id=ev.id, file_id=f.id, position=seq
             )
         )
     # AI counted 3, human overrode to 7.
     db.add(
-        EventObservation(
-            event_id=ev.id,
+        SequenceObservation(
+            sequence_id=ev.id,
             label="deer",
             category="animal",
             max_n=3,
@@ -627,8 +627,8 @@ def test_split_preserves_human_count_and_confirmation(client, db, tmp_path):
     for folder in (str(root / "siteA"), str(root / "siteB")):
         evs = list(
             db.execute(
-                select(Event).where(
-                    Event.deployment_id == by_folder[folder].id
+                select(Sequence).where(
+                    Sequence.deployment_id == by_folder[folder].id
                 )
             ).scalars()
         )
@@ -636,8 +636,8 @@ def test_split_preserves_human_count_and_confirmation(client, db, tmp_path):
         assert evs[0].confirmed is True
         obs = list(
             db.execute(
-                select(EventObservation).where(
-                    EventObservation.event_id == evs[0].id
+                select(SequenceObservation).where(
+                    SequenceObservation.sequence_id == evs[0].id
                 )
             ).scalars()
         )

@@ -1,6 +1,6 @@
 /**
  * One progress bar for project-wide observations verified, plus a
- * per-label breakdown below. The three-row design (Events / Media /
+ * per-label breakdown below. The three-row design (Sequences / Media /
  * Observations) is gone: every Verify-page surface now reports the
  * same "percent observations verified" number, so showing three
  * different counts here was misleading.
@@ -10,7 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "../ui/card";
 import { DashboardCardHeader } from "./DashboardCardHeader";
 import { Separator } from "../ui/separator";
-import { eventsApi } from "../../api/events";
+import { sequencesApi } from "../../api/sequences";
 import { labelsApi } from "../../api/labels";
 import { statisticsApi } from "../../api/statistics";
 import { resolveSpeciesName } from "../../lib/species-name-mode";
@@ -78,14 +78,14 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
   // The card has three requests, and on a large project they take
   // seconds to tens of seconds each. Every part shows as soon as its own
   // request is back, so the card never waits for the slowest one.
-  const { data: eventCounts, isLoading: countsLoading } = useQuery({
+  const { data: sequenceCounts, isLoading: countsLoading } = useQuery({
     queryKey: ["statistics", "verification-progress", "events", projectId, siteIds, dateFrom, dateTo],
-    queryFn: () => eventsApi.count(projectId, filterArgs),
+    queryFn: () => sequencesApi.count(projectId, filterArgs),
   });
   // The Labels bar counts files, from the same endpoint the Labels page
   // pill reads, so the two surfaces can never disagree. Deliberately not
-  // the events stats' own file counts: those queries apply the project
-  // threshold, which drops events with nothing passing, and that is
+  // the sequences stats' own file counts: those queries apply the project
+  // threshold, which drops sequences with nothing passing, and that is
   // exactly where the empty files live. On a real project it was 41
   // files short.
   const { data: labelsProgress, isLoading: labelsLoading } = useQuery({
@@ -99,8 +99,8 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
   });
 
   // Two jobs, two bars: Labels (checking what the AI found and what it
-  // missed, file-level) and Counts (event species + count sign-off,
-  // event-level). They are separate pages and complete independently, so
+  // missed, file-level) and Counts (sequence species + count sign-off,
+  // sequence-level). They are separate pages and complete independently, so
   // one number can't represent both.
   //
   // A label is one call to make: a box above the threshold, or a file
@@ -118,9 +118,9 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
   };
   const countsRow: BarRow = {
     label: "Counts confirmed",
-    counts: eventCounts && {
-      verified: eventCounts.confirmed,
-      total: eventCounts.count,
+    counts: sequenceCounts && {
+      verified: sequenceCounts.confirmed,
+      total: sequenceCounts.count,
     },
   };
   // Nothing to verify is only known once both bars have answered.
@@ -139,7 +139,7 @@ export const VerificationProgressChart: React.FC<VerificationProgressChartProps>
               Two jobs. "Labels verified" is the percent of labels you
               have checked on the Labels page: every box above your
               detection threshold, plus one for each file the AI found
-              nothing in. "Counts confirmed" is the percent of events
+              nothing in. "Counts confirmed" is the percent of sequences
               signed off on the Counts page. The list below covers the
               boxes only, because a file the AI found nothing in has no
               species to break down.

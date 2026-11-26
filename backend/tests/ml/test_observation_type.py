@@ -73,7 +73,7 @@ def test_sub_threshold_animal_yields_to_passing_person():
 def test_verified_beats_higher_confidence():
     """A human looked at the person box and confirmed it. That outranks
     a model that is merely more confident about something else, the same
-    ordering build_event_primary_labels uses for the event folder."""
+    ordering build_sequence_primary_labels uses for the sequence folder."""
     dets = [_Det("animal", 0.99), _Det("person", 0.30, verified=True)]
     assert derive_observation_type(dets, 0.5) == "person"
 
@@ -188,7 +188,7 @@ def test_detection_threshold_refuses_an_empty_id_list(db):
     0.0 made callers look like they had one."""
     import pytest
 
-    from app.api.crud.event_observation import (
+    from app.api.crud.sequence_observation import (
         get_project_threshold_for_detections,
     )
 
@@ -202,7 +202,7 @@ def test_detection_threshold_refuses_unresolvable_ids(db):
     first; this makes getting that wrong loud instead of silent."""
     import pytest
 
-    from app.api.crud.event_observation import (
+    from app.api.crud.sequence_observation import (
         get_project_threshold_for_detections,
     )
 

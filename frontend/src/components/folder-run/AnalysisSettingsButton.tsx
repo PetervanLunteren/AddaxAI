@@ -90,7 +90,7 @@ type FolderRunSettingsValues = AnalysisSettingsValues & {
 
 function valuesFromProject(project: ProjectResponse): FolderRunSettingsValues {
   return {
-    event_smoothing: project.event_smoothing,
+    sequence_smoothing: project.sequence_smoothing,
     smoothing_strength: (project.smoothing_strength ?? "normal") as
       | "mild"
       | "normal"
@@ -138,7 +138,7 @@ export function AnalysisSettingsButton({
   // id exists; jobId drives the progress modal afterwards.
   const [isApplying, setIsApplying] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
-  // Set when an interval change would regroup confirmed events; drives the
+  // Set when an interval change would regroup confirmed sequences; drives the
   // type-to-confirm gate before the reprocess actually runs.
   const [regroupImpact, setRegroupImpact] = useState<RegroupImpact | null>(null);
   // Before-stats captured at apply time; diffed against after-stats once
@@ -215,7 +215,7 @@ export function AnalysisSettingsButton({
   });
 
   // Button handler: warn first if the interval change would regroup
-  // confirmed events, otherwise apply straight away.
+  // confirmed sequences, otherwise apply straight away.
   const apply = async () => {
     try {
       const impact = await fetchRegroupImpact(
@@ -253,7 +253,7 @@ export function AnalysisSettingsButton({
       // sit in localStorage pretending to be a preference. This run keeps
       // its own value on its project row, which is what resuming reads.
       saveLastUsedSettings({
-        event_smoothing: values.event_smoothing,
+        sequence_smoothing: values.sequence_smoothing,
         smoothing_strength: values.smoothing_strength,
         taxonomic_rollup: values.taxonomic_rollup,
         independence_interval: values.independence_interval,
@@ -332,10 +332,10 @@ export function AnalysisSettingsButton({
               onSmoothingChange={(level: SmoothingLevel) =>
                 setValues((v) =>
                   level === "off"
-                    ? { ...v, event_smoothing: false }
+                    ? { ...v, sequence_smoothing: false }
                     : {
                         ...v,
-                        event_smoothing: true,
+                        sequence_smoothing: true,
                         smoothing_strength: level,
                       },
                 )

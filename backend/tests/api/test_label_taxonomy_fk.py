@@ -8,9 +8,9 @@ from tests.conftest import (
     label_tree,
     make_deployment,
     make_detection,
-    make_event_with_files,
     make_file,
     make_project,
+    make_sequence_with_files,
     make_site,
 )
 
@@ -37,12 +37,12 @@ def _setup_project_with_linked_detections(db, label_list):
 
     detections = []
     for sp in label_list:
-        ev = make_event_with_files(
-            db, deployment_id=d.id, event_start_local=datetime(2024, 6, 1, 12, 0),
+        ev = make_sequence_with_files(
+            db, deployment_id=d.id, sequence_start_local=datetime(2024, 6, 1, 12, 0),
         )
-        from app.models.event import event_files as ef_table
+        from app.models.sequence import sequence_files as ef_table
         file_row = db.execute(
-            ef_table.select().where(ef_table.c.event_id == ev.id)
+            ef_table.select().where(ef_table.c.sequence_id == ev.id)
         ).first()
         det = make_detection(db, file_id=file_row.file_id, label=sp, label_confidence=0.8)
         detections.append(det)

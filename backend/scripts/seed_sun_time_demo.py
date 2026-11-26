@@ -13,7 +13,7 @@ What it creates:
     Site       : Nordmarka (59.91N, 10.75E)
     Deployment : 2024-03-01 to 2024-11-30 (9 months, no polar dates)
     Species    : one crepuscular species "Moose (demo)"
-    Events     : ~400 observations, each clustered at either
+    Sequences     : ~400 observations, each clustered at either
                  (sunrise + 1h) or (sunset - 1h) with +/- 30 min jitter
 
 Because Oslo's sunrise swings from ~03:55 in June to ~08:15 in November,
@@ -38,9 +38,9 @@ from astral.sun import sun
 
 from app.db.base import get_session_factory
 from app.models.deployment import Deployment
-from app.models.event import Event
-from app.models.event_observation import EventObservation
 from app.models.project import Project
+from app.models.sequence import Sequence
+from app.models.sequence_observation import SequenceObservation
 from app.models.site import Site
 
 PROJECT_NAME = "Sun-time demo (Oslo)"
@@ -50,7 +50,7 @@ LON = 10.75
 START_DATE = date(2024, 3, 1)
 END_DATE = date(2024, 11, 30)
 SPECIES_LABEL = "Moose (demo)"
-EVENT_COUNT = 400
+SEQUENCE_COUNT = 400
 RANDOM_SEED = 42
 
 # Peak offsets. A biologically crepuscular species active ~1h after first
@@ -128,36 +128,36 @@ def main() -> int:
         db.flush()
 
         total_days = (END_DATE - START_DATE).days + 1
-        events_inserted = 0
-        for _ in range(EVENT_COUNT):
+        sequences_inserted = 0
+        for _ in range(SEQUENCE_COUNT):
             offset_days = rng.randint(0, total_days - 1)
             d = START_DATE + timedelta(days=offset_days)
-            event_time = _clock_time_for_date(d, rng)
-            if event_time is None:
+            sequence_time = _clock_time_for_date(d, rng)
+            if sequence_time is None:
                 continue
-            event = Event(
+            sequence = Sequence(
                 deployment_id=deployment.id,
-                event_start_local=event_time,
-                event_end_local=event_time + timedelta(minutes=1),
+                sequence_start_local=sequence_time,
+                sequence_end_local=sequence_time + timedelta(minutes=1),
                 file_count=0,
             )
-            db.add(event)
+            db.add(sequence)
             db.flush()
-            observation = EventObservation(
-                event_id=event.id,
+            observation = SequenceObservation(
+                sequence_id=sequence.id,
                 label=SPECIES_LABEL,
                 label_taxonomy_id=None,
                 category="animal",
                 max_n=1,
             )
             db.add(observation)
-            events_inserted += 1
+            sequences_inserted += 1
 
         db.commit()
         print(f"Seeded '{PROJECT_NAME}'")
         print(f"  project_id = {project.id}")
         print(f"  site_id    = {site.id}")
-        print(f"  events     = {events_inserted}")
+        print(f"  sequences     = {sequences_inserted}")
         print()
         print("Open the project, go to Plots -> Activity overlap, pick")
         print("'Moose (demo)' in Species A, and toggle between Clock and Sun.")

@@ -181,7 +181,7 @@ const settingsSchema = z.object({
   detection_augment: z.boolean(),
   detection_image_size: z.number().int().nullable(),
   classification_gate: z.number().min(0.01).max(1),
-  event_smoothing: z.boolean(),
+  sequence_smoothing: z.boolean(),
   smoothing_strength: z.enum(["mild", "normal", "aggressive"]),
   taxonomic_rollup: z.boolean(),
   independence_interval: z.number().int().min(0),
@@ -283,7 +283,7 @@ export function FolderRunModelStep() {
       detection_augment: false,
       detection_image_size: null,
       classification_gate: DEFAULT_CLASSIFICATION_GATE,
-      event_smoothing: true,
+      sequence_smoothing: true,
       smoothing_strength: "normal",
       taxonomic_rollup: true,
       independence_interval: 1800,
@@ -325,7 +325,7 @@ export function FolderRunModelStep() {
       detection_augment: run.project.detection_augment,
       detection_image_size: run.project.detection_image_size,
       classification_gate: run.project.classification_gate,
-      event_smoothing: run.project.event_smoothing,
+      sequence_smoothing: run.project.sequence_smoothing,
       smoothing_strength: (run.project.smoothing_strength ??
         "normal") as "mild" | "normal" | "aggressive",
       taxonomic_rollup: run.project.taxonomic_rollup,
@@ -604,7 +604,7 @@ export function FolderRunModelStep() {
       // (DEFAULT_COUNTING_THRESHOLD) — the one in-app floor, decoupled
       // from the gate, so the grid, counts, and verification pills all
       // agree. The gate is a separate inference knob.
-      event_smoothing: data.event_smoothing,
+      sequence_smoothing: data.sequence_smoothing,
       smoothing_strength: data.smoothing_strength,
       taxonomic_rollup: data.taxonomic_rollup,
       independence_interval: data.independence_interval,
@@ -755,7 +755,7 @@ export function FolderRunModelStep() {
       // (DEFAULT_COUNTING_THRESHOLD) — the one in-app floor, decoupled
       // from the gate, so the grid, counts, and verification pills all
       // agree. The gate is a separate inference knob.
-      event_smoothing: data.event_smoothing,
+      sequence_smoothing: data.sequence_smoothing,
       smoothing_strength: data.smoothing_strength,
       taxonomic_rollup: data.taxonomic_rollup,
       independence_interval: data.independence_interval,
@@ -1629,7 +1629,7 @@ export function FolderRunModelStep() {
           deleteQueueEntriesOnClose={false}
           renderTerminalNextSteps={({ close, isClosing }) => {
             // Close, then wipe the cache (the run regenerated detections,
-            // events, observations, files, and every derived stat), set
+            // sequences, observations, files, and every derived stat), set
             // the server-side step, and navigate. Re-set the folder-run
             // entry so the layout doesn't flash a refetch.
             const goTo = (step: "labels" | "save") => async () => {

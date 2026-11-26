@@ -70,7 +70,7 @@ export function isNonLabel(label: string | null | undefined): boolean {
  * rendered frame reads. Every surface used to carry its own copy of
  * the confidence test, which is exactly the drift this module exists
  * to prevent: the verified override and the rejected-box rule once
- * landed on the canvas and not in the video, so one event modal drew
+ * landed on the canvas and not in the video, so one sequence modal drew
  * different boxes in frame mode and in video mode.
  *
  *  1. A box a person rejected is never outlined. Mirrors the backend's
@@ -83,7 +83,7 @@ export function isNonLabel(label: string | null | undefined): boolean {
  *     `Detection.confidence`, so a box a human confirmed at 3% keeps
  *     that 3% forever and would otherwise earn a card and a count but
  *     no rectangle.
- *  3. It must have a bbox — event-level observations are bbox-less by
+ *  3. It must have a bbox — box-less observations are bbox-less by
  *     design and never draw.
  *
  * No rule here reads who drew a box. A drawn box is verified at

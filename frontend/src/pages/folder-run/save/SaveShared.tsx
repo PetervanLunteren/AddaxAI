@@ -325,8 +325,8 @@ export function MediaBody({ form }: { form: MediaFormHandles }) {
         {showGrouping && (
           <ChildRows>
             <CaptionedCheckbox
-              checked={separate.groupEvents}
-              onChange={(v) => setSeparate({ ...separate, groupEvents: v })}
+              checked={separate.groupSequences}
+              onChange={(v) => setSeparate({ ...separate, groupSequences: v })}
               label="Keep events together"
               caption="Every file in an event goes to one folder: the species you verified most often, or else the strongest detection"
             />

@@ -21,7 +21,7 @@ from app.db.types import UtcDateTime
 if TYPE_CHECKING:
     from .deployment import Deployment
     from .detection import Detection
-    from .event import Event
+    from .sequence import Sequence
     from .track import Track
 
 
@@ -32,7 +32,7 @@ class File(Base):
     """
     Media file (image or video) from a camera trap.
 
-    Files belong to a deployment and can be grouped into events
+    Files belong to a deployment and can be grouped into sequences
     based on temporal clustering.
     """
 
@@ -108,7 +108,7 @@ class File(Base):
     # verified status changes; for empty frames (no detections) the
     # file-verify action sets it directly. This is the single
     # user-facing verification flag — badges, filters, nav, and the
-    # event MaxN rollup all read it.
+    # sequence MaxN rollup all read it.
     verified: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="0", default=False
     )
@@ -135,8 +135,8 @@ class File(Base):
 
     # Relationships
     deployment: Mapped["Deployment"] = relationship("Deployment", back_populates="files")
-    events: Mapped[list["Event"]] = relationship(
-        "Event", secondary="event_files", back_populates="files"
+    sequences: Mapped[list["Sequence"]] = relationship(
+        "Sequence", secondary="sequence_files", back_populates="files"
     )
     # passive_deletes=True: the DB owns the cascade (see DEVELOPERS.md,
     # "Deleting analysis data").

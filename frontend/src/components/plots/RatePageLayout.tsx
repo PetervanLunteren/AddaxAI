@@ -10,7 +10,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import { eventsApi } from "../../api/events";
+import { sequencesApi } from "../../api/sequences";
 import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
 import { wideSpan } from "../../lib/date-span";
 import { speciesLabelMap } from "../../lib/species-name-mode";
@@ -68,8 +68,8 @@ export function RatePageLayout({
   const { data: noSite } = useNoSiteDeployments(projectId);
   // Same query as the filter bar's, so this is a cache hit.
   const { data: filterOptions } = useQuery({
-    queryKey: ["event-filter-options", projectId],
-    queryFn: () => eventsApi.getFilterOptions(projectId),
+    queryKey: ["sequence-filter-options", projectId],
+    queryFn: () => sequencesApi.getFilterOptions(projectId),
   });
 
   const tooWide = wideSpan(dates?.first, dates?.last);

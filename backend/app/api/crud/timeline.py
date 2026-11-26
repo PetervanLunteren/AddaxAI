@@ -46,23 +46,23 @@ def _concurrent_sweep(
     """
     if not intervals:
         return []
-    events: list[tuple[date, int]] = []
+    sequences: list[tuple[date, int]] = []
     for start, end in intervals:
-        events.append((start, 1))
-        events.append((end + timedelta(days=1), -1))
-    events.sort(key=lambda e: e[0])
+        sequences.append((start, 1))
+        sequences.append((end + timedelta(days=1), -1))
+    sequences.sort(key=lambda e: e[0])
 
     points: list[ConcurrentPoint] = []
     running = 0
     i = 0
-    n = len(events)
+    n = len(sequences)
     while i < n:
-        day = events[i][0]
-        # Collapse multiple events on the same day into one delta so the
+        day = sequences[i][0]
+        # Collapse multiple sequences on the same day into one delta so the
         # emitted series has at most one point per calendar day.
         delta = 0
-        while i < n and events[i][0] == day:
-            delta += events[i][1]
+        while i < n and sequences[i][0] == day:
+            delta += sequences[i][1]
             i += 1
         running += delta
         points.append(ConcurrentPoint(date=day, count=running))

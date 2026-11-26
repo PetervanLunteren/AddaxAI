@@ -1,8 +1,8 @@
 """
-Tests for MaxN (event observation) calculation.
+Tests for MaxN (sequence observation) calculation.
 
 MaxN is the maximum number of individuals of a species visible in any
-single image within an event.
+single image within a sequence.
 """
 
 import uuid
@@ -10,51 +10,51 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import insert
 
-from app.api.crud.event_observation import (
+from app.api.crud.sequence_observation import (
     add_human_species,
-    calculate_max_n_for_event,
-    delete_event_observation,
-    get_event_ids_for_detections,
-    list_event_observations,
+    calculate_max_n_for_sequence,
+    delete_sequence_observation,
+    get_sequence_ids_for_detections,
+    list_sequence_observations,
     recalculate_max_n_for_project,
     relabel_observation,
-    reset_event_to_ai,
-    set_event_confirmed,
-    set_event_notes,
+    reset_sequence_to_ai,
     set_human_count,
     set_human_observations,
     set_observation_attributes,
+    set_sequence_confirmed,
+    set_sequence_notes,
     split_observation,
 )
-from app.models.event import Event, event_files
-from app.models.event_observation import EventObservation
+from app.models.sequence import Sequence, sequence_files
+from app.models.sequence_observation import SequenceObservation
 from app.models.track import Track
 from tests.conftest import (
     make_deployment,
     make_detection,
-    make_event_with_files,
     make_file,
     make_project,
+    make_sequence_with_files,
     make_site,
     make_track,
 )
 
 
-def _make_event_with_detections(db, deployment_id, event_start_local, file_specs):
+def _make_sequence_with_detections(db, deployment_id, sequence_start_local, file_specs):
     """
-    Create an event with files and detections.
+    Create a sequence with files and detections.
 
     file_specs: list of dicts, each with:
         - detections: list of (label, category, confidence) tuples
     """
     eid = str(uuid.uuid4())
-    from app.models.event import Event
+    from app.models.sequence import Sequence
 
-    ev = Event(
+    ev = Sequence(
         id=eid,
         deployment_id=deployment_id,
-        event_start_local=event_start_local,
-        event_end_local=event_start_local,
+        sequence_start_local=sequence_start_local,
+        sequence_end_local=sequence_start_local,
         file_count=len(file_specs),
     )
     db.add(ev)
@@ -66,13 +66,13 @@ def _make_event_with_detections(db, deployment_id, event_start_local, file_specs
         f = make_file(
             db,
             deployment_id=deployment_id,
-            captured_at_local=event_start_local,
+            captured_at_local=sequence_start_local,
         )
         db.execute(
-            insert(event_files).values(
-                event_id=eid,
+            insert(sequence_files).values(
+                sequence_id=eid,
                 file_id=f.id,
-                sequence_number=seq,
+                position=seq,
             )
         )
         created_files.append(f)
@@ -95,13 +95,13 @@ def test_basic_max_n(db):
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, files, _ = _make_event_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
+    ev, files, _ = _make_sequence_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
         {"detections": [("cow", "animal", 0.9)] * 5},   # image 1: 5 cows
         {"detections": [("cow", "animal", 0.9)] * 3},   # image 2: 3 cows
         {"detections": [("cow", "animal", 0.9)] * 7},   # image 3: 7 cows
     ])
 
-    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    obs = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
     assert len(obs) == 1
@@ -111,17 +111,17 @@ def test_basic_max_n(db):
 
 
 def test_multi_species_max_n(db):
-    """Each species gets its own MaxN within the same event."""
+    """Each species gets its own MaxN within the same sequence."""
     project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, files, _ = _make_event_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
+    ev, files, _ = _make_sequence_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
         {"detections": [("cow", "animal", 0.9)] * 10 + [("bear", "animal", 0.9)] * 2},
         {"detections": [("cow", "animal", 0.9)] * 3 + [("bear", "animal", 0.9)] * 4},
     ])
 
-    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    obs = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
     obs_by_label = {o.label: o for o in obs}
@@ -139,25 +139,25 @@ def test_relabel_observation_merges_into_existing(db):
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, _, _ = _make_event_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
+    ev, _, _ = _make_sequence_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
         {"detections": [("bird", "animal", 0.9)] * 5 + [("deer", "animal", 0.9)]},
     ])
-    calculate_max_n_for_event(db, ev.id, 0.5)
+    calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
-    rows = {o.label: o for o in list_event_observations(db, ev.id)}
+    rows = {o.label: o for o in list_sequence_observations(db, ev.id)}
     bird_id = rows["bird"].id
 
     relabel_observation(db, bird_id, category="animal", label="deer")
 
-    rows = {o.label: o for o in list_event_observations(db, ev.id)}
+    rows = {o.label: o for o in list_sequence_observations(db, ev.id)}
     # deer took bird's 5 on top of its own 1.
     assert rows["deer"].effective_count == 6
     # bird is hidden: AI boxes survive (max_n=5) but effective count is 0.
     assert rows["bird"].max_n == 5
     assert rows["bird"].effective_count == 0
-    # The relabel un-signs the event.
-    assert db.get(Event, ev.id).confirmed is False
+    # The relabel un-signs the sequence.
+    assert db.get(Sequence, ev.id).confirmed is False
 
 
 def test_relabel_observation_to_new_species(db):
@@ -167,16 +167,16 @@ def test_relabel_observation_to_new_species(db):
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, _, _ = _make_event_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
+    ev, _, _ = _make_sequence_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
         {"detections": [("bird", "animal", 0.9)] * 5},
     ])
-    calculate_max_n_for_event(db, ev.id, 0.5)
+    calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
-    bird_id = list_event_observations(db, ev.id)[0].id
+    bird_id = list_sequence_observations(db, ev.id)[0].id
     relabel_observation(db, bird_id, category="animal", label="chicken")
 
-    rows = {o.label: o for o in list_event_observations(db, ev.id)}
+    rows = {o.label: o for o in list_sequence_observations(db, ev.id)}
     assert rows["chicken"].max_n == 0
     assert rows["chicken"].effective_count == 5
     assert rows["bird"].effective_count == 0
@@ -188,7 +188,7 @@ def test_threshold_filtering(db):
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, files, dets = _make_event_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
+    ev, files, dets = _make_sequence_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
         {"detections": [
             ("cow", "animal", 0.9),   # above threshold
             ("cow", "animal", 0.3),   # below threshold, excluded
@@ -196,7 +196,7 @@ def test_threshold_filtering(db):
         ]},
     ])
 
-    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    obs = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
     assert len(obs) == 1
@@ -209,7 +209,7 @@ def test_verified_below_threshold_included(db):
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, files, dets = _make_event_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
+    ev, files, dets = _make_sequence_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
         {"detections": [
             ("cow", "animal", 0.9),
             ("cow", "animal", 0.3),
@@ -220,26 +220,26 @@ def test_verified_below_threshold_included(db):
     dets[1].verified = True
     db.flush()
 
-    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    obs = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
     assert len(obs) == 1
     assert obs[0].max_n == 2  # both count now
 
 
-def test_blank_event_no_observations(db):
-    """Events with no detections get no EventObservation rows."""
+def test_blank_sequence_no_observations(db):
+    """Sequences with no detections get no SequenceObservation rows."""
     project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev = make_event_with_files(
+    ev = make_sequence_with_files(
         db,
         deployment_id=dep.id,
-        event_start_local=datetime(2024, 1, 1, 12),
+        sequence_start_local=datetime(2024, 1, 1, 12),
     )
 
-    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    obs = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
     assert len(obs) == 0
@@ -251,13 +251,13 @@ def test_peak_file_id_correct(db):
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, files, _ = _make_event_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
+    ev, files, _ = _make_sequence_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
         {"detections": [("deer", "animal", 0.9)] * 2},
         {"detections": [("deer", "animal", 0.9)] * 5},
         {"detections": [("deer", "animal", 0.9)] * 3},
     ])
 
-    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    obs = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
     assert len(obs) == 1
@@ -266,15 +266,15 @@ def test_peak_file_id_correct(db):
 
 
 def test_recalculate_max_n_for_project(db):
-    """Project-wide recalculation updates all events."""
+    """Project-wide recalculation updates all sequences."""
     project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev1, _, _ = _make_event_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
+    ev1, _, _ = _make_sequence_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
         {"detections": [("cow", "animal", 0.9)] * 3},
     ])
-    ev2, _, _ = _make_event_with_detections(db, dep.id, datetime(2024, 1, 2, 12), [
+    ev2, _, _ = _make_sequence_with_detections(db, dep.id, datetime(2024, 1, 2, 12), [
         {"detections": [("deer", "animal", 0.9)] * 2},
     ])
     db.commit()
@@ -285,8 +285,8 @@ def test_recalculate_max_n_for_project(db):
     assert total == 2  # 2 observations total (cow in ev1, deer in ev2)
 
     # Verify stored values
-    obs1 = db.query(EventObservation).filter(EventObservation.event_id == ev1.id).all()
-    obs2 = db.query(EventObservation).filter(EventObservation.event_id == ev2.id).all()
+    obs1 = db.query(SequenceObservation).filter(SequenceObservation.sequence_id == ev1.id).all()
+    obs2 = db.query(SequenceObservation).filter(SequenceObservation.sequence_id == ev2.id).all()
     assert len(obs1) == 1
     assert obs1[0].max_n == 3
     assert len(obs2) == 1
@@ -294,31 +294,31 @@ def test_recalculate_max_n_for_project(db):
 
 
 def test_recalculation_replaces_old_values(db):
-    """Recalculating replaces old EventObservation rows, not appends."""
+    """Recalculating replaces old SequenceObservation rows, not appends."""
     project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, files, dets = _make_event_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
+    ev, files, dets = _make_sequence_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
         {"detections": [("cow", "animal", 0.9)] * 5},
     ])
 
-    calculate_max_n_for_event(db, ev.id, 0.5)
+    calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
     # Recalculate again
-    calculate_max_n_for_event(db, ev.id, 0.5)
+    calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
-    obs = db.query(EventObservation).filter(EventObservation.event_id == ev.id).all()
+    obs = db.query(SequenceObservation).filter(SequenceObservation.sequence_id == ev.id).all()
     assert len(obs) == 1  # still 1, not 2
     assert obs[0].max_n == 5
 
 
-def test_recalculation_drops_only_this_events_rows_from_the_session(db):
-    """The old rows leave the session, another event's rows stay in it.
+def test_recalculation_drops_only_this_sequences_rows_from_the_session(db):
+    """The old rows leave the session, another sequence's rows stay in it.
 
-    The delete in `calculate_max_n_for_event` synchronizes the session by
+    The delete in `calculate_max_n_for_sequence` synchronizes the session by
     the ids SQLite returns ("fetch"), not by testing every loaded object.
     This pins that the result is still right: a stale row left in the
     session would be read back as a live observation.
@@ -328,17 +328,17 @@ def test_recalculation_drops_only_this_events_rows_from_the_session(db):
     project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
-    ev, _, _ = _make_event_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
+    ev, _, _ = _make_sequence_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
         {"detections": [("cow", "animal", 0.9)] * 2},
     ])
-    other, _, _ = _make_event_with_detections(db, dep.id, datetime(2024, 1, 2, 12), [
+    other, _, _ = _make_sequence_with_detections(db, dep.id, datetime(2024, 1, 2, 12), [
         {"detections": [("bear", "animal", 0.9)]},
     ])
-    [old] = calculate_max_n_for_event(db, ev.id, 0.5)
-    [kept] = calculate_max_n_for_event(db, other.id, 0.5)
+    [old] = calculate_max_n_for_sequence(db, ev.id, 0.5)
+    [kept] = calculate_max_n_for_sequence(db, other.id, 0.5)
     db.flush()
 
-    [new] = calculate_max_n_for_event(db, ev.id, 0.5)
+    [new] = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
     assert inspect(old).was_deleted
@@ -347,18 +347,18 @@ def test_recalculation_drops_only_this_events_rows_from_the_session(db):
     assert new.id != old.id and new.max_n == 2
 
 
-def test_get_event_ids_for_detections(db):
-    """Helper finds event IDs containing the given detection IDs."""
+def test_get_sequence_ids_for_detections(db):
+    """Helper finds sequence IDs containing the given detection IDs."""
     project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, files, dets = _make_event_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
+    ev, files, dets = _make_sequence_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
         {"detections": [("cow", "animal", 0.9)]},
     ])
 
-    event_ids = get_event_ids_for_detections(db, [dets[0].id])
-    assert ev.id in event_ids
+    sequence_ids = get_sequence_ids_for_detections(db, [dets[0].id])
+    assert ev.id in sequence_ids
 
 
 def test_person_and_vehicle_max_n(db):
@@ -367,12 +367,12 @@ def test_person_and_vehicle_max_n(db):
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, files, _ = _make_event_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
+    ev, files, _ = _make_sequence_with_detections(db, dep.id, datetime(2024, 1, 1, 12), [
         {"detections": [("person", "person", 0.9)] * 3 + [("vehicle", "vehicle", 0.9)] * 2},
         {"detections": [("person", "person", 0.9)] * 1 + [("vehicle", "vehicle", 0.9)] * 4},
     ])
 
-    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    obs = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
     obs_by_label = {o.label: o for o in obs}
@@ -381,7 +381,7 @@ def test_person_and_vehicle_max_n(db):
 
 
 def test_max_n_counts_no_bbox_observations(db):
-    """Event-level observations (no bbox, no bbox-anchor) still count
+    """Box-less observations (no bbox, no bbox-anchor) still count
     toward MaxN. Two user-added observations of "deer" on the same
     video file should be MaxN=2 — they collapse into one (file, frame,
     label) group because both have frame_number=None."""
@@ -389,12 +389,12 @@ def test_max_n_counts_no_bbox_observations(db):
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, files, _ = _make_event_with_detections(
+    ev, files, _ = _make_sequence_with_detections(
         db, dep.id, datetime(2024, 1, 1, 12), [
             {"detections": []},  # one file, no AI detections
         ],
     )
-    # Two user-added event-level observations on the same file.
+    # Two user-added box-less observations on the same file.
     for _ in range(2):
         make_detection(
             db,
@@ -410,7 +410,7 @@ def test_max_n_counts_no_bbox_observations(db):
         )
     db.flush()
 
-    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    obs = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
     obs_by_label = {o.label: o for o in obs}
@@ -426,7 +426,7 @@ def test_max_n_groups_per_frame_for_videos(db):
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, files, _ = _make_event_with_detections(
+    ev, files, _ = _make_sequence_with_detections(
         db, dep.id, datetime(2024, 1, 1, 12), [
             {"detections": []},
         ],
@@ -447,7 +447,7 @@ def test_max_n_groups_per_frame_for_videos(db):
             )
     db.flush()
 
-    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    obs = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
     obs_by_label = {o.label: o for o in obs}
@@ -457,11 +457,11 @@ def test_max_n_groups_per_frame_for_videos(db):
 def test_a_track_voted_to_a_rejection_counts_nothing(db):
     """The other half of the vote rule: a track whose every box carries a
     rejection label (the vote gave it "false detection") adds no species
-    to the event, while the fox track beside it still counts."""
+    to the sequence, while the fox track beside it still counts."""
     project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
-    ev, files, _ = _make_event_with_detections(
+    ev, files, _ = _make_sequence_with_detections(
         db, dep.id, datetime(2024, 1, 1, 12), [{"detections": []}],
     )
     clip = files[0]
@@ -477,12 +477,12 @@ def test_a_track_voted_to_a_rejection_counts_nothing(db):
             )
     db.flush()
 
-    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    obs = calculate_max_n_for_sequence(db, ev.id, 0.5)
 
     assert {o.label: o.max_n for o in obs} == {"fox": 1}
 
 
-# ── Human count layer + event sign-off ─────────────────────────────
+# ── Human count layer + sequence sign-off ─────────────────────────────
 
 
 def test_human_count_overrides_and_survives_recompute(db):
@@ -492,11 +492,11 @@ def test_human_count_overrides_and_survives_recompute(db):
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, _files, _ = _make_event_with_detections(
+    ev, _files, _ = _make_sequence_with_detections(
         db, dep.id, datetime(2024, 1, 1, 12),
         [{"detections": [("cow", "animal", 0.9)] * 2}],
     )
-    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    obs = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
     assert obs[0].max_n == 2
     assert obs[0].effective_count == 2
@@ -507,7 +507,7 @@ def test_human_count_overrides_and_survives_recompute(db):
     assert updated.effective_count == 5
 
     # A later recompute keeps the human count, not just the AI MaxN.
-    recalc = calculate_max_n_for_event(db, ev.id, 0.5)
+    recalc = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
     assert len(recalc) == 1
     assert recalc[0].max_n == 2
@@ -522,11 +522,11 @@ def test_add_human_species_creates_human_only_row_and_survives(db):
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, _files, _ = _make_event_with_detections(
+    ev, _files, _ = _make_sequence_with_detections(
         db, dep.id, datetime(2024, 1, 1, 12),
         [{"detections": [("cow", "animal", 0.9)]}],
     )
-    calculate_max_n_for_event(db, ev.id, 0.5)
+    calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
     obs = add_human_species(db, ev.id, category="animal", count=1, label="fox")
@@ -534,7 +534,7 @@ def test_add_human_species_creates_human_only_row_and_survives(db):
     assert obs.human_count == 1
     assert obs.max_n_file_id is None
 
-    recalc = calculate_max_n_for_event(db, ev.id, 0.5)
+    recalc = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
     by_label = {o.label: o for o in recalc}
     assert "cow" in by_label
@@ -543,34 +543,34 @@ def test_add_human_species_creates_human_only_row_and_survives(db):
     assert by_label["fox"].human_count == 1
 
 
-def test_recompute_clears_event_verified_when_counts_change(db):
-    """The event sign-off survives a no-op recompute but clears when the
+def test_recompute_clears_sequence_verified_when_counts_change(db):
+    """The sequence sign-off survives a no-op recompute but clears when the
     species/count set actually changes."""
     project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, _files, dets = _make_event_with_detections(
+    ev, _files, dets = _make_sequence_with_detections(
         db, dep.id, datetime(2024, 1, 1, 12),
         [{"detections": [("cow", "animal", 0.9)] * 3}],
     )
-    calculate_max_n_for_event(db, ev.id, 0.5)
+    calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
-    set_event_confirmed(db, ev.id, True)
-    assert db.get(Event, ev.id).confirmed is True
+    set_sequence_confirmed(db, ev.id, True)
+    assert db.get(Sequence, ev.id).confirmed is True
 
     # No-op recompute (nothing changed) keeps the sign-off.
-    calculate_max_n_for_event(db, ev.id, 0.5)
+    calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
-    assert db.get(Event, ev.id).confirmed is True
+    assert db.get(Sequence, ev.id).confirmed is True
 
     # Removing a detection lowers MaxN 3 -> 2; the sign-off clears.
     db.delete(dets[0])
     db.flush()
-    calculate_max_n_for_event(db, ev.id, 0.5)
+    calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
-    assert db.get(Event, ev.id).confirmed is False
+    assert db.get(Sequence, ev.id).confirmed is False
 
 
 def test_dashboard_total_observations_uses_effective_count(db):
@@ -581,11 +581,11 @@ def test_dashboard_total_observations_uses_effective_count(db):
     project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
-    ev, _files, _ = _make_event_with_detections(
+    ev, _files, _ = _make_sequence_with_detections(
         db, dep.id, datetime(2024, 1, 1, 12),
         [{"detections": [("cow", "animal", 0.9)] * 2}],
     )
-    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    obs = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.commit()
 
     assert get_dashboard_overview(db, project.id).total_observations == 2
@@ -602,17 +602,17 @@ def test_remove_ai_species_via_zero_count_survives_recompute(db):
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, _files, _ = _make_event_with_detections(
+    ev, _files, _ = _make_sequence_with_detections(
         db, dep.id, datetime(2024, 1, 1, 12),
         [{"detections": [("cow", "animal", 0.9)] * 2}],
     )
-    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    obs = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
     # "Remove" the species: the human says none are actually present.
     set_human_count(db, obs[0].id, 0)
 
-    recalc = calculate_max_n_for_event(db, ev.id, 0.5)
+    recalc = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
     assert len(recalc) == 1
     assert recalc[0].max_n == 2  # the boxes are still there
@@ -620,30 +620,30 @@ def test_remove_ai_species_via_zero_count_survives_recompute(db):
     assert recalc[0].effective_count == 0
 
 
-def test_reset_event_to_ai_drops_human_edits(db):
-    """reset_event_to_ai clears overrides on AI rows, deletes human-only
-    rows, and clears the event sign-off."""
+def test_reset_sequence_to_ai_drops_human_edits(db):
+    """reset_sequence_to_ai clears overrides on AI rows, deletes human-only
+    rows, and clears the sequence sign-off."""
     project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, _files, _ = _make_event_with_detections(
+    ev, _files, _ = _make_sequence_with_detections(
         db, dep.id, datetime(2024, 1, 1, 12),
         [{"detections": [("cow", "animal", 0.9)] * 2}],
     )
-    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    obs = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
     set_human_count(db, obs[0].id, 9)  # override the AI row
     add_human_species(db, ev.id, category="animal", count=1, label="fox")
-    set_event_confirmed(db, ev.id, True)
+    set_sequence_confirmed(db, ev.id, True)
 
-    event = reset_event_to_ai(db, ev.id)
-    assert event is not None
-    assert event.confirmed is False
+    sequence = reset_sequence_to_ai(db, ev.id)
+    assert sequence is not None
+    assert sequence.confirmed is False
 
     rows = (
-        db.query(EventObservation)
-        .filter(EventObservation.event_id == ev.id)
+        db.query(SequenceObservation)
+        .filter(SequenceObservation.sequence_id == ev.id)
         .all()
     )
     assert len(rows) == 1  # the human-only fox row is gone
@@ -652,30 +652,30 @@ def test_reset_event_to_ai_drops_human_edits(db):
     assert rows[0].effective_count == 2  # back to the AI MaxN
 
 
-def test_list_event_observations_order_is_stable_under_count_edits(db):
+def test_list_sequence_observations_order_is_stable_under_count_edits(db):
     """Row order follows AI MaxN (then label), never the editable count, so
     bumping a count does not reshuffle the list under the user."""
     project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, _files, _ = _make_event_with_detections(
+    ev, _files, _ = _make_sequence_with_detections(
         db, dep.id, datetime(2024, 1, 1, 12),
         [{
             "detections": [("cow", "animal", 0.9)] * 3
             + [("fox", "animal", 0.9)],
         }],
     )
-    calculate_max_n_for_event(db, ev.id, 0.5)
+    calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
-    before = [o.label for o in list_event_observations(db, ev.id)]
+    before = [o.label for o in list_sequence_observations(db, ev.id)]
     assert before == ["cow", "fox"]  # cow (max_n 3) before fox (max_n 1)
 
     # Bump fox far above cow; order must NOT change.
-    fox = next(o for o in list_event_observations(db, ev.id) if o.label == "fox")
+    fox = next(o for o in list_sequence_observations(db, ev.id) if o.label == "fox")
     set_human_count(db, fox.id, 50)
-    after = [o.label for o in list_event_observations(db, ev.id)]
+    after = [o.label for o in list_sequence_observations(db, ev.id)]
     assert after == ["cow", "fox"]
 
 
@@ -689,8 +689,8 @@ def test_list_event_observations_order_is_stable_under_count_edits(db):
 # across every frame. Images are never gated.
 
 
-def _make_event_with_frames(db, deployment_id, event_start_local, file_specs):
-    """Create an event whose files can be videos with per-frame detections.
+def _make_sequence_with_frames(db, deployment_id, sequence_start_local, file_specs):
+    """Create a sequence whose files can be videos with per-frame detections.
 
     file_specs: list of dicts:
         - file_type: "image" | "video" (default "image")
@@ -703,14 +703,14 @@ def _make_event_with_frames(db, deployment_id, event_start_local, file_specs):
                 a video box without it gets a one-frame track of its
                 own, so it is a card,
             untracked (opt False): no track at all, so never a card.
-    Returns (event, files).
+    Returns (sequence, files).
     """
     eid = str(uuid.uuid4())
-    ev = Event(
+    ev = Sequence(
         id=eid,
         deployment_id=deployment_id,
-        event_start_local=event_start_local,
-        event_end_local=event_start_local,
+        sequence_start_local=sequence_start_local,
+        sequence_end_local=sequence_start_local,
         file_count=len(file_specs),
     )
     db.add(ev)
@@ -724,14 +724,14 @@ def _make_event_with_frames(db, deployment_id, event_start_local, file_specs):
         f = make_file(
             db,
             deployment_id=deployment_id,
-            captured_at_local=event_start_local,
+            captured_at_local=sequence_start_local,
             **fkw,
         )
         db.execute(
-            insert(event_files).values(
-                event_id=eid,
+            insert(sequence_files).values(
+                sequence_id=eid,
                 file_id=f.id,
-                sequence_number=seq,
+                position=seq,
             )
         )
         files.append(f)
@@ -787,7 +787,7 @@ def test_video_species_without_a_card_spawns_no_row(db):
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, _ = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
+    ev, _ = _make_sequence_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
         {
             "file_type": "video",
             "best_frame_number": 12,
@@ -799,7 +799,7 @@ def test_video_species_without_a_card_spawns_no_row(db):
         },
     ])
 
-    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    obs = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
     assert {o.label for o in obs} == {"leopard"}
@@ -813,7 +813,7 @@ def test_admitted_video_species_counts_peak_across_frames(db):
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, _ = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
+    ev, _ = _make_sequence_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
         {
             "file_type": "video",
             "best_frame_number": 5,
@@ -826,7 +826,7 @@ def test_admitted_video_species_counts_peak_across_frames(db):
         },
     ])
 
-    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    obs = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
     assert len(obs) == 1
@@ -842,7 +842,7 @@ def test_equal_counts_keep_the_first_frame(db):
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, _ = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
+    ev, _ = _make_sequence_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
         {
             "file_type": "video",
             "best_frame_number": 0,
@@ -855,7 +855,7 @@ def test_equal_counts_keep_the_first_frame(db):
         },
     ])
 
-    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    obs = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
     assert len(obs) == 1
@@ -871,7 +871,7 @@ def test_video_verified_box_off_its_card_does_not_admit_a_species(db):
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, _ = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
+    ev, _ = _make_sequence_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
         {
             "file_type": "video",
             "best_frame_number": 5,
@@ -883,7 +883,7 @@ def test_video_verified_box_off_its_card_does_not_admit_a_species(db):
         },
     ])
 
-    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    obs = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
     assert {o.label for o in obs} == {"leopard"}
@@ -895,7 +895,7 @@ def test_image_multispecies_is_not_gated(db):
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, _ = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
+    ev, _ = _make_sequence_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
         {
             "file_type": "image",
             "detections": [
@@ -905,20 +905,20 @@ def test_image_multispecies_is_not_gated(db):
         },
     ])
 
-    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    obs = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
     assert {o.label for o in obs} == {"cow", "bear"}
 
 
-def test_multi_video_event_gates_per_file(db):
+def test_multi_video_sequence_gates_per_file(db):
     """The gate is per video: a species with a card in one video is not
     rescued for another video where it has no card."""
     project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, _ = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
+    ev, _ = _make_sequence_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
         {  # video A: leopard is a card
             "file_type": "video",
             "best_frame_number": 0,
@@ -934,7 +934,7 @@ def test_multi_video_event_gates_per_file(db):
         },
     ])
 
-    obs = calculate_max_n_for_event(db, ev.id, 0.5)
+    obs = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
     by_label = {o.label: o.max_n for o in obs}
@@ -944,17 +944,17 @@ def test_multi_video_event_gates_per_file(db):
     assert by_label["cow"] == 1
 
 
-def test_event_card_chips_match_the_card_gate(db):
+def test_sequence_card_chips_match_the_card_gate(db):
     """Gallery-card chips exclude video labels that have no card, same as
     the count suggestion (the chips are built from raw detections, so they
-    must be gated against the event's EventObservation rows)."""
-    from app.api.crud.event import get_events_by_project
+    must be gated against the sequence's SequenceObservation rows)."""
+    from app.api.crud.sequence import get_sequences_by_project
 
     project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, _ = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
+    ev, _ = _make_sequence_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
         {
             "file_type": "video",
             "best_frame_number": 5,
@@ -965,17 +965,17 @@ def test_event_card_chips_match_the_card_gate(db):
         },
     ])
 
-    # Populate EventObservation (the gate source), as analysis would.
-    calculate_max_n_for_event(db, ev.id, 0.5)
+    # Populate SequenceObservation (the gate source), as analysis would.
+    calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
-    summaries = get_events_by_project(db, project.id, project_floor=0.5)
+    summaries = get_sequences_by_project(db, project.id, project_floor=0.5)
     assert len(summaries) == 1
     assert summaries[0]["labels"] == ["leopard"]  # carnivora chip gated out
 
 
 # ---------------------------------------------------------------------------
-# Preservation of the human layer across event regeneration (interval change)
+# Preservation of the human layer across sequence regeneration (interval change)
 # ---------------------------------------------------------------------------
 
 
@@ -989,47 +989,47 @@ def _file_with_dets(db, deployment_id, ts, dets):
     return f
 
 
-def _events(db, deployment_id):
+def _sequences(db, deployment_id):
     return (
-        db.query(Event)
-        .filter(Event.deployment_id == deployment_id)
-        .order_by(Event.event_start_local)
+        db.query(Sequence)
+        .filter(Sequence.deployment_id == deployment_id)
+        .order_by(Sequence.sequence_start_local)
         .all()
     )
 
 
 def test_generate_preserves_confirmed_and_human_count_when_unchanged(db):
-    """A reprocess that doesn't regroup an event (same interval) keeps its
+    """A reprocess that doesn't regroup a sequence (same interval) keeps its
     confirmation and manual count."""
-    from app.api.crud.event import generate_events_for_project
+    from app.api.crud.sequence import generate_sequences_for_project
 
     project = make_project(db, counting_threshold=0.5, independence_interval=300)
     dep = make_deployment(db, project_id=project.id)
-    # A close cow pair (one event) and a far-off bear (a second event).
+    # A close cow pair (one sequence) and a far-off bear (a second sequence).
     _file_with_dets(db, dep.id, datetime(2024, 1, 1, 12, 0, 0), [("cow", "animal", 0.9)])
     _file_with_dets(db, dep.id, datetime(2024, 1, 1, 12, 0, 30), [("cow", "animal", 0.9)])
     _file_with_dets(db, dep.id, datetime(2024, 1, 1, 12, 10, 0), [("bear", "animal", 0.9)])
     db.commit()
 
-    generate_events_for_project(db, project.id)
-    cow_event = _events(db, dep.id)[0]
+    generate_sequences_for_project(db, project.id)
+    cow_sequence = _sequences(db, dep.id)[0]
     cow_obs = (
-        db.query(EventObservation)
-        .filter_by(event_id=cow_event.id, label="cow")
+        db.query(SequenceObservation)
+        .filter_by(sequence_id=cow_sequence.id, label="cow")
         .one()
     )
     cow_obs.human_count = 5
-    cow_event.confirmed = True
+    cow_sequence.confirmed = True
     db.commit()
 
     # Regenerate at the same interval: grouping is identical.
-    generate_events_for_project(db, project.id)
+    generate_sequences_for_project(db, project.id)
 
-    cow_event2 = _events(db, dep.id)[0]
+    cow_event2 = _sequences(db, dep.id)[0]
     assert cow_event2.confirmed is True
     cow_obs2 = (
-        db.query(EventObservation)
-        .filter_by(event_id=cow_event2.id, label="cow")
+        db.query(SequenceObservation)
+        .filter_by(sequence_id=cow_event2.id, label="cow")
         .one()
     )
     assert cow_obs2.human_count == 5
@@ -1037,9 +1037,9 @@ def test_generate_preserves_confirmed_and_human_count_when_unchanged(db):
 
 
 def test_generate_interval_change_resets_merged_but_keeps_unaffected(db):
-    """Widening the interval merges some events (reset) but leaves others
+    """Widening the interval merges some sequences (reset) but leaves others
     untouched (preserved)."""
-    from app.api.crud.event import generate_events_for_project
+    from app.api.crud.sequence import generate_sequences_for_project
 
     project = make_project(db, counting_threshold=0.5, independence_interval=300)
     # dep1: cow pair + far bear -> merges into one at a wide interval.
@@ -1047,48 +1047,49 @@ def test_generate_interval_change_resets_merged_but_keeps_unaffected(db):
     _file_with_dets(db, dep1.id, datetime(2024, 1, 1, 12, 0, 0), [("cow", "animal", 0.9)])
     _file_with_dets(db, dep1.id, datetime(2024, 1, 1, 12, 0, 30), [("cow", "animal", 0.9)])
     _file_with_dets(db, dep1.id, datetime(2024, 1, 1, 12, 10, 0), [("bear", "animal", 0.9)])
-    # dep2: a single deer file -> always its own event, unaffected.
+    # dep2: a single deer file -> always its own sequence, unaffected.
     dep2 = make_deployment(db, project_id=project.id)
     _file_with_dets(db, dep2.id, datetime(2024, 1, 1, 12, 0, 0), [("deer", "animal", 0.9)])
     db.commit()
 
-    generate_events_for_project(db, project.id)
-    cow_event = _events(db, dep1.id)[0]
-    deer_event = _events(db, dep2.id)[0]
-    db.query(EventObservation).filter_by(event_id=cow_event.id, label="cow").one().human_count = 4
-    db.query(EventObservation).filter_by(event_id=deer_event.id, label="deer").one().human_count = 2
-    cow_event.confirmed = True
-    deer_event.confirmed = True
+    generate_sequences_for_project(db, project.id)
+    cow_sequence = _sequences(db, dep1.id)[0]
+    deer_sequence = _sequences(db, dep2.id)[0]
+    obs = db.query(SequenceObservation)
+    obs.filter_by(sequence_id=cow_sequence.id, label="cow").one().human_count = 4
+    obs.filter_by(sequence_id=deer_sequence.id, label="deer").one().human_count = 2
+    cow_sequence.confirmed = True
+    deer_sequence.confirmed = True
     db.commit()
 
-    # Widen the interval so dep1's two events merge.
+    # Widen the interval so dep1's two sequences merge.
     project.independence_interval = 3600
     db.commit()
-    generate_events_for_project(db, project.id)
+    generate_sequences_for_project(db, project.id)
 
-    dep1_events = _events(db, dep1.id)
-    assert len(dep1_events) == 1  # merged
-    merged = dep1_events[0]
+    dep1_sequences = _sequences(db, dep1.id)
+    assert len(dep1_sequences) == 1  # merged
+    merged = dep1_sequences[0]
     assert merged.confirmed is False  # regrouped -> reset
     cow_after = (
-        db.query(EventObservation).filter_by(event_id=merged.id, label="cow").one()
+        db.query(SequenceObservation).filter_by(sequence_id=merged.id, label="cow").one()
     )
     assert cow_after.human_count is None  # reverted to AI count
 
-    deer_after_event = _events(db, dep2.id)[0]
-    assert deer_after_event.confirmed is True  # unchanged grouping -> preserved
+    deer_after_sequence = _sequences(db, dep2.id)[0]
+    assert deer_after_sequence.confirmed is True  # unchanged grouping -> preserved
     deer_after = (
-        db.query(EventObservation)
-        .filter_by(event_id=deer_after_event.id, label="deer")
+        db.query(SequenceObservation)
+        .filter_by(sequence_id=deer_after_sequence.id, label="deer")
         .one()
     )
     assert deer_after.human_count == 2
 
 
-def test_generate_relabel_unconfirms_preserved_event(db):
-    """Same interval, but a label change inside a preserved event (e.g.
+def test_generate_relabel_unconfirms_preserved_sequence(db):
+    """Same interval, but a label change inside a preserved sequence (e.g.
     smoothing) still clears the confirmation, per the existing rule."""
-    from app.api.crud.event import generate_events_for_project
+    from app.api.crud.sequence import generate_sequences_for_project
     from app.models import Detection
 
     project = make_project(db, counting_threshold=0.5, independence_interval=300)
@@ -1096,24 +1097,24 @@ def test_generate_relabel_unconfirms_preserved_event(db):
     _file_with_dets(db, dep.id, datetime(2024, 1, 1, 12, 0, 0), [("cow", "animal", 0.9)])
     db.commit()
 
-    generate_events_for_project(db, project.id)
-    event = _events(db, dep.id)[0]
-    event.confirmed = True
+    generate_sequences_for_project(db, project.id)
+    sequence = _sequences(db, dep.id)[0]
+    sequence.confirmed = True
     db.commit()
 
     # Relabel the detection (grouping unchanged, species set changes).
     db.query(Detection).update({"label": "elk"})
     db.commit()
-    generate_events_for_project(db, project.id)
+    generate_sequences_for_project(db, project.id)
 
-    event2 = _events(db, dep.id)[0]
+    event2 = _sequences(db, dep.id)[0]
     assert event2.confirmed is False
 
 
 def test_count_regroup_impact(db):
-    """Preview counts confirmed events / manual counts a regroup would reset,
+    """Preview counts confirmed sequences / manual counts a regroup would reset,
     and is zero when the interval is unchanged."""
-    from app.api.crud.event import count_regroup_impact, generate_events_for_project
+    from app.api.crud.sequence import count_regroup_impact, generate_sequences_for_project
 
     project = make_project(db, counting_threshold=0.5, independence_interval=300)
     dep1 = make_deployment(db, project_id=project.id)
@@ -1124,21 +1125,22 @@ def test_count_regroup_impact(db):
     _file_with_dets(db, dep2.id, datetime(2024, 1, 1, 12, 0, 0), [("deer", "animal", 0.9)])
     db.commit()
 
-    generate_events_for_project(db, project.id)
-    cow_event = _events(db, dep1.id)[0]
-    deer_event = _events(db, dep2.id)[0]
-    db.query(EventObservation).filter_by(event_id=cow_event.id, label="cow").one().human_count = 4
-    cow_event.confirmed = True
-    deer_event.confirmed = True
+    generate_sequences_for_project(db, project.id)
+    cow_sequence = _sequences(db, dep1.id)[0]
+    deer_sequence = _sequences(db, dep2.id)[0]
+    obs = db.query(SequenceObservation)
+    obs.filter_by(sequence_id=cow_sequence.id, label="cow").one().human_count = 4
+    cow_sequence.confirmed = True
+    deer_sequence.confirmed = True
     db.commit()
 
-    # Widening merges dep1's cow event; dep2's deer event is unaffected.
+    # Widening merges dep1's cow sequence; dep2's deer sequence is unaffected.
     merging = count_regroup_impact(db, project.id, 3600)
     assert merging["total_confirmed"] == 2
     assert merging["confirmed_at_risk"] == 1
     assert merging["counts_at_risk"] == 1
-    # The example points at the regrouped cow event: its confirmed count,
-    # its time range, and that its files land in one merged event.
+    # The example points at the regrouped cow sequence: its confirmed count,
+    # its time range, and that its files land in one merged sequence.
     example = merging["example"]
     assert example is not None
     assert example["observations"] == [{"label": "cow", "count": 4}]
@@ -1153,11 +1155,11 @@ def test_count_regroup_impact(db):
 
 
 def test_update_paired_cameras_regroups_only_that_deployment(db):
-    """Editing the flag regenerates the deployment's events at once,
+    """Editing the flag regenerates the deployment's sequences at once,
     keeps confirmations on the other deployment, and clears the
     postprocessing hash so the reprocess banner appears."""
     from app.api.crud.deployment import update_deployment
-    from app.api.crud.event import generate_events_for_project
+    from app.api.crud.sequence import generate_sequences_for_project
     from app.api.schemas.deployment import DeploymentUpdate
 
     project = make_project(db, counting_threshold=0.5, independence_interval=300)
@@ -1172,48 +1174,48 @@ def test_update_paired_cameras_regroups_only_that_deployment(db):
     _file_with_dets(db, other.id, t0, [("deer", "animal", 0.9)])
     db.commit()
 
-    generate_events_for_project(db, project.id)
-    assert len(_events(db, station.id)) == 2
-    deer_event = _events(db, other.id)[0]
-    deer_event.confirmed = True
+    generate_sequences_for_project(db, project.id)
+    assert len(_sequences(db, station.id)) == 2
+    deer_sequence = _sequences(db, other.id)[0]
+    deer_sequence.confirmed = True
     db.commit()
 
     update_deployment(db, station.id, DeploymentUpdate(paired_cameras=True))
 
-    assert len(_events(db, station.id)) == 1
-    assert _events(db, station.id)[0].file_count == 2
-    assert _events(db, other.id)[0].confirmed is True
+    assert len(_sequences(db, station.id)) == 1
+    assert _sequences(db, station.id)[0].file_count == 2
+    assert _sequences(db, other.id)[0].confirmed is True
     assert project.postprocessing_settings_hash is None
 
-    # Saving the same value again is a no-op for events and the hash.
+    # Saving the same value again is a no-op for sequences and the hash.
     project.postprocessing_settings_hash = "stamped"
     db.commit()
     update_deployment(db, station.id, DeploymentUpdate(paired_cameras=True))
-    assert len(_events(db, station.id)) == 1
+    assert len(_sequences(db, station.id)) == 1
     assert project.postprocessing_settings_hash == "stamped"
 
-    # Turning it off splits the event again.
+    # Turning it off splits the sequence again.
     update_deployment(db, station.id, DeploymentUpdate(paired_cameras=False))
-    assert len(_events(db, station.id)) == 2
+    assert len(_sequences(db, station.id)) == 2
     assert project.postprocessing_settings_hash is None
 
 
-# ── Cohorts: sex, life stage and behaviour per row; notes per event ─────
+# ── Cohorts: sex, life stage and behaviour per row; notes per sequence ─────
 #
 # A row is one cohort. The AI seeds one row per species; a person labels it
 # in place or splits it. The rebuild carries all of that (DEVELOPERS.md,
 # "Observation cohorts").
 
 
-def _cow_event(db, n_cows: int = 6):
+def _cow_sequence(db, n_cows: int = 6):
     project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
-    ev, _files, dets = _make_event_with_detections(
+    ev, _files, dets = _make_sequence_with_detections(
         db, dep.id, datetime(2024, 1, 1, 12),
         [{"detections": [("cow", "animal", 0.9)] * n_cows}],
     )
-    (cow,) = calculate_max_n_for_event(db, ev.id, 0.5)
+    (cow,) = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
     return ev, cow, dets
 
@@ -1221,10 +1223,10 @@ def _cow_event(db, n_cows: int = 6):
 def test_demographics_on_the_ai_row_survive_a_recompute(db):
     """"These 6 cows are all male" is one dropdown on the AI row, and a
     Labels-page relabel (a rebuild) must not lose it."""
-    ev, cow, _ = _cow_event(db)
+    ev, cow, _ = _cow_sequence(db)
     set_observation_attributes(db, cow.id, sex="male", life_stage="adult")
 
-    (recalc,) = calculate_max_n_for_event(db, ev.id, 0.5)
+    (recalc,) = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
     assert recalc.max_n == 6
     assert recalc.human_count is None
@@ -1235,30 +1237,30 @@ def test_split_makes_two_cohorts_and_both_survive_a_recompute(db):
     """Split: source minus one, new human-only row at one with nothing set.
     After a rebuild the AI row is still the seed and the cohort is still
     there, in the same order."""
-    ev, cow, _ = _cow_event(db)
+    ev, cow, _ = _cow_sequence(db)
     new = split_observation(db, cow.id)
     assert new.max_n == 0
     assert new.human_count == 1
     assert (new.sex, new.life_stage, new.behavior) == (None, None, None)
-    assert db.get(EventObservation, cow.id).effective_count == 5
+    assert db.get(SequenceObservation, cow.id).effective_count == 5
 
     set_observation_attributes(db, cow.id, sex="male")
     set_observation_attributes(db, new.id, sex="female", life_stage="juvenile")
 
-    rows = calculate_max_n_for_event(db, ev.id, 0.5)
+    rows = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
     assert [(r.max_n, r.effective_count, r.sex, r.life_stage) for r in rows] == [
         (6, 5, "male", None),
         (0, 1, "female", "juvenile"),
     ]
-    assert [r.label for r in list_event_observations(db, ev.id)] == ["cow", "cow"]
+    assert [r.label for r in list_sequence_observations(db, ev.id)] == ["cow", "cow"]
 
 
 def test_same_as_last_rows_survive_a_recompute(db):
     """set_human_observations writes ordinary human rows, so a rebuild
     carries them like any other cohort: the seeded AI row keeps its
     override and the demographic cohorts stay as the person left them."""
-    ev, _cow, _ = _cow_event(db)
+    ev, _cow, _ = _cow_sequence(db)
     set_human_observations(db, ev.id, [
         {"category": "animal", "label": "cow", "count": 2},
         {
@@ -1267,9 +1269,9 @@ def test_same_as_last_rows_survive_a_recompute(db):
         },
         {"category": "animal", "label": "badger", "count": 1, "sex": "female"},
     ])
-    assert db.get(Event, ev.id).confirmed is False
+    assert db.get(Sequence, ev.id).confirmed is False
 
-    rows = calculate_max_n_for_event(db, ev.id, 0.5)
+    rows = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
     assert [
         (r.label, r.max_n, r.effective_count, r.sex, r.life_stage) for r in rows
@@ -1282,9 +1284,9 @@ def test_same_as_last_rows_survive_a_recompute(db):
 
 def test_split_at_one_gives_two_rows_of_one(db):
     """Connect's floor: splitting a row of one never deletes it."""
-    ev, cow, _ = _cow_event(db, n_cows=1)
+    ev, cow, _ = _cow_sequence(db, n_cows=1)
     new = split_observation(db, cow.id)
-    assert db.get(EventObservation, cow.id).effective_count == 1
+    assert db.get(SequenceObservation, cow.id).effective_count == 1
     assert new.effective_count == 1
 
 
@@ -1294,10 +1296,10 @@ def test_a_cohort_survives_even_when_the_ai_now_detects_its_species(db):
     project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
-    ev, files, _ = _make_event_with_detections(
+    ev, files, _ = _make_sequence_with_detections(
         db, dep.id, datetime(2024, 1, 1, 12), [{"detections": []}]
     )
-    calculate_max_n_for_event(db, ev.id, 0.5)
+    calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
     plain = add_human_species(db, ev.id, category="animal", count=2, label="fox")
     juvenile = add_human_species(
@@ -1309,7 +1311,7 @@ def test_a_cohort_survives_even_when_the_ai_now_detects_its_species(db):
     # 2 kept), the juvenile cohort stays.
     make_detection(db, file_id=files[0].id, category="animal", confidence=0.9, label="fox")
     db.flush()
-    rows = calculate_max_n_for_event(db, ev.id, 0.5)
+    rows = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
     assert [(r.max_n, r.effective_count, r.life_stage) for r in rows] == [
         (1, 2, None),
@@ -1318,7 +1320,7 @@ def test_a_cohort_survives_even_when_the_ai_now_detects_its_species(db):
 
 
 def test_add_species_merges_only_into_the_row_with_the_same_demographics(db):
-    ev, cow, _ = _cow_event(db)
+    ev, cow, _ = _cow_sequence(db)
     set_observation_attributes(db, cow.id, sex="male")
     female = add_human_species(db, ev.id, category="animal", count=2, label="cow", sex="female")
     assert female.id != cow.id
@@ -1331,14 +1333,14 @@ def test_add_species_merges_only_into_the_row_with_the_same_demographics(db):
 def test_relabel_keeps_the_cohorts_demographics(db):
     """Relabelling a female cohort of cows to deer gives a female deer row,
     summing only into a female deer row that already exists."""
-    ev, cow, _ = _cow_event(db)
+    ev, cow, _ = _cow_sequence(db)
     add_human_species(db, ev.id, category="animal", count=1, label="deer", sex="female")
     female_cow = add_human_species(
         db, ev.id, category="animal", count=2, label="cow", sex="female"
     )
     target = relabel_observation(db, female_cow.id, category="animal", label="deer")
     assert (target.label, target.sex, target.effective_count) == ("deer", "female", 3)
-    deer_rows = [o for o in list_event_observations(db, ev.id) if o.label == "deer"]
+    deer_rows = [o for o in list_sequence_observations(db, ev.id) if o.label == "deer"]
     assert len(deer_rows) == 1
 
     male = add_human_species(db, ev.id, category="animal", count=1, label="cow", sex="male")
@@ -1347,43 +1349,43 @@ def test_relabel_keeps_the_cohorts_demographics(db):
 
 
 def test_demographic_edits_unconfirm_but_notes_do_not(db):
-    ev, cow, _ = _cow_event(db)
-    set_event_confirmed(db, ev.id, True)
+    ev, cow, _ = _cow_sequence(db)
+    set_sequence_confirmed(db, ev.id, True)
 
-    set_event_notes(db, ev.id, "  grazing by the fence ")
-    assert db.get(Event, ev.id).confirmed is True
-    assert db.get(Event, ev.id).notes == "grazing by the fence"
-    set_event_notes(db, ev.id, "   ")
-    assert db.get(Event, ev.id).notes is None
+    set_sequence_notes(db, ev.id, "  grazing by the fence ")
+    assert db.get(Sequence, ev.id).confirmed is True
+    assert db.get(Sequence, ev.id).notes == "grazing by the fence"
+    set_sequence_notes(db, ev.id, "   ")
+    assert db.get(Sequence, ev.id).notes is None
 
     set_observation_attributes(db, cow.id, behavior="foraging")
-    assert db.get(Event, ev.id).confirmed is False
+    assert db.get(Sequence, ev.id).confirmed is False
 
     # A no-op recompute keeps the sign-off with demographics in place.
-    set_event_confirmed(db, ev.id, True)
-    calculate_max_n_for_event(db, ev.id, 0.5)
+    set_sequence_confirmed(db, ev.id, True)
+    calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
-    assert db.get(Event, ev.id).confirmed is True
+    assert db.get(Sequence, ev.id).confirmed is True
 
 
 def test_set_attributes_leaves_unnamed_fields_alone_and_clears_with_none(db):
-    ev, cow, _ = _cow_event(db)
+    ev, cow, _ = _cow_sequence(db)
     set_observation_attributes(db, cow.id, sex="male", life_stage="adult")
     row = set_observation_attributes(db, cow.id, sex=None)
     assert (row.sex, row.life_stage) == (None, "adult")
 
 
 def test_reset_to_ai_clears_demographics_and_deletes_cohorts(db):
-    ev, cow, _ = _cow_event(db)
+    ev, cow, _ = _cow_sequence(db)
     set_observation_attributes(db, cow.id, sex="male")
     split_observation(db, cow.id)
-    set_event_notes(db, ev.id, "kept")
-    reset_event_to_ai(db, ev.id)
-    rows = list_event_observations(db, ev.id)
+    set_sequence_notes(db, ev.id, "kept")
+    reset_sequence_to_ai(db, ev.id)
+    rows = list_sequence_observations(db, ev.id)
     assert len(rows) == 1
     assert (rows[0].human_count, rows[0].sex) == (None, None)
     # Reset is about the counts; a note is the person's and stays.
-    assert db.get(Event, ev.id).notes == "kept"
+    assert db.get(Sequence, ev.id).notes == "kept"
 
 
 def test_cohorts_sit_under_their_species_in_creation_order(db):
@@ -1393,21 +1395,21 @@ def test_cohorts_sit_under_their_species_in_creation_order(db):
     project = make_project(db, counting_threshold=0.5)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
-    ev, _files, _ = _make_event_with_detections(
+    ev, _files, _ = _make_sequence_with_detections(
         db, dep.id, datetime(2024, 1, 1, 12),
         [{"detections": [("cow", "animal", 0.9)] * 3 + [("fox", "animal", 0.9)]}],
     )
-    calculate_max_n_for_event(db, ev.id, 0.5)
+    calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
-    fox = next(o for o in list_event_observations(db, ev.id) if o.label == "fox")
+    fox = next(o for o in list_sequence_observations(db, ev.id) if o.label == "fox")
     fox_cohort = split_observation(db, fox.id)
-    cow = next(o for o in list_event_observations(db, ev.id) if o.label == "cow")
+    cow = next(o for o in list_sequence_observations(db, ev.id) if o.label == "cow")
     cow_a = split_observation(db, cow.id)
     cow_b = split_observation(db, cow.id)
     add_human_species(db, ev.id, category="animal", count=1, label="badger")
 
     def order():
-        return [(o.label, o.id) for o in list_event_observations(db, ev.id)]
+        return [(o.label, o.id) for o in list_sequence_observations(db, ev.id)]
 
     expected = [
         ("cow", cow.id), ("cow", cow_a.id), ("cow", cow_b.id),
@@ -1421,34 +1423,34 @@ def test_cohorts_sit_under_their_species_in_creation_order(db):
     assert order()[:5] == expected
 
     # A rebuild reinserts the rows in that same order.
-    calculate_max_n_for_event(db, ev.id, 0.5)
+    calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
-    assert [o.label for o in list_event_observations(db, ev.id)] == [
+    assert [o.label for o in list_sequence_observations(db, ev.id)] == [
         "cow", "cow", "cow", "fox", "fox", "badger",
     ]
 
 
-def test_generate_events_carries_cohorts_when_the_file_set_is_unchanged(db):
-    from app.api.crud.event import generate_events_for_project
+def test_generate_sequences_carries_cohorts_when_the_file_set_is_unchanged(db):
+    from app.api.crud.sequence import generate_sequences_for_project
 
     project = make_project(db, counting_threshold=0.5, independence_interval=1800)
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
-    ev, _files, _ = _make_event_with_detections(
+    ev, _files, _ = _make_sequence_with_detections(
         db, dep.id, datetime(2024, 1, 1, 12),
         [{"detections": [("cow", "animal", 0.9)] * 4}],
     )
-    (cow,) = calculate_max_n_for_event(db, ev.id, 0.5)
+    (cow,) = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
     set_observation_attributes(db, cow.id, sex="male")
     cohort = split_observation(db, cow.id)
     set_observation_attributes(db, cohort.id, sex="female")
-    set_event_notes(db, ev.id, "with calf")
-    set_event_confirmed(db, ev.id, True)
+    set_sequence_notes(db, ev.id, "with calf")
+    set_sequence_confirmed(db, ev.id, True)
 
-    generate_events_for_project(db, project.id)
-    (new_ev,) = db.query(Event).filter(Event.deployment_id == dep.id).all()
-    rows = list_event_observations(db, new_ev.id)
+    generate_sequences_for_project(db, project.id)
+    (new_ev,) = db.query(Sequence).filter(Sequence.deployment_id == dep.id).all()
+    rows = list_sequence_observations(db, new_ev.id)
     assert new_ev.confirmed is True
     assert new_ev.notes == "with calf"
     assert [(r.effective_count, r.sex) for r in rows] == [
@@ -1458,34 +1460,34 @@ def test_generate_events_carries_cohorts_when_the_file_set_is_unchanged(db):
 
 
 def test_notes_survive_a_merge_and_a_split(db):
-    """Counts are dropped when events regroup; notes never are. A merge
+    """Counts are dropped when sequences regroup; notes never are. A merge
     joins the notes in time order, a split copies the note to every
     child."""
-    from app.api.crud.event import generate_events_for_project
+    from app.api.crud.sequence import generate_sequences_for_project
 
     project = make_project(db, counting_threshold=0.5, independence_interval=300)
     dep = make_deployment(db, project_id=project.id)
     _file_with_dets(db, dep.id, datetime(2024, 1, 1, 12, 0, 0), [("cow", "animal", 0.9)])
     _file_with_dets(db, dep.id, datetime(2024, 1, 1, 12, 10, 0), [("bear", "animal", 0.9)])
     db.commit()
-    generate_events_for_project(db, project.id)
-    first, second = sorted(_events(db, dep.id), key=lambda e: e.event_start_local)
-    set_event_notes(db, first.id, "camera knocked")
-    set_event_notes(db, second.id, "check interval")
+    generate_sequences_for_project(db, project.id)
+    first, second = sorted(_sequences(db, dep.id), key=lambda e: e.sequence_start_local)
+    set_sequence_notes(db, first.id, "camera knocked")
+    set_sequence_notes(db, second.id, "check interval")
 
-    # Merge: one event, both notes, earliest first, one per line.
+    # Merge: one sequence, both notes, earliest first, one per line.
     project.independence_interval = 3600
     db.commit()
-    generate_events_for_project(db, project.id)
-    (merged,) = _events(db, dep.id)
+    generate_sequences_for_project(db, project.id)
+    (merged,) = _sequences(db, dep.id)
     assert merged.notes == "camera knocked\ncheck interval"
     assert merged.confirmed is False
 
     # Split it again: both children carry the joined note.
     project.independence_interval = 300
     db.commit()
-    generate_events_for_project(db, project.id)
-    assert [e.notes for e in _events(db, dep.id)] == [
+    generate_sequences_for_project(db, project.id)
+    assert [e.notes for e in _sequences(db, dep.id)] == [
         "camera knocked\ncheck interval",
         "camera knocked\ncheck interval",
     ]
@@ -1495,12 +1497,12 @@ def test_demographics_survive_when_the_ai_stops_seeing_the_species(db):
     """An AI row a person labelled keeps that label as a human-only row
     when the species disappears from the detections (a relabel, a higher
     threshold), the same way a count override does."""
-    ev, cow, dets = _cow_event(db, n_cows=1)
+    ev, cow, dets = _cow_sequence(db, n_cows=1)
     set_observation_attributes(db, cow.id, sex="male")
     for d in dets:
         d.label = "bear"
     db.flush()
-    rows = calculate_max_n_for_event(db, ev.id, 0.5)
+    rows = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
     assert [(r.label, r.max_n, r.effective_count, r.sex) for r in rows] == [
         ("bear", 1, 1, None),
@@ -1511,34 +1513,34 @@ def test_demographics_survive_when_the_ai_stops_seeing_the_species(db):
 def test_max_n_frames_carry_the_species_total(db):
     """The card chip reads `max_n_frames[].effective_count`; after a split
     it must be the sum of the cohorts, not the frame row's own count."""
-    from app.api.crud.event_observation import get_max_n_frames
+    from app.api.crud.sequence_observation import get_max_n_frames
 
-    ev, cow, _ = _cow_event(db, n_cows=2)
+    ev, cow, _ = _cow_sequence(db, n_cows=2)
     split_observation(db, cow.id)
     (frame,) = get_max_n_frames(db, ev.id)
     assert (frame["label"], frame["max_n"], frame["effective_count"]) == ("cow", 2, 2)
 
 
-def test_observation_edits_are_scoped_to_the_event_in_the_path(db):
-    ev, cow, _ = _cow_event(db)
-    other = make_event_with_files(
-        db, deployment_id=ev.deployment_id, event_start_local=datetime(2024, 2, 1, 12)
+def test_observation_edits_are_scoped_to_the_sequence_in_the_path(db):
+    ev, cow, _ = _cow_sequence(db)
+    other = make_sequence_with_files(
+        db, deployment_id=ev.deployment_id, sequence_start_local=datetime(2024, 2, 1, 12)
     )
-    assert set_human_count(db, cow.id, 5, event_id=other.id) is None
-    assert split_observation(db, cow.id, event_id=other.id) is None
-    assert set_observation_attributes(db, cow.id, sex="male", event_id=other.id) is None
-    assert delete_event_observation(db, cow.id, event_id=other.id) is None
+    assert set_human_count(db, cow.id, 5, sequence_id=other.id) is None
+    assert split_observation(db, cow.id, sequence_id=other.id) is None
+    assert set_observation_attributes(db, cow.id, sex="male", sequence_id=other.id) is None
+    assert delete_sequence_observation(db, cow.id, sequence_id=other.id) is None
     assert relabel_observation(
-        db, cow.id, category="animal", label="deer", event_id=other.id
+        db, cow.id, category="animal", label="deer", sequence_id=other.id
     ) is None
-    assert db.get(EventObservation, cow.id).effective_count == 6
-    assert set_human_count(db, cow.id, 5, event_id=ev.id).effective_count == 5
+    assert db.get(SequenceObservation, cow.id).effective_count == 6
+    assert set_human_count(db, cow.id, 5, sequence_id=ev.id).effective_count == 5
 
 
 def test_regroup_example_sums_a_split_species(db):
-    from app.api.crud.event import _regroup_example
+    from app.api.crud.sequence import _regroup_example
 
-    ev, cow, _ = _cow_event(db, n_cows=3)
+    ev, cow, _ = _cow_sequence(db, n_cows=3)
     split_observation(db, cow.id)
     example = _regroup_example(db, ev.id, None, None, set(), set())
     assert example["observations"] == [{"label": "cow", "count": 3}]
@@ -1547,10 +1549,10 @@ def test_regroup_example_sums_a_split_species(db):
 def test_update_camera_offsets_shifts_one_subfolder_and_regroups(db):
     """A per-camera delta moves only that subfolder's files (exact prefix,
     so a sibling folder sharing the prefix is untouched), regenerates the
-    deployment's events and clears the postprocessing hash. Removing the
+    deployment's sequences and clears the postprocessing hash. Removing the
     key shifts back."""
     from app.api.crud.deployment import update_deployment
-    from app.api.crud.event import generate_events_for_project
+    from app.api.crud.sequence import generate_sequences_for_project
     from app.api.schemas.deployment import DeploymentUpdate
     from app.models import File
 
@@ -1569,8 +1571,8 @@ def test_update_camera_offsets_shifts_one_subfolder_and_regroups(db):
         paths[cam] = f.file_path
     db.commit()
 
-    generate_events_for_project(db, project.id)
-    assert len(_events(db, station.id)) == 2
+    generate_sequences_for_project(db, project.id)
+    assert len(_sequences(db, station.id)) == 2
 
     update_deployment(db, station.id, DeploymentUpdate(camera_offsets={"cam_2": -301}))
 
@@ -1581,8 +1583,8 @@ def test_update_camera_offsets_shifts_one_subfolder_and_regroups(db):
     assert by_cam["cam_2"] == t0
     assert by_cam["cam_1"] == t0
     assert by_cam["cam_2b"] == t0
-    assert len(_events(db, station.id)) == 1
-    assert _events(db, station.id)[0].file_count == 3
+    assert len(_sequences(db, station.id)) == 1
+    assert _sequences(db, station.id)[0].file_count == 3
     assert station.camera_offsets == {"cam_2": -301}
     assert project.postprocessing_settings_hash is None
 
@@ -1592,12 +1594,12 @@ def test_update_camera_offsets_shifts_one_subfolder_and_regroups(db):
     update_deployment(db, station.id, DeploymentUpdate(camera_offsets={"cam_2": -301}))
     assert project.postprocessing_settings_hash == "stamped"
 
-    # Dropping the key shifts cam_2 back and splits the event again.
+    # Dropping the key shifts cam_2 back and splits the sequence again.
     update_deployment(db, station.id, DeploymentUpdate(camera_offsets={}))
     assert db.query(File).filter(File.file_path == paths["cam_2"]).one().captured_at_local == (
         t0 + timedelta(seconds=301)
     )
-    assert len(_events(db, station.id)) == 2
+    assert len(_sequences(db, station.id)) == 2
     assert project.postprocessing_settings_hash is None
 
 
@@ -1610,7 +1612,7 @@ def test_video_species_on_a_tracks_representative_frame_is_allowed(db):
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
 
-    ev, files = _make_event_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
+    ev, files = _make_sequence_with_frames(db, dep.id, datetime(2024, 1, 1, 12), [
         {
             "file_type": "video",
             "best_frame_number": 5,
@@ -1624,7 +1626,7 @@ def test_video_species_on_a_tracks_representative_frame_is_allowed(db):
         },
     ])
 
-    rows = calculate_max_n_for_event(db, ev.id, 0.5)
+    rows = calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.flush()
 
     assert {o.label: o.max_n for o in rows} == {"leopard": 1, "hammerhead": 2}
@@ -1632,22 +1634,22 @@ def test_video_species_on_a_tracks_representative_frame_is_allowed(db):
     assert {o.label: o.max_n_frame_number for o in rows} == {"leopard": 5, "hammerhead": 330}
 
 
-def _event_over(db, deployment_id, video):
-    """One event holding one video, the shape both gate tests need."""
-    from app.models.event import Event
+def _sequence_over(db, deployment_id, video):
+    """One sequence holding one video, the shape both gate tests need."""
+    from app.models.sequence import Sequence
 
-    ev = Event(
+    ev = Sequence(
         id=str(uuid.uuid4()),
         deployment_id=deployment_id,
-        event_start_local=datetime(2024, 1, 1, 12, 0),
-        event_end_local=datetime(2024, 1, 1, 12, 0),
+        sequence_start_local=datetime(2024, 1, 1, 12, 0),
+        sequence_end_local=datetime(2024, 1, 1, 12, 0),
         file_count=1,
     )
     db.add(ev)
     db.flush()
     db.execute(
-        insert(event_files).values(
-            event_id=ev.id, file_id=video.id, sequence_number=0
+        insert(sequence_files).values(
+            sequence_id=ev.id, file_id=video.id, position=0
         )
     )
     return ev
@@ -1658,7 +1660,7 @@ def test_a_species_a_person_named_on_a_frame_gets_a_row(db):
     animal is the documented way to put it right. The card keeps the old
     species, so on the card test alone the new one had no row anywhere:
     the verdict lived in the database and in no count."""
-    from app.api.crud.event_observation import calculate_max_n_for_event
+    from app.api.crud.sequence_observation import calculate_max_n_for_sequence
     from tests.conftest import (
         make_deployment,
         make_detection,
@@ -1688,10 +1690,10 @@ def test_a_species_a_person_named_on_a_frame_gets_a_row(db):
             category="elasmobranch", label="blacktip", confidence=0.9,
             classification_method="human", verified=True,
         )
-    event = _event_over(db, dep.id, video)
+    sequence = _sequence_over(db, dep.id, video)
     db.commit()
 
-    rows = calculate_max_n_for_event(db, event.id, project.counting_threshold)
+    rows = calculate_max_n_for_sequence(db, sequence.id, project.counting_threshold)
 
     by_label = {r.label: r.max_n for r in rows}
     assert by_label.get("blacktip") == 1
@@ -1701,7 +1703,7 @@ def test_a_species_a_person_named_on_a_frame_gets_a_row(db):
 def test_a_per_frame_classifier_label_still_gets_no_row(db):
     """The other half of the gate: an unverified per-frame reading the
     person has never seen must not spawn a species row."""
-    from app.api.crud.event_observation import calculate_max_n_for_event
+    from app.api.crud.sequence_observation import calculate_max_n_for_sequence
     from tests.conftest import (
         make_deployment,
         make_detection,
@@ -1727,9 +1729,9 @@ def test_a_per_frame_classifier_label_still_gets_no_row(db):
     make_detection(db, file_id=video.id, frame_number=30, track_id=track.id,
                    category="animal", label="roe deer", confidence=0.9,
                    classification_method="model")
-    event = _event_over(db, dep.id, video)
+    sequence = _sequence_over(db, dep.id, video)
     db.commit()
 
-    rows = calculate_max_n_for_event(db, event.id, project.counting_threshold)
+    rows = calculate_max_n_for_sequence(db, sequence.id, project.counting_threshold)
 
     assert {r.label for r in rows} == {"red deer"}

@@ -41,7 +41,7 @@ class DeploymentBase(BaseModel):
         False,
         description=(
             "The subfolders are dependent cameras: cluster "
-            "events across them and count effort once"
+            "sequences across them and count effort once"
         ),
     )
     camera_offsets: dict[str, int] = Field(
@@ -128,7 +128,7 @@ class DeploymentWithStats(DeploymentResponse):
     """
 
     file_count: int = Field(0, description="Number of files in this deployment")
-    event_count: int = Field(0, description="Number of events in this deployment")
+    sequence_count: int = Field(0, description="Number of sequences in this deployment")
     detection_count: int = Field(
         0, description="Total number of detections in this deployment"
     )
@@ -138,7 +138,7 @@ class DeploymentStatsOnly(BaseModel):
     """Lightweight stats for bulk deployment listing (no deployment fields)."""
 
     file_count: int = 0
-    event_count: int = 0
+    sequence_count: int = 0
     detection_count: int = 0
 
 
@@ -172,7 +172,7 @@ class DeploymentInfoResponse(BaseModel):
     Investigation-level payload for the Deployments → Info sheet.
 
     Read-only snapshot combining deployment metadata, file-type split,
-    event and observation counts, mean detection and classification
+    sequence and observation counts, mean detection and classification
     confidence (respecting the project's detection threshold with the
     verified override), storage size, verification progress, the top
     species, detection-category breakdown, trap nights, observation
@@ -191,9 +191,9 @@ class DeploymentInfoResponse(BaseModel):
     # files or when size_bytes is null for every file.
     total_size_bytes: int
     verification: DeploymentVerification
-    event_count: int
-    # Sum of EventObservation.effective_count (human_count when set, else
-    # the AI max_n) across all events in this deployment.
+    sequence_count: int
+    # Sum of SequenceObservation.effective_count (human_count when set, else
+    # the AI max_n) across all sequences in this deployment.
     observation_count: int
     detection_categories: ClassCounts
     # Top 5 species by observation count within this deployment. Empty

@@ -62,9 +62,9 @@ def test_a_tiny_seed_fills_every_table_the_pages_read(tmp_path: Path) -> None:
         "files",
         "detections",
         "detection_embeddings",
-        "events",
-        "event_files",
-        "event_observations",
+        "sequences",
+        "sequence_files",
+        "sequence_observations",
         "sqlite_stat1",
     ):
         assert count(f"SELECT count(*) FROM {table}") > 0, table
@@ -89,12 +89,13 @@ def test_the_elliot_shape_is_one_project_of_58_deployments(tmp_path: Path) -> No
 
     assert count("SELECT count(*) FROM projects") == 1
     assert count("SELECT count(*) FROM deployments") == 58
-    for table in ("detections", "detection_embeddings", "events", "event_observations"):
+    for table in ("detections", "detection_embeddings", "sequences", "sequence_observations"):
         assert count(f"SELECT count(*) FROM {table}") > 0, table
     # His database is from after v7.2.0: nothing below the 0.01 floor.
     assert count("SELECT count(*) FROM detections WHERE confidence < 0.01") == 0
-    # Long events, not one per burst.
-    assert count("SELECT count(*) FROM event_files") > 5 * count("SELECT count(*) FROM events")
+    # Long sequences, not one per burst.
+    n_links = count("SELECT count(*) FROM sequence_files")
+    assert n_links > 5 * count("SELECT count(*) FROM sequences")
     conn.close()
 
 

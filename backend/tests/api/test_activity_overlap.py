@@ -24,11 +24,11 @@ from app.ml.activity_analysis import (
     fit_circular_kde,
     overlap_coefficient,
 )
-from app.models.event_observation import EventObservation
+from app.models.sequence_observation import SequenceObservation
 from tests.conftest import (
     make_deployment,
-    make_event_with_files,
     make_project,
+    make_sequence_with_files,
     make_site,
 )
 
@@ -212,13 +212,13 @@ def test_classify_diel_falls_back_when_no_sun_bands():
 def _add_obs(
     db,
     *,
-    event_id: str,
+    sequence_id: str,
     label: str,
     max_n: int = 1,
     category: str = "animal",
-) -> EventObservation:
-    obs = EventObservation(
-        event_id=event_id,
+) -> SequenceObservation:
+    obs = SequenceObservation(
+        sequence_id=sequence_id,
         label=label,
         label_taxonomy_id=None,
         category=category,
@@ -230,7 +230,7 @@ def _add_obs(
 
 
 def _build_two_species_project(db):
-    """Project with one site, one deployment, and events for two species
+    """Project with one site, one deployment, and sequences for two species
     at different times of day so we can exercise the overlap math.
     Leopard (nocturnal-ish): 22:00 cluster.
     Domestic cattle (diurnal-ish): 12:00 cluster.
@@ -245,20 +245,20 @@ def _build_two_species_project(db):
         start_date_local=date(2024, 6, 1),
         end_date_local=date(2024, 6, 30),
     )
-    # 60 leopard events at 22:00, 60 cattle events at 12:00
+    # 60 leopard sequences at 22:00, 60 cattle sequences at 12:00
     for i in range(60):
-        ev_l = make_event_with_files(
+        ev_l = make_sequence_with_files(
             db,
             deployment_id=dep.id,
-            event_start_local=datetime(2024, 6, 15, 22, i % 60),
+            sequence_start_local=datetime(2024, 6, 15, 22, i % 60),
         )
-        _add_obs(db, event_id=ev_l.id, label="leopard")
-        ev_c = make_event_with_files(
+        _add_obs(db, sequence_id=ev_l.id, label="leopard")
+        ev_c = make_sequence_with_files(
             db,
             deployment_id=dep.id,
-            event_start_local=datetime(2024, 6, 15, 12, i % 60),
+            sequence_start_local=datetime(2024, 6, 15, 12, i % 60),
         )
-        _add_obs(db, event_id=ev_c.id, label="cattle")
+        _add_obs(db, sequence_id=ev_c.id, label="cattle")
     db.flush()
     return project
 
@@ -354,38 +354,38 @@ def test_get_activity_overlap_sample_size_warnings(db):
         start_date_local=date(2024, 6, 1),
         end_date_local=date(2024, 6, 30),
     )
-    # 10 events of "rare" → low_n_30
+    # 10 sequences of "rare" → low_n_30
     for i in range(10):
-        ev = make_event_with_files(
+        ev = make_sequence_with_files(
             db,
             deployment_id=dep.id,
-            event_start_local=datetime(2024, 6, 15, 12, i),
+            sequence_start_local=datetime(2024, 6, 15, 12, i),
         )
-        _add_obs(db, event_id=ev.id, label="rare")
-    # 40 events of "uncommon" → low_n_50
+        _add_obs(db, sequence_id=ev.id, label="rare")
+    # 40 sequences of "uncommon" → low_n_50
     for i in range(40):
-        ev = make_event_with_files(
+        ev = make_sequence_with_files(
             db,
             deployment_id=dep.id,
-            event_start_local=datetime(2024, 6, 16, 12, i),
+            sequence_start_local=datetime(2024, 6, 16, 12, i),
         )
-        _add_obs(db, event_id=ev.id, label="uncommon")
-    # 60 events of "common" → low_n_75
+        _add_obs(db, sequence_id=ev.id, label="uncommon")
+    # 60 sequences of "common" → low_n_75
     for i in range(60):
-        ev = make_event_with_files(
+        ev = make_sequence_with_files(
             db,
             deployment_id=dep.id,
-            event_start_local=datetime(2024, 6, 17, 12, i),
+            sequence_start_local=datetime(2024, 6, 17, 12, i),
         )
-        _add_obs(db, event_id=ev.id, label="common")
-    # 100 events of "frequent" → no warning
+        _add_obs(db, sequence_id=ev.id, label="common")
+    # 100 sequences of "frequent" → no warning
     for i in range(100):
-        ev = make_event_with_files(
+        ev = make_sequence_with_files(
             db,
             deployment_id=dep.id,
-            event_start_local=datetime(2024, 6, 18, 12, i % 60),
+            sequence_start_local=datetime(2024, 6, 18, 12, i % 60),
         )
-        _add_obs(db, event_id=ev.id, label="frequent")
+        _add_obs(db, sequence_id=ev.id, label="frequent")
     db.flush()
 
     for species, expected in [
@@ -402,10 +402,10 @@ def test_get_activity_overlap_sample_size_warnings(db):
         )
 
 
-def test_get_activity_overlap_date_filter_excludes_events(db):
-    """Events outside the date range must not contribute to the species n."""
+def test_get_activity_overlap_date_filter_excludes_sequences(db):
+    """Sequences outside the date range must not contribute to the species n."""
     project = _build_two_species_project(db)
-    # Restrict to 2025 — no events match.
+    # Restrict to 2025 — no sequences match.
     resp = stats_crud.get_activity_overlap(
         db,
         project.id,
@@ -510,12 +510,12 @@ def test_get_activity_overlap_sun_mode_fixed_offset_tz(db):
         end_date_local=date(2024, 3, 31),
     )
     for i in range(40):
-        ev = make_event_with_files(
+        ev = make_sequence_with_files(
             db,
             deployment_id=dep.id,
-            event_start_local=datetime(2024, 3, 15, 12, i % 60),
+            sequence_start_local=datetime(2024, 3, 15, 12, i % 60),
         )
-        _add_obs(db, event_id=ev.id, label="zebra")
+        _add_obs(db, sequence_id=ev.id, label="zebra")
     db.flush()
 
     resp = stats_crud.get_activity_overlap(
@@ -546,12 +546,12 @@ def test_get_activity_overlap_sun_mode_drops_polar_observations(db):
         end_date_local=date(2024, 12, 31),
     )
     for i in range(30):
-        ev = make_event_with_files(
+        ev = make_sequence_with_files(
             db,
             deployment_id=dep.id,
-            event_start_local=datetime(2024, 12, 15, 12, i),
+            sequence_start_local=datetime(2024, 12, 15, 12, i),
         )
-        _add_obs(db, event_id=ev.id, label="arctic_fox")
+        _add_obs(db, sequence_id=ev.id, label="arctic_fox")
     db.flush()
 
     resp = stats_crud.get_activity_overlap(
@@ -589,19 +589,19 @@ def test_get_activity_overlap_sun_mode_partial_polar_drops(db):
     )
     # 20 observations in March (non-polar) + 20 in June (polar).
     for i in range(20):
-        ev = make_event_with_files(
+        ev = make_sequence_with_files(
             db,
             deployment_id=dep.id,
-            event_start_local=datetime(2024, 3, 15, 12, i % 60),
+            sequence_start_local=datetime(2024, 3, 15, 12, i % 60),
         )
-        _add_obs(db, event_id=ev.id, label="arctic_fox")
+        _add_obs(db, sequence_id=ev.id, label="arctic_fox")
     for i in range(20):
-        ev = make_event_with_files(
+        ev = make_sequence_with_files(
             db,
             deployment_id=dep.id,
-            event_start_local=datetime(2024, 6, 15, 12, i % 60),
+            sequence_start_local=datetime(2024, 6, 15, 12, i % 60),
         )
-        _add_obs(db, event_id=ev.id, label="arctic_fox")
+        _add_obs(db, sequence_id=ev.id, label="arctic_fox")
     db.flush()
 
     resp = stats_crud.get_activity_overlap(

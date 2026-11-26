@@ -6,7 +6,7 @@
  * of truth) means the two summaries can never drift.
  */
 
-import { eventsApi } from "../api/events";
+import { sequencesApi } from "../api/sequences";
 import { projectsApi } from "../api/projects";
 import type {
   Protection,
@@ -24,7 +24,7 @@ export interface ProjectStats {
 /** Fetch the label and count snapshots for the given project.
  *
  * `threshold` filters the raw detection counts (the Labels card). The
- * count snapshot comes from the materialized event observations, which
+ * count snapshot comes from the materialized sequence observations, which
  * already bake in the interval and honour human counts, so it takes no
  * threshold/interval. */
 export async function fetchStats(
@@ -47,12 +47,12 @@ export async function fetchStats(
 
 /** Verified-labels / confirmed-counts share, for the modal's footer lines. */
 export async function fetchProtection(projectId: string): Promise<Protection> {
-  const s = await eventsApi.verificationStats(projectId);
+  const s = await sequencesApi.verificationStats(projectId);
   return {
     verifiedLabels: s.verified_detections,
     totalLabels: s.total_detections,
-    confirmedCounts: s.events_confirmed,
-    totalCounts: s.events_total,
+    confirmedCounts: s.sequences_confirmed,
+    totalCounts: s.sequences_total,
   };
 }
 

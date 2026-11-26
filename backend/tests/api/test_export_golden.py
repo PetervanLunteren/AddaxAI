@@ -4,7 +4,7 @@ One deterministic project holds every case the export rules distinguish:
 images and tracked videos (a card on the cover frame and off it, a
 track's sibling frames, an untracked pre-tracking box), verified,
 rejected and below-threshold boxes, an excluded species, empty files, a
-file without a capture date, events with counts, a deployment without a
+file without a capture date, sequences with counts, a deployment without a
 site, and stored EXIF. Every table export of it is written the way users
 get it and compared, text for text, with the snapshots in
 ``tests/data/export_golden/``.
@@ -35,7 +35,7 @@ from app.api.crud import export as export_crud
 from app.ml.postprocessing_outputs import run_readme
 from app.ml.postprocessing_outputs.tables_csv import write_tables_csv
 from app.ml.postprocessing_outputs.tables_xlsx import write_tables_xlsx
-from app.models import Event, EventObservation, LabelTaxonomy, event_files
+from app.models import LabelTaxonomy, Sequence, SequenceObservation, sequence_files
 from tests.api.test_export import _run_camtrap_dp_export
 from tests.conftest import (
     make_deployment,
@@ -70,19 +70,19 @@ def _taxonomy(db, name: str, level: str = "species", **ranks: str) -> LabelTaxon
     return row
 
 
-def _event(db, name: str, deployment_id: str, start: datetime, files: list) -> Event:
-    ev = Event(
+def _sequence(db, name: str, deployment_id: str, start: datetime, files: list) -> Sequence:
+    ev = Sequence(
         id=_id(f"ev-{name}"),
         deployment_id=deployment_id,
-        event_start_local=start,
-        event_end_local=start,
+        sequence_start_local=start,
+        sequence_end_local=start,
         file_count=len(files),
     )
     db.add(ev)
     db.flush()
     for seq, f in enumerate(files):
         db.execute(
-            event_files.insert().values(event_id=ev.id, file_id=f.id, sequence_number=seq)
+            sequence_files.insert().values(sequence_id=ev.id, file_id=f.id, position=seq)
         )
     return ev
 
@@ -165,7 +165,7 @@ def _build_golden_project(db):
 
     t = datetime(2024, 6, 3, 21, 15, 0)
 
-    # Deployment A: images, an event with counts, EXIF, the excluded species.
+    # Deployment A: images, a sequence with counts, EXIF, the excluded species.
     fox_img = image(
         "fox", dep_a, t,
         exif_data={"Make": "Reconyx\x00", "Model": "HC500", "AmbientTemperature": 14},
@@ -179,14 +179,14 @@ def _build_golden_project(db):
         "fox-2-person", fox_img2, 0.77, category="person", label="person",
         scientific_name="Person", common_name="Person",
     )
-    ev_fox = _event(db, "fox", dep_a.id, t, [fox_img, fox_img2])
-    db.add(EventObservation(
-        id=_id("obs-fox"), event_id=ev_fox.id, label="red fox",
+    ev_fox = _sequence(db, "fox", dep_a.id, t, [fox_img, fox_img2])
+    db.add(SequenceObservation(
+        id=_id("obs-fox"), sequence_id=ev_fox.id, label="red fox",
         label_taxonomy_id=fox.id, category="animal", max_n=1, human_count=2,
         sex="female",
     ))
-    db.add(EventObservation(
-        id=_id("obs-fox-person"), event_id=ev_fox.id, label=None,
+    db.add(SequenceObservation(
+        id=_id("obs-fox-person"), sequence_id=ev_fox.id, label=None,
         category="person", max_n=1,
     ))
     ev_fox.notes = "two foxes"
@@ -254,9 +254,9 @@ def _build_golden_project(db):
     vid_no_best = video("no-best", dep_b, t.replace(day=9), best=None)
     no_cover = track("no-best-fox", vid_no_best, 1, 2, 2, 2, 1)
     fox_box("vid3-f2", vid_no_best, 0.9, frame_number=2, track_id=no_cover.id)
-    ev_vid = _event(db, "walk", dep_b.id, t.replace(day=7), [vid])
-    db.add(EventObservation(
-        id=_id("obs-walk"), event_id=ev_vid.id, label="red fox",
+    ev_vid = _sequence(db, "walk", dep_b.id, t.replace(day=7), [vid])
+    db.add(SequenceObservation(
+        id=_id("obs-walk"), sequence_id=ev_vid.id, label="red fox",
         label_taxonomy_id=fox.id, category="animal", max_n=2,
     ))
 

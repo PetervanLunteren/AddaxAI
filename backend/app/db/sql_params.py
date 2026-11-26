@@ -5,7 +5,7 @@ from collections.abc import Iterable, Iterator
 # Max ids per `IN (...)` clause. SQLite's SQLITE_MAX_VARIABLE_NUMBER is 999 on
 # old builds, 32766 on newer. A list built into `IN (?, ?, ...)` expands to one
 # bound parameter per element, so any id list that scales with row count
-# (files, detections, events) must be chunked. 900 stays under even the old
+# (files, detections, sequences) must be chunked. 900 stays under even the old
 # limit. See the "too many SQL variables" crashes on large beta-tester datasets.
 SQL_VAR_CHUNK = 900
 

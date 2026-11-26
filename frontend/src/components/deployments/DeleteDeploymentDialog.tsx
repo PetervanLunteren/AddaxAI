@@ -1,7 +1,7 @@
 /**
  * Delete Deployment Dialog with type-to-confirm.
  *
- * Deletion cascades to files, events, and detections in the database.
+ * Deletion cascades to files, sequences, and detections in the database.
  * Files on disk are not touched.
  */
 
@@ -35,7 +35,7 @@ export function DeleteDeploymentDialog({
   const deleteMutation = useMutation({
     mutationFn: () => deploymentsApi.delete(deployment!.id),
     onSuccess: () => {
-      // Deletion cascades to files, detections, and events. Blanket
+      // Deletion cascades to files, detections, and sequences. Blanket
       // invalidate so every page reflects the removed data.
       invalidateProjectData(queryClient, projectId);
       queryClient.invalidateQueries({ queryKey: ["sites-with-stats", projectId] });

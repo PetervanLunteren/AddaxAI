@@ -6,7 +6,7 @@ If the model's confidence at the species level is not above the
 threshold, rolls up to the next higher taxonomic level at which the
 summed confidence is above it (strictly, as in the official pipeline).
 
-Runs BEFORE event smoothing so the smoother can refine rolled-up labels
+Runs BEFORE sequence smoothing so the smoother can refine rolled-up labels
 using image/sequence context (e.g. "felidae" → "lion" if nearby
 detections are confidently "lion").
 """

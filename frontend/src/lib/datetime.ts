@@ -1,7 +1,7 @@
 /**
  * Datetime rendering helpers for observational timestamps.
  *
- * Observational datetimes (File.captured_at_local, Event.event_start_local,
+ * Observational datetimes (File.captured_at_local, Sequence.sequence_start_local,
  * etc.) come over the wire as ISO 8601 with the project's UTC offset, e.g.
  * "2013-01-26T08:25:00+03:00". The "08:25" part is the camera's wall-clock
  * time at the deployment location, and that's what the UI must always show

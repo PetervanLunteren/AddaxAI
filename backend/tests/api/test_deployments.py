@@ -8,13 +8,13 @@ from unittest.mock import patch
 import pytest
 from PIL import Image
 
-from app.models.event_observation import EventObservation
+from app.models.sequence_observation import SequenceObservation
 from tests.conftest import (
     make_deployment,
     make_detection,
-    make_event_with_files,
     make_file,
     make_project,
+    make_sequence_with_files,
     make_site,
 )
 
@@ -269,19 +269,19 @@ def _build_info_fixture(db):
     make_detection(
         db, file_id=image_files[2].id, confidence=0.1,  # below threshold, dropped
     )
-    # One event with one observation of MaxN=3. Pass files_verified=[]
+    # One sequence with one observation of MaxN=3. Pass files_verified=[]
     # so the helper does not auto-create an extra file (we have the
     # explicit images above and want the file count assertions to be
     # exact).
-    event = make_event_with_files(
+    sequence = make_sequence_with_files(
         db,
         deployment_id=dep.id,
-        event_start_local=datetime(2024, 6, 15, 8, 0),
+        sequence_start_local=datetime(2024, 6, 15, 8, 0),
         files_verified=[],
     )
     db.add(
-        EventObservation(
-            event_id=event.id,
+        SequenceObservation(
+            sequence_id=sequence.id,
             label="lion",
             label_taxonomy_id=None,
             category="animal",
@@ -302,7 +302,7 @@ def test_deployment_info_happy_path(client, db):
     assert data["site_name"] == "Camp A"
     assert data["site_id"] == dep.site_id
     assert data["files"] == {"total": 5, "images": 3, "videos": 2}
-    assert data["event_count"] == 1
+    assert data["sequence_count"] == 1
     assert data["observation_count"] == 3
     # One animal observation with MaxN=3 from _build_info_fixture.
     assert data["detection_categories"] == {"classes": {"animal": 3}, "empty": 0}
@@ -344,7 +344,7 @@ def test_deployment_info_empty_deployment(client, db):
     assert resp.status_code == 200
     data = resp.json()
     assert data["files"] == {"total": 0, "images": 0, "videos": 0}
-    assert data["event_count"] == 0
+    assert data["sequence_count"] == 0
     assert data["observation_count"] == 0
     assert data["mean_detection_confidence"] is None
     assert data["mean_classification_confidence"] is None

@@ -45,7 +45,7 @@ class Detection(Base):
     )
 
     # Detection bounding box (normalized coordinates 0-1). Nullable
-    # because event-level observations — species seen in a video clip
+    # because box-less observations — species seen in a video clip
     # without a frame-anchored ROI — have no spatial annotation. The
     # four columns are required to be all-set or all-null in practice
     # (Pydantic + a CHECK constraint below enforce this); we cannot

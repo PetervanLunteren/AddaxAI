@@ -14,12 +14,12 @@ from app.api.crud.detection import (
     mark_detections_false,
     release_inherited_labels,
 )
-from app.api.crud.event_observation import (
-    get_event_ids_for_files,
-    recalculate_max_n_for_events,
-)
 from app.api.crud.file_filters import file_flag_clauses, tri_state
 from app.api.crud.ordering import file_time_order
+from app.api.crud.sequence_observation import (
+    get_sequence_ids_for_files,
+    recalculate_max_n_for_sequences,
+)
 from app.api.schemas.file import (
     DetectionResponse,
     FileResponse,
@@ -42,8 +42,8 @@ from app.ml.label_exclusion import (
     threshold_or_verified,
 )
 from app.ml.observation_type import derive_observation_type
-from app.models import Deployment, Detection, Event, File, Project
-from app.models.event import event_files
+from app.models import Deployment, Detection, File, Project, Sequence
+from app.models.sequence import sequence_files
 
 
 def _project_threshold_for_file(db: Session, file: File) -> float:
@@ -278,8 +278,8 @@ def _labels_files_query(
         query = query.filter(site_clause)
     # Date range and the triage marks: one definition, shared with the
     # media export (`file_filters.py`). The marks live on the file
-    # itself, so unlike the events endpoint no EXISTS is needed; None
-    # and "all" mean no clause, matching `get_events`.
+    # itself, so unlike the sequences endpoint no EXISTS is needed; None
+    # and "all" mean no clause, matching `get_sequences`.
     query = query.filter(
         *file_flag_clauses(
             date_from=date_from,
@@ -415,26 +415,26 @@ def get_labels_files(
         if seed is None:
             raise ValueError("random sort requires a seed")
         order = [func.seeded_hash(File.id, seed).asc(), File.id.asc()]
-    elif sort == "events":
-        # Bursts contiguous: events newest first (as on the Detections
-        # tab), inside an event the files in shooting order. Files outside
-        # any event sort last, so the joins are outer joins.
+    elif sort == "sequences":
+        # Bursts contiguous: sequences newest first (as on the Detections
+        # tab), inside a sequence the files in shooting order. Files outside
+        # any sequence sort last, so the joins are outer joins.
         #
         # A join, not a subquery per file: the sort key is needed for
         # every file of the project on every page, and three correlated
         # lookups per file made a page take 5 to 20 s on 1.27M photos
         # (about 2.5 s now). It relies on a file being in at most one
-        # event, which event generation guarantees (it deletes and
-        # recreates a deployment's events and assigns each file once;
-        # `test_every_file_is_in_one_event_at_most`). A file in two
-        # events would be listed twice.
+        # sequence, which sequence generation guarantees (it deletes and
+        # recreates a deployment's sequences and assigns each file once;
+        # `test_every_file_is_in_one_sequence_at_most`). A file in two
+        # sequences would be listed twice.
         query = query.outerjoin(
-            event_files, event_files.c.file_id == File.id
-        ).outerjoin(Event, Event.id == event_files.c.event_id)
+            sequence_files, sequence_files.c.file_id == File.id
+        ).outerjoin(Sequence, Sequence.id == sequence_files.c.sequence_id)
         order = [
-            Event.event_start_local.is_(None).asc(),
-            Event.event_start_local.desc(),
-            Event.id.asc(),
+            Sequence.sequence_start_local.is_(None).asc(),
+            Sequence.sequence_start_local.desc(),
+            Sequence.id.asc(),
             *file_time_order(newest_first=False),
         ]
     else:
@@ -640,7 +640,7 @@ def max_at_once(db: Session, file: File, threshold: float) -> list[MaxAtOnce]:
     """The file's MaxN per species: boxes at the counting threshold or
     verified, rejected ones left out, counted per frame and species, the
     peak per species with the first frame kept on a tie. One rule with
-    `calculate_max_n_for_event`, per file: a handful of rows out, so a
+    `calculate_max_n_for_sequence`, per file: a handful of rows out, so a
     tile never needs the frames to count them."""
     rows = (
         db.query(
@@ -692,7 +692,7 @@ def file_payload(
     db: Session, file: File, scope: FileScope, *, camera: str | None = None
 ) -> FileWithDetections:
     """The one place a file response is built, for the file endpoint and
-    for the files inside an event. The base fields are read from the row;
+    for the files inside a sequence. The base fields are read from the row;
     the boxes come from `file_detections` for the scope, so validating
     the ORM object never pulls every box in by itself."""
     base = FileResponse.model_validate(file, from_attributes=True)
@@ -738,7 +738,7 @@ def recompute_file_verified(db: Session, file_ids: Iterable[str]) -> None:
 
     Call this after any change to a detection's verified status. Every
     user-facing surface (file badge, file filter, "next unverified"
-    navigation, the event MaxN rollup) reads `File.verified`, so keeping
+    navigation, the sequence MaxN rollup) reads `File.verified`, so keeping
     it in sync here is the single point where the upward cascade lives.
     No commit — the caller owns the transaction.
 
@@ -846,7 +846,7 @@ def set_file_verified(db: Session, file: File, verified: bool) -> UndoSnapshot:
     hands the inherited labels back to the machine.
 
     Idempotent, so re-verifying picks up boxes added since. Both paths
-    re-derive ``observation_type`` and the event MaxN, as the detection
+    re-derive ``observation_type`` and the sequence MaxN, as the detection
     endpoints do. The caller commits.
 
     Returns the before-state of the file and of every box on it, for undo
@@ -912,9 +912,9 @@ def set_file_verified(db: Session, file: File, verified: bool) -> UndoSnapshot:
         file.verified_at_utc = None
     db.flush()
     _set_observation_type(db, file, threshold)
-    event_ids = get_event_ids_for_files(db, [file.id])
-    if event_ids:
-        recalculate_max_n_for_events(db, event_ids, threshold)
+    sequence_ids = get_sequence_ids_for_files(db, [file.id])
+    if sequence_ids:
+        recalculate_max_n_for_sequences(db, sequence_ids, threshold)
     return before
 
 

@@ -16,14 +16,14 @@ small project next to a huge one. Five projects, about 1M photos in all at
 (v7.16, 3.8 GB): one project of 1.27M photos in 58 deployments of 2K to
 35K photos, each deployment with the photo count, box count and share of
 boxes at 0.2 or more that his has. About 270 species, a few common and
-many rare, and long events of about 62 photos.
+many rare, and long sequences of about 62 photos.
 
 Boxes look like MegaDetector output stored down to 0.01. The Simon shape
 adds a tail of legacy boxes between 0.005 and 0.01 (``--legacy-share`` of
 all rows), which databases from before v7.2.0 still carry. Animal boxes
 carry a species from ``--taxonomy-csv``. Every box that passes the
 classification gate gets an embedding: random vectors, because only
-their size and count matter here. Events come from the app's own event
+their size and count matter here. Sequences come from the app's own sequence
 generation, then the planner statistics are refreshed, as after a job.
 
 Everything goes through the app's models and functions, so the schema
@@ -36,7 +36,7 @@ must not be your real ``~/AddaxAI``:
         --classification-model SPECIESNET-v4-0-2-A \\
         --taxonomy-csv ~/AddaxAI/models/cls/SPECIESNET-v4-0-2-A/taxonomy.csv
 
-At full scale this takes the better part of an hour, most of it event
+At full scale this takes the better part of an hour, most of it sequence
 generation and embeddings, and about 3.5 GB of disk. The photos do not
 exist, so crops and thumbnails fail fast: this measures the database,
 not the drive. How it is used is in "How we measure" in
@@ -101,8 +101,8 @@ class Shape:
     # False: every species equally likely.
     zipf_species: bool
     legacy_share: float
-    # Mean photos per event. None: every burst is its own event.
-    event_photos: int | None
+    # Mean photos per sequence. None: every burst is its own sequence.
+    sequence_photos: int | None
 
 
 def _uniform(name: str, n_sites: int, per_site: int, folders: int, photos: int,
@@ -143,7 +143,7 @@ SHAPES = {
         species_count=30,
         zipf_species=False,
         legacy_share=0.19,
-        event_photos=None,
+        sequence_photos=None,
     ),
     "elliot": Shape(
         projects=(
@@ -162,8 +162,8 @@ SHAPES = {
         zipf_species=True,
         # His database is from after v7.2.0, so it has no legacy tail.
         legacy_share=0.0,
-        # 1.27M photos in 20.6K events.
-        event_photos=62,
+        # 1.27M photos in 20.6K sequences.
+        sequence_photos=62,
     ),
 }
 
@@ -384,12 +384,12 @@ class Seeder:
     def captures(self, count: int) -> Iterator[datetime]:
         """Trigger bursts of 1 to 5 photos 2 s apart.
 
-        A gap of 31 min to 6 h starts a new event, because the default
-        independence interval is 30 min. With ``event_photos`` set, most
-        gaps are 1 to 29 min instead, so the bursts form events of about
+        A gap of 31 min to 6 h starts a new sequence, because the default
+        independence interval is 30 min. With ``sequence_photos`` set, most
+        gaps are 1 to 29 min instead, so the bursts form sequences of about
         that many photos.
         """
-        event_photos = self.shape.event_photos
+        sequence_photos = self.shape.sequence_photos
         t = SEASON_START + timedelta(minutes=self.rng.uniform(0, 600))
         made = 0
         while made < count:
@@ -397,7 +397,7 @@ class Seeder:
                 yield t
                 t += timedelta(seconds=2)
                 made += 1
-            if event_photos is None or self.rng.random() < BURST_MEAN / event_photos:
+            if sequence_photos is None or self.rng.random() < BURST_MEAN / sequence_photos:
                 t += timedelta(minutes=self.rng.uniform(31, 360))
             else:
                 t += timedelta(minutes=self.rng.uniform(1, 29))
@@ -497,7 +497,7 @@ def main() -> int:
 
     db = open_seed_sandbox()
 
-    from app.api.crud.event import generate_events_for_project
+    from app.api.crud.sequence import generate_sequences_for_project
     from app.db.base import refresh_query_statistics
 
     started = time.perf_counter()
@@ -509,9 +509,9 @@ def main() -> int:
     with step("Embeddings"):
         embeddings = seeder.seed_embeddings()
     for name, project_id in zip((p.name for p in shape.projects), project_ids, strict=True):
-        with step(f"Events for {name}"):
-            events = generate_events_for_project(db, project_id)
-        print(f"  {events:,} events")
+        with step(f"Sequences for {name}"):
+            sequences = generate_sequences_for_project(db, project_id)
+        print(f"  {sequences:,} sequences")
     with step("ANALYZE"):
         refresh_query_statistics(db)
         db.commit()

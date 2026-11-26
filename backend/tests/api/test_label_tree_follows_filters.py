@@ -21,22 +21,22 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.api.crud import event as event_crud
 from app.api.crud import file as file_crud
+from app.api.crud import sequence as sequence_crud
 from app.api.schemas.label import LabelFilters
 from app.db.base import Base
 from app.models import File
-from app.models.event import event_files
 from app.models.label_taxonomy import LabelTaxonomy
+from app.models.sequence import sequence_files
 from app.services.label_service import count_detections_by_label
 from tests.conftest import (
     label_counts,
     label_tree,
     make_deployment,
     make_detection,
-    make_event_with_files,
     make_file,
     make_project,
+    make_sequence_with_files,
 )
 
 # do_sort imports its sibling `observation_sort` by bare name (it runs as
@@ -71,7 +71,7 @@ def _leaf_counts(db, project_id: str, count_by: str, **filters) -> dict[str, int
 
 
 def _seed(db):
-    """A project with two species, in two events, on files with a mix of
+    """A project with two species, in two sequences, on files with a mix of
     verified boxes, verified files, flagged files and one weak box."""
     project = make_project(db, classification_model_id=MODEL_ID)
     dep = make_deployment(db, project_id=project.id)
@@ -79,11 +79,11 @@ def _seed(db):
     deer = _taxon(db, "cervus elaphus")
     files = []
     for i in range(6):
-        ev = make_event_with_files(
-            db, deployment_id=dep.id, event_start_local=datetime(2024, 6, 1 + i, 12)
+        ev = make_sequence_with_files(
+            db, deployment_id=dep.id, sequence_start_local=datetime(2024, 6, 1 + i, 12)
         )
         link = db.execute(
-            event_files.select().where(event_files.c.event_id == ev.id)
+            sequence_files.select().where(sequence_files.c.sequence_id == ev.id)
         ).first()
         files.append(db.get(File, link.file_id))
     # fox: 3 verified boxes on flagged files, 1 unverified; deer: 2 unverified,
@@ -139,14 +139,14 @@ def test_file_counts_match_the_files_tab(db):
     assert shown == {fox.id: 1, deer.id: 1}
 
 
-def test_event_counts_match_the_counts_page(db):
+def test_sequence_counts_match_the_counts_page(db):
     project, fox, deer = _seed(db)
     filters = dict(flagged="flagged")
 
-    shown = _leaf_counts(db, project.id, "event", **filters)
+    shown = _leaf_counts(db, project.id, "sequence", **filters)
 
     for leaf, count in shown.items():
-        assert count == event_crud.get_event_counts(
+        assert count == sequence_crud.get_sequence_counts(
             db, project.id, labels=[leaf],
             project_floor=project.counting_threshold, **filters
         ).total, leaf
@@ -155,10 +155,10 @@ def test_event_counts_match_the_counts_page(db):
 
 def test_show_only_empty_reads_zero_for_every_label(db):
     """The Counts page ignores the label filter under "show only empty"
-    (an empty event has no species), so the honest count is 0, not the
-    number of empty events."""
+    (an empty sequence has no species), so the honest count is 0, not the
+    number of empty sequences."""
     project, fox, deer = _seed(db)
-    assert _leaf_counts(db, project.id, "event", empty="show_only") == {
+    assert _leaf_counts(db, project.id, "sequence", empty="show_only") == {
         fox.id: 0, deer.id: 0
     }
 
@@ -197,7 +197,7 @@ def test_detection_counts_match_the_labels_grid(file_db):
                     "flagged": "not_flagged",
                     "project_floor": project.counting_threshold,
                 },
-                "sort": "events",
+                "sort": "sequences",
             },
         )
         assert counts.get(leaf, 0) == grid["total_matching"], leaf
@@ -208,7 +208,7 @@ def test_the_endpoint_takes_the_page_filters(client, db):
     project, fox, deer = _seed(db)
 
     resp = client.get(
-        f"/api/events/label-counts?project_id={project.id}"
+        f"/api/sequences/label-counts?project_id={project.id}"
         "&count_by=detection&verification=verified"
     )
 
@@ -232,7 +232,7 @@ def test_a_one_day_range_reaches_the_grid(file_db):
     grid = do_sort(
         path, project.id,
         {"filters": _filters_to_dict(_apply_project_threshold(filters, project.id, session)),
-         "sort": "events"},
+         "sort": "sequences"},
     )
     counts = count_detections_by_label(session, project.id, filters)
 

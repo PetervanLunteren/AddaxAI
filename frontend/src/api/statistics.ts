@@ -14,7 +14,7 @@ import type { ClassCounts } from "./types";
 export interface DashboardOverview {
   total_files: number;
   total_observations: number;
-  total_events: number;
+  total_sequences: number;
   total_deployments: number;
   total_sites: number;
   trap_nights: number;
@@ -353,7 +353,7 @@ function trendParams(
 
 export const statisticsApi = {
   /**
-   * Dashboard overview counts (files, detections, events, etc.)
+   * Dashboard overview counts (files, detections, sequences, etc.)
    */
   getOverview: (projectId: string, siteIds?: string, dateFrom?: string, dateTo?: string) => {
     const query = buildParams(projectId, { siteIds, dateFrom, dateTo });
@@ -465,7 +465,7 @@ export const statisticsApi = {
    * Per-site observation rate features for the Map page. Each feature
    * aggregates across the site's contributing deployments.
    * Rate = observations / trap nights * 100, where observations is
-   * sum(EventObservation.max_n) per event.
+   * sum(SequenceObservation.max_n) per sequence.
    */
   getObservationRateMap: (
     projectId: string,

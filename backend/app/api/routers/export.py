@@ -369,7 +369,7 @@ def preview_media_export(
         ),
         include_empty=body.include_empty,
         name_mode=body.name_mode,
-        group_events=body.group_events,
+        group_sequences=body.group_sequences,
         group_by=body.separate_group_by,
         species_last=body.separate_species_last,
         # With blur on a video is written as its blurred still.

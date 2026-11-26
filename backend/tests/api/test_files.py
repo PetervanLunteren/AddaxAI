@@ -185,7 +185,7 @@ def test_label_tree_count_by_file(client, db):
     db.commit()
 
     resp = client.get(
-        f"/api/events/label-counts?project_id={p.id}&count_by=file"
+        f"/api/sequences/label-counts?project_id={p.id}&count_by=file"
     )
     assert resp.status_code == 200
     # Two distinct files; three detections.
@@ -271,7 +271,7 @@ def test_label_tree_count_by_file_reads_a_video_on_its_best_frame(client, db):
     db.commit()
 
     resp = client.get(
-        f"/api/events/label-counts?project_id={p.id}&count_by=file"
+        f"/api/sequences/label-counts?project_id={p.id}&count_by=file"
     )
     assert resp.status_code == 200
     # The image only: the video's wolf is not on its best frame.
@@ -395,7 +395,7 @@ def test_cards_scope_of_a_photo_is_every_box(client, db):
 def test_max_at_once_is_the_peak_per_species_at_the_first_frame_it_reached(client, db):
     """Five fish on frame 60 and five on frame 90 is 5, at 60; a box below
     the counting threshold does not count unless verified; a rejected
-    box never counts; species count apart. The same rule as the event
+    box never counts; species count apart. The same rule as the sequence
     MaxN, per file, so a tile chip and a count row say one number."""
     clip, _, _ = _tracked_clip(db)  # frame 60: 2 fish, frame 90: 1 fish so far
     fish = dict(file_id=clip.id, category="fish", confidence=0.9)

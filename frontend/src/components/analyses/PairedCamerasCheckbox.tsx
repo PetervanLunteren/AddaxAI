@@ -3,7 +3,7 @@
  * edit-deployment dialog so the wording cannot drift.
  *
  * One deployment folder with one subfolder per camera. With the box ticked
- * the subfolders count as one camera: their files cluster into one event
+ * the subfolders count as one camera: their files cluster into one sequence
  * and the effort counts once. See DEVELOPERS.md "Paired cameras".
  */
 

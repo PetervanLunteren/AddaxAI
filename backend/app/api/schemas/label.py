@@ -17,9 +17,9 @@ from app.utils.datetime_serialization import serialize_local_datetime
 
 LabelSort = Literal[
     "similarity",
-    # Group detections by their event, events newest first. Grouping is
-    # the point, so the grid auto-shows event dividers in this mode.
-    "events",
+    # Group detections by their sequence, sequences newest first. Grouping is
+    # the point, so the grid auto-shows sequence dividers in this mode.
+    "sequences",
     # Cohort-grouped review mode. Reachable only via the toolbar's
     # review pill, never selectable from the sort dropdown.
     "suggestions",
@@ -123,13 +123,13 @@ class DetectionSummary(BaseModel):
     site_name: str | None = None
     deployment_id: str | None = None
     captured_at_local: datetime | None = None
-    # Event this detection's file belongs to. Drives the "By event" sort,
-    # the event dividers, and the detail modal's sequence strip. Null when
-    # event clustering has not run for the deployment.
-    event_id: str | None = None
-    # Start time of `event_id`, naive camera-local; the event divider's
+    # Sequence this detection's file belongs to. Drives the "By sequence" sort,
+    # the sequence dividers, and the detail modal's sequence strip. Null when
+    # sequence clustering has not run for the deployment.
+    sequence_id: str | None = None
+    # Start time of `sequence_id`, naive camera-local; the sequence divider's
     # header label. Serialized like captured_at_local.
-    event_start_local: datetime | None = None
+    sequence_start_local: datetime | None = None
     crop_url: str
     crop_bbox: CropBbox | None = None
     # Video detections carry the frame index they came from; image
@@ -146,7 +146,7 @@ class DetectionSummary(BaseModel):
     file_flagged: bool = False
     file_favorited: bool = False
 
-    @field_serializer("captured_at_local", "event_start_local")
+    @field_serializer("captured_at_local", "sequence_start_local")
     def _serialize_local_datetimes(self, value: datetime | None) -> str | None:
         return serialize_local_datetime(value)
 
@@ -223,10 +223,10 @@ LabelsFilesSort = Literal[
     "newest",
     "oldest",
     "random",
-    # Bursts kept together: events newest first, each event's files in
+    # Bursts kept together: sequences newest first, each sequence's files in
     # shooting order. The grid shows divider rows in this mode, like the
-    # Detections tab's event sort.
-    "events",
+    # Detections tab's sequence sort.
+    "sequences",
 ]
 
 
@@ -248,9 +248,9 @@ class LabelsFileItem(BaseModel):
     # aspect ratio instead of forcing 4:3 on a 16:9 camera.
     width_px: int | None
     height_px: int | None
-    # The file's event, filled by the router only for sort=events, where
+    # The file's sequence, filled by the router only for sort=sequences, where
     # the grid draws divider rows from it. None in every other sort.
-    event_id: str | None = None
+    sequence_id: str | None = None
 
     @field_serializer("captured_at_local")
     def _serialize_local_datetimes(self, value: datetime | None) -> str | None:

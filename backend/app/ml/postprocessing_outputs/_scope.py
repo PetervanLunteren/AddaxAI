@@ -50,7 +50,7 @@ class MediaScope:
         )
 
     def deployment_clauses(self) -> list:
-        """The deployment part alone. The event vote uses only this, so a
+        """The deployment part alone. The sequence vote uses only this, so a
         burst is judged on all its files and the file-level filters only
         decide which of them are copied."""
         if self.deployment_ids is None:

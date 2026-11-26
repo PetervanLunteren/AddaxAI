@@ -1,10 +1,10 @@
 /**
  * Counts step (slug `counts`, optional).
  *
- * The second of the two review steps, the same event gallery as the
- * Counts page of a project: one card per event, the AI's count per
+ * The second of the two review steps, the same sequence gallery as the
+ * Counts page of a project: one card per sequence, the AI's count per
  * species, confirm or change it. `VerifyView` owns the gallery, its
- * filters and the event detail modal; this file only adds the step
+ * filters and the sequence detail modal; this file only adds the step
  * chrome. Back returns to Labels; Continue PATCHes `step=save` and
  * navigates on.
  */

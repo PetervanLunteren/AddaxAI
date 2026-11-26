@@ -60,7 +60,7 @@ from .separate_folders import (
     _slug,
     _taxonomic_path_for_label,
     build_deployment_folders,
-    build_event_primary_labels,
+    build_sequence_primary_labels,
     source_subdir,
     video_still_name,
 )
@@ -153,7 +153,7 @@ def build_output_preview(
     excluded_label_ids: frozenset[str] | None = None,
     include_empty: bool = True,
     name_mode: NameMode = "common",
-    group_events: bool = True,
+    group_sequences: bool = True,
     group_by: SeparateGroupBy = "flat",
     species_last: bool = False,
     videos_as_stills: bool = False,
@@ -169,8 +169,8 @@ def build_output_preview(
     Mirrors ``separate_folders`` exactly: every file is bucketed into its
     one destination folder; ``excluded_label_ids`` drops a file when
     every passing identified detection is excluded (counted in
-    ``dropped_by_filter``); ``group_events`` buckets a whole event into
-    one folder, the event's main species. ``media_threshold`` is the
+    ``dropped_by_filter``); ``group_sequences`` buckets a whole sequence into
+    one folder, the sequence's main species. ``media_threshold`` is the
     Save step's media-output confidence, applied exactly as the real run
     applies it (placement, blank skip, filter drops).
 
@@ -276,10 +276,10 @@ def build_output_preview(
         for file_id, rows in dets_per_file.items()
     }
 
-    # Event-primary map, populated only when grouping is on.
-    event_primary: dict[str, str] = {}
-    if group_events:
-        event_primary = build_event_primary_labels(
+    # Sequence-primary map, populated only when grouping is on.
+    sequence_primary: dict[str, str] = {}
+    if group_sequences:
+        sequence_primary = build_sequence_primary_labels(
             db, project_id, threshold, excluded or None, scope
         )
 
@@ -339,7 +339,7 @@ def build_output_preview(
         if group_by == "none":
             folder = ""
         else:
-            main = event_primary.get(row.id)
+            main = sequence_primary.get(row.id)
             if main is None:
                 strongest = next(
                     (

@@ -12,20 +12,20 @@ Covers:
 from datetime import date, datetime
 
 from app.api.crud import statistics as stats_crud
-from app.models.event_observation import EventObservation
+from app.models.sequence_observation import SequenceObservation
 from tests.conftest import (
     make_deployment,
-    make_event_with_files,
     make_project,
+    make_sequence_with_files,
     make_site,
 )
 
 
 def _add_observation(
-    db, *, event_id: str, label: str = "leopard", max_n: int = 1
-) -> EventObservation:
-    obs = EventObservation(
-        event_id=event_id,
+    db, *, sequence_id: str, label: str = "leopard", max_n: int = 1
+) -> SequenceObservation:
+    obs = SequenceObservation(
+        sequence_id=sequence_id,
         label=label,
         label_taxonomy_id=None,
         category="animal",
@@ -48,11 +48,11 @@ def _build_netherlands_project(db):
         start_date_local=date(2024, 1, 1),
         end_date_local=date(2024, 12, 31),
     )
-    # One event so total_observations > 0
-    ev = make_event_with_files(
-        db, deployment_id=dep.id, event_start_local=datetime(2024, 6, 15, 7, 30)
+    # One sequence so total_observations > 0
+    ev = make_sequence_with_files(
+        db, deployment_id=dep.id, sequence_start_local=datetime(2024, 6, 15, 7, 30)
     )
-    _add_observation(db, event_id=ev.id, max_n=3)
+    _add_observation(db, sequence_id=ev.id, max_n=3)
     db.flush()
     return project
 
@@ -103,7 +103,7 @@ def test_activity_pattern_hourly_counts_unchanged(db):
 
     assert len(response.hours) == 24
     assert [h.hour for h in response.hours] == list(range(24))
-    # The one event at 07:30 puts max_n=3 into hour 7
+    # The one sequence at 07:30 puts max_n=3 into hour 7
     assert response.hours[7].count == 3
     assert response.total_observations == 3
 

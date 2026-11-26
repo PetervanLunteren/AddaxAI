@@ -165,7 +165,7 @@ def test_frame_rows_do_not_contribute(db):
         captured_at_local=_dt(2024, 6, 1),
     )
     # Frames attached to the video at later dates should not count
-    # (they're pipeline artifacts, not capture events).
+    # (they're pipeline artifacts, not capture sequences).
     for n in range(5):
         make_file(
             db,

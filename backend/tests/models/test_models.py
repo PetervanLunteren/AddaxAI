@@ -10,10 +10,10 @@ from app.models.detection import Detection
 from tests.conftest import (
     make_deployment,
     make_detection,
-    make_event_with_files,
     make_file,
     make_job,
     make_project,
+    make_sequence_with_files,
     make_site,
 )
 
@@ -22,7 +22,7 @@ def test_project_defaults(db):
     p = make_project(db)
     assert p.counting_threshold == DEFAULT_COUNTING_THRESHOLD
     assert p.classification_gate == 0.1
-    assert p.event_smoothing is True
+    assert p.sequence_smoothing is True
     assert p.taxonomic_rollup is True
     assert p.independence_interval == 1800
 
@@ -115,14 +115,14 @@ def test_foreign_key_enforcement(db):
         make_detection(db, file_id="nonexistent-file-id")
 
 
-def test_event_files_association(db):
+def test_sequence_files_association(db):
     p = make_project(db)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    ev = make_event_with_files(
+    ev = make_sequence_with_files(
         db,
         deployment_id=d.id,
-        event_start_local=datetime(2024, 1, 1, 12, 0),
+        sequence_start_local=datetime(2024, 1, 1, 12, 0),
         files_verified=[False, True],
     )
     assert ev.file_count == 2

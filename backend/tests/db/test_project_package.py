@@ -29,10 +29,10 @@ from app.models import (
     Deployment,
     Detection,
     DetectionEmbedding,
-    EventObservation,
     File,
     LabelTaxonomy,
     Project,
+    SequenceObservation,
     Site,
     Track,
 )
@@ -40,10 +40,10 @@ from app.services import project_package as pkg
 from tests.conftest import (
     make_deployment,
     make_detection,
-    make_event_with_files,
     make_file,
     make_job,
     make_project,
+    make_sequence_with_files,
     make_site,
     make_track,
 )
@@ -77,7 +77,7 @@ class Seed:
 
 def seed_project(db: Session, folders: list[Path], *, name: str = "Wolves") -> Seed:
     """A project with one site, one deployment per folder, each with two
-    files, one labelled detection with an embedding, and one event with
+    files, one labelled detection with an embedding, and one sequence with
     an observation. The label is the local builtin "animal" row, the one
     row every machine has under its own id."""
     project = make_project(db, name=name, classification_model_id="EUR-DF-v1-3")
@@ -95,8 +95,8 @@ def seed_project(db: Session, folders: list[Path], *, name: str = "Wolves") -> S
         dep = make_deployment(
             db, site_id=site.id, folder_path=str(folder), notes="from the lead"
         )
-        event = make_event_with_files(
-            db, deployment_id=dep.id, event_start_local=datetime(2024, 1, 1, 12)
+        sequence = make_sequence_with_files(
+            db, deployment_id=dep.id, sequence_start_local=datetime(2024, 1, 1, 12)
         )
         first = db.execute(
             select(File).where(File.deployment_id == dep.id)
@@ -121,8 +121,8 @@ def seed_project(db: Session, folders: list[Path], *, name: str = "Wolves") -> S
             )
         )
         db.add(
-            EventObservation(
-                event_id=event.id, label_taxonomy_id=animal.id, category="animal", max_n=1
+            SequenceObservation(
+                sequence_id=sequence.id, label_taxonomy_id=animal.id, category="animal", max_n=1
             )
         )
         db.add(CalibrationAnswer(detection_id=det.id, label="animal", score=0.9, answer="right"))
@@ -181,15 +181,15 @@ def test_export_writes_a_complete_package(lead: Machine, tmp_path: Path) -> None
             t: conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]  # noqa: S608
             for t in (
                 "projects", "sites", "deployments", "files", "detections",
-                "detection_embeddings", "calibration_answers", "events", "event_files",
-                "event_observations", "label_taxonomy", "jobs",
+                "detection_embeddings", "calibration_answers", "sequences", "sequence_files",
+                "sequence_observations", "label_taxonomy", "jobs",
                 "deployment_queue", "audit_log",
             )
         }
         assert counts == {
             "projects": 1, "sites": 1, "deployments": 1, "files": 2,
-            "detections": 1, "detection_embeddings": 1, "calibration_answers": 1, "events": 1,
-            "event_files": 1, "event_observations": 1,
+            "detections": 1, "detection_embeddings": 1, "calibration_answers": 1, "sequences": 1,
+            "sequence_files": 1, "sequence_observations": 1,
             # Only the "animal" row is referenced; person and vehicle stay.
             "label_taxonomy": 1, "jobs": 1,
             "deployment_queue": 0, "audit_log": 0,
@@ -313,7 +313,7 @@ def test_import_creates_the_project_with_every_id_kept(
     assert result.project_created is True
     assert result.deployments_created == 1
     for table in ("sites", "deployments", "files", "detections",
-                  "detection_embeddings", "calibration_answers", "events", "event_files",
+                  "detection_embeddings", "calibration_answers", "sequences", "sequence_files",
                   "jobs"):
         assert [r[0] for r in member.rows(table)] == [r[0] for r in lead.rows(table)], table
     with member.session() as db:
@@ -333,7 +333,7 @@ def test_import_creates_the_project_with_every_id_kept(
         ).scalar_one()
         assert det.label_taxonomy_id == member_animal.id
         assert det.job_id is not None
-        obs = db.execute(select(EventObservation)).scalar_one()
+        obs = db.execute(select(SequenceObservation)).scalar_one()
         assert obs.label_taxonomy_id == member_animal.id
     assert member.count("label_taxonomy") == 3
     # A backup was taken first.

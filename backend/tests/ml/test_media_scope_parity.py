@@ -4,7 +4,7 @@ The three media modules each run their own file query, and annotation
 writes any in-scope file that separation did not place to a fallback
 name at the media root. So the three must read the same scope, and
 these tests pin that they do: separation, the preview and annotation
-land on the same file set under every filter, the event vote keeps
+land on the same file set under every filter, the sequence vote keeps
 reading the whole burst, and the deployment folder name goes into the
 layout only when asked.
 """
@@ -29,8 +29,8 @@ from app.ml.postprocessing_outputs.separate_folders import (
     keeps_deployment_folder,
     separate_into_folders,
 )
-from app.models import Event
-from app.models.event import event_files
+from app.models import Sequence
+from app.models.sequence import sequence_files
 from tests.conftest import (
     make_deployment,
     make_detection,
@@ -45,20 +45,20 @@ def _jpeg(path: Path) -> str:
     return str(path)
 
 
-def _link_event(db, deployment_id: str, file_ids: list[str]) -> Event:
-    ev = Event(
+def _link_sequence(db, deployment_id: str, file_ids: list[str]) -> Sequence:
+    ev = Sequence(
         id=str(uuid.uuid4()),
         deployment_id=deployment_id,
-        event_start_local=datetime(2024, 1, 1, 8, 0, 0),
-        event_end_local=datetime(2024, 1, 1, 8, 1, 0),
+        sequence_start_local=datetime(2024, 1, 1, 8, 0, 0),
+        sequence_end_local=datetime(2024, 1, 1, 8, 1, 0),
         file_count=len(file_ids),
     )
     db.add(ev)
     db.flush()
     for seq, fid in enumerate(file_ids):
         db.execute(
-            event_files.insert().values(
-                event_id=ev.id, file_id=fid, sequence_number=seq
+            sequence_files.insert().values(
+                sequence_id=ev.id, file_id=fid, position=seq
             )
         )
     db.flush()
@@ -188,9 +188,9 @@ def test_liked_verified_and_date_filters_narrow_to_the_same_file(db, tmp_path):
         assert annotated == {"IMG_2.jpg"}, scope
 
 
-def test_the_event_vote_reads_files_the_filters_will_not_copy(db, tmp_path):
+def test_the_sequence_vote_reads_files_the_filters_will_not_copy(db, tmp_path):
     """A liked photo in a burst whose other, unliked photos were verified
-    as wolf is filed under wolf: the vote is over the whole event, the
+    as wolf is filed under wolf: the vote is over the whole sequence, the
     filter only decides which files are copied."""
     project = make_project(db, name="vote", counting_threshold=0.5)
     dep = make_deployment(
@@ -214,7 +214,7 @@ def test_the_event_vote_reads_files_the_filters_will_not_copy(db, tmp_path):
         )
         make_detection(db, file_id=f.id, confidence=0.6, label="wolf", verified=True)
         others.append(f)
-    _link_event(db, dep.id, [liked.id, *(f.id for f in others)])
+    _link_sequence(db, dep.id, [liked.id, *(f.id for f in others)])
 
     target = tmp_path / "out"
     separate_into_folders(
@@ -223,7 +223,7 @@ def test_the_event_vote_reads_files_the_filters_will_not_copy(db, tmp_path):
         OutputContext(output_root=target),
         group_by="flat",
         media_threshold=0.5,
-        group_events=True,
+        group_sequences=True,
         scope=MediaScope(favorited_only=True),
     )
 

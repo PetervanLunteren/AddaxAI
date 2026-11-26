@@ -5,7 +5,7 @@ Folder mode is data-agnostic: a file with no resolvable capture date is
 still ingested, with `captured_at_local = NULL`, and surfaced via
 `PipelineResult.skipped_missing_timestamp` so the UI can report how many
 lack a date. Time-based stats exclude the null-date rows and each
-becomes its own single-file event downstream. Nothing is dropped, and
+becomes its own single-file sequence downstream. Nothing is dropped, and
 there is no hard failure even when every file lacks a timestamp.
 
 Observational datetimes are never guessed. The one exception is the

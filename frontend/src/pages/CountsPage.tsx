@@ -2,16 +2,16 @@
  * Counts page — thin wrapper around `VerifyView`.
  *
  * One of the two verification pages (the other is `LabelsPage`). The
- * Counts page is the ecological record: review each event's media in the
+ * Counts page is the ecological record: review each sequence's media in the
  * gallery and confirm the species and counts (the data model and exports
  * keep the standard term "observation"). Provides the canonical
  * research-projects page chrome and hands `projectId` to `VerifyView`,
- * which owns the event gallery, state, queries, and the event detail modal.
+ * which owns the sequence gallery, state, queries, and the sequence detail modal.
  */
 
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { eventsApi } from "../api/events";
+import { sequencesApi } from "../api/sequences";
 import { BrokenFolderBanner } from "../components/deployments/BrokenFolderBanner";
 import { VerifyView } from "../components/verify/VerifyView";
 import { WideModeContext, useWideMode } from "../components/verify/wide-mode";
@@ -31,15 +31,15 @@ export default function CountsPage() {
       wideMode.wide ? "w-full" : "mx-auto max-w-7xl",
     );
 
-  // Drive the subtitle from the unfiltered event count. Same query key
+  // Drive the subtitle from the unfiltered sequence count. Same query key
   // as VerifyView's internal totalCountData, so the TanStack cache
   // serves both subscribers from one fetch.
   const { data: totalCountData } = useQuery({
-    queryKey: ["events", "count", projectId],
-    queryFn: () => eventsApi.count(projectId!),
+    queryKey: ["sequences", "count", projectId],
+    queryFn: () => sequencesApi.count(projectId!),
     enabled: !!projectId,
   });
-  const totalEvents = totalCountData?.count ?? 0;
+  const totalSequences = totalCountData?.count ?? 0;
 
   return (
     <div className="min-h-screen">
@@ -48,7 +48,7 @@ export default function CountsPage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Counts</h1>
             <p className="text-sm text-muted-foreground">
-              {totalEvents > 0
+              {totalSequences > 0
                 ? "Check the AI's counts, adjust any that are wrong (optional)"
                 : "Run a deployment analysis to get started"}
             </p>

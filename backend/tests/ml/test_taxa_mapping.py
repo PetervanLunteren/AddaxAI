@@ -236,7 +236,7 @@ def _project(**overrides):
     from types import SimpleNamespace
 
     fields = dict(
-        event_smoothing=True,
+        sequence_smoothing=True,
         smoothing_strength="normal",
         taxonomic_rollup=True,
         independence_interval=1800,

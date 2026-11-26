@@ -220,7 +220,7 @@ function InfoBody({ info }: { info: SiteInfo }) {
       <Separator />
 
       <Section title="Observations">
-        <Row label="Events" value={info.event_count.toLocaleString()} />
+        <Row label="Events" value={info.sequence_count.toLocaleString()} />
         <Row
           label="Observations"
           value={info.observation_count.toLocaleString()}

@@ -24,14 +24,14 @@ from datetime import datetime
 
 from sqlalchemy import select
 
-from app.models import Detection, Event, EventObservation, File
-from app.models.event import event_files
+from app.models import Detection, File, Sequence, SequenceObservation
+from app.models.sequence import sequence_files
 from tests.conftest import (
     make_deployment,
     make_detection,
-    make_event_with_files,
     make_file,
     make_project,
+    make_sequence_with_files,
     make_site,
     make_video_box,
 )
@@ -161,24 +161,24 @@ def test_verifying_a_file_recomputes_what_it_is_about(client, db):
 def test_unverifying_a_file_recomputes_the_counts(client, db):
     """A verified weak box counts; taking the file's sign-off back clears
     the box's verified flag, so the observation it produced goes and a
-    confirmed event is unconfirmed. Neither happened before: the file
+    confirmed sequence is unconfirmed. Neither happened before: the file
     router recomputed nothing."""
     p = make_project(db, counting_threshold=0.2)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    ev = make_event_with_files(
-        db, deployment_id=d.id, event_start_local=datetime(2024, 1, 1, 12, 0)
+    ev = make_sequence_with_files(
+        db, deployment_id=d.id, sequence_start_local=datetime(2024, 1, 1, 12, 0)
     )
     file_id = db.execute(
-        select(event_files.c.file_id).where(event_files.c.event_id == ev.id)
+        select(sequence_files.c.file_id).where(sequence_files.c.sequence_id == ev.id)
     ).scalar_one()
     weak = make_detection(db, file_id=file_id, confidence=0.05, label="deer")
     db.commit()
 
     resp = client.patch(f"/api/detections/{weak.id}/verify", json={"verified": True})
     assert resp.status_code == 200, resp.text
-    assert db.query(EventObservation).filter_by(event_id=ev.id).count() == 1
-    db.get(Event, ev.id).confirmed = True
+    assert db.query(SequenceObservation).filter_by(sequence_id=ev.id).count() == 1
+    db.get(Sequence, ev.id).confirmed = True
     db.commit()
 
     _verify(client, file_id, verified=False)
@@ -186,8 +186,8 @@ def test_unverifying_a_file_recomputes_the_counts(client, db):
     db.expire_all()
     assert db.get(File, file_id).verified is False
     assert db.get(Detection, weak.id).verified is False
-    assert db.query(EventObservation).filter_by(event_id=ev.id).count() == 0
-    assert db.get(Event, ev.id).confirmed is False
+    assert db.query(SequenceObservation).filter_by(sequence_id=ev.id).count() == 0
+    assert db.get(Sequence, ev.id).confirmed is False
 
 
 def test_reverifying_picks_up_boxes_added_since(client, db):

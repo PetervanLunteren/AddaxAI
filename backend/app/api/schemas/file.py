@@ -13,7 +13,7 @@ from app.utils.datetime_serialization import serialize_local_datetime
 class DetectionResponse(BaseModel):
     """Detection response schema.
 
-    bbox fields are nullable because event-level observations (species
+    bbox fields are nullable because box-less observations (species
     seen in a video clip without a frame-anchored ROI) have no spatial
     annotation. All four fields are null-together for those rows; AI
     and user-drawn detections set all four.
@@ -127,7 +127,7 @@ FileScope = Literal["all", "cards"]
 class MaxAtOnce(BaseModel):
     """The most boxes of one species in any one frame of the file, at the
     project's counting threshold: the file's MaxN, the rule
-    `calculate_max_n_for_event` applies per event. `frame_number` is the
+    `calculate_max_n_for_sequence` applies per sequence. `frame_number` is the
     first frame that reached it, null for a photo."""
 
     label_taxonomy_id: str | None

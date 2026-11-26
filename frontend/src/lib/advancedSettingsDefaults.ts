@@ -29,7 +29,7 @@ export const ADVANCED_SETTINGS_DEFAULTS = {
   media_filter: "all",
   counting_threshold: DEFAULT_COUNTING_THRESHOLD,
   classification_gate: DEFAULT_CLASSIFICATION_GATE,
-  event_smoothing: true,
+  sequence_smoothing: true,
   smoothing_strength: "normal",
   taxonomic_rollup: true,
   independence_interval: 1800,
@@ -79,7 +79,7 @@ type AdvancedKey = keyof typeof ADVANCED_SETTINGS_DEFAULTS;
  *  see or needs to hear about: an underwater form used to announce
  *  "1 custom setting" with every visible row at its default. */
 const CLASSIFIER_ONLY_KEYS: ReadonlySet<AdvancedKey> = new Set<AdvancedKey>([
-  "event_smoothing",
+  "sequence_smoothing",
   "smoothing_strength",
   "taxonomic_rollup",
   "classification_batch_size",

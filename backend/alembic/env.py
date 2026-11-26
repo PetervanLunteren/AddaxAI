@@ -21,14 +21,14 @@ from app.models import (  # noqa: F401
     Deployment,
     Detection,
     DetectionEmbedding,
-    Event,
-    EventObservation,
     File,
     Job,
     LabelTaxonomy,
     Project,
+    Sequence,
+    SequenceObservation,
     Site,
-    event_files,
+    sequence_files,
 )
 
 # Alembic Config object

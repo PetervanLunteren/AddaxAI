@@ -1,5 +1,5 @@
 /**
- * One-time welcome popover shown on first visit to the event detail modal.
+ * One-time welcome popover shown on first visit to the sequence detail modal.
  * Introduces the verification workflow and mentions keyboard shortcuts.
  */
 
@@ -32,7 +32,7 @@ export function WelcomePopover({ open, onDismiss }: WelcomePopoverProps) {
           <p>
             An event groups files captured close together in time, treated as
             one observation. Each card opens to the moment the most animals are
-            visible, so you can check the species and count in one look. The strip below is the rest of the event; for a video it
+            visible, so you can check the species and count in one look. The strip below is the rest of the sequence; for a video it
             shows frames across the clip. Click any to inspect.
           </p>
           <p>

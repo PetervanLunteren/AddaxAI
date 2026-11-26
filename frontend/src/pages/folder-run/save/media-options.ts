@@ -15,9 +15,9 @@ import type {
 export interface SeparateState {
   enabled: boolean;
   groupBy: SeparateGroupBy;
-  /** Keep a burst together: every file in an event shares one folder
-   * (the event's main species). */
-  groupEvents: boolean;
+  /** Keep a burst together: every file in a sequence shares one folder
+   * (the sequence's main species). */
+  groupSequences: boolean;
   /** Put the species folder inside the user's original folders instead of
    * on top (camtrapR-style ``station/species/`` layout). */
   speciesLast: boolean;
@@ -93,7 +93,7 @@ export function nothingInScope(separate: SeparateState): boolean {
 export interface MediaOptionsRequest {
   media_threshold: number;
   separate_group_by: SeparateGroupBy;
-  group_events: boolean;
+  group_sequences: boolean;
   separate_species_last: boolean;
   include_empty: boolean;
   /** Labels to leave out (LabelTaxonomy ids or raw label strings). */
@@ -128,7 +128,7 @@ export function mediaRequestFields(
   return {
     media_threshold: separate.mediaThreshold ?? projectThreshold,
     separate_group_by: separate.groupBy,
-    group_events: separate.groupEvents,
+    group_sequences: separate.groupSequences,
     separate_species_last: separate.speciesLast,
     include_empty: on && separate.copyEmpties,
     excluded_label_ids: on ? excludedLabelIds(separate, allLabelIds) : [],

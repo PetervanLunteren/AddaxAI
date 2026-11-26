@@ -1,8 +1,8 @@
 """
-Event model - time-clustered groups of files.
+Sequence model - time-clustered groups of files.
 
 Datetime conventions (see DEVELOPERS.md "Datetime conventions" section):
-- `event_start_local` / `event_end_local` are naive wall-clock times in
+- `sequence_start_local` / `sequence_end_local` are naive wall-clock times in
   the project's local camera timezone, derived from File.captured_at_local.
 - `created_at_utc` is a tz-aware UTC audit timestamp.
 """
@@ -29,32 +29,37 @@ from app.db.types import UtcDateTime
 
 if TYPE_CHECKING:
     from .deployment import Deployment
-    from .event_observation import EventObservation
     from .file import File
+    from .sequence_observation import SequenceObservation
 
 
-# Junction table for many-to-many relationship between events and files
-event_files = Table(
-    "event_files",
+# Junction table for many-to-many relationship between sequences and files
+sequence_files = Table(
+    "sequence_files",
     Base.metadata,
-    Column("event_id", String(36), ForeignKey("events.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "sequence_id",
+        String(36),
+        ForeignKey("sequences.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
     Column("file_id", String(36), ForeignKey("files.id", ondelete="CASCADE"), primary_key=True),
-    Column("sequence_number", Integer, nullable=True),  # Order within event
-    # The primary key (event_id, file_id) serves lookups by event and the
-    # cascade from events; file_id needs its own.
-    Index("idx_event_files_file", "file_id"),
+    Column("position", Integer, nullable=True),  # Order within sequence
+    # The primary key (sequence_id, file_id) serves lookups by sequence and the
+    # cascade from sequences; file_id needs its own.
+    Index("idx_sequence_files_file", "file_id"),
 )
 
 
-class Event(Base):
+class Sequence(Base):
     """
-    Event - time-clustered group of files.
+    Sequence - time-clustered group of files.
 
-    Events are automatically derived from file timestamps.
-    Files within a configurable time threshold are grouped into the same event.
+    Sequences are automatically derived from file timestamps.
+    Files within a configurable time threshold are grouped into the same sequence.
     """
 
-    __tablename__ = "events"
+    __tablename__ = "sequences"
 
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
@@ -62,50 +67,50 @@ class Event(Base):
     deployment_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("deployments.id", ondelete="CASCADE"), nullable=False
     )
-    event_start_local: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    event_end_local: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    sequence_start_local: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    sequence_end_local: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     file_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    # Human confirmation that the event's species and counts are correct
+    # Human confirmation that the sequence's species and counts are correct
     # (the "Confirm" action on the Observations page). Distinct from
     # Detection.verified ("a label was confirmed", set on the Labels page).
-    # Cleared automatically when the event's species/count set changes
-    # (see crud/event_observation).
+    # Cleared automatically when the sequence's species/count set changes
+    # (see crud/sequence_observation).
     confirmed: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="0", default=False
     )
     # A person's free text about the visit ("camera knocked over", "the
     # juvenile limps"). Never cleared by the app and never lost on a
-    # regroup: a regenerated event inherits the notes of every old event
-    # it shares a file with (see crud/event, `_snapshot_event_carry`).
+    # regroup: a regenerated sequence inherits the notes of every old sequence
+    # it shares a file with (see crud/sequence, `_snapshot_sequence_carry`).
     # Editing it does not clear `confirmed`. Exported as Camtrap DP
-    # `observationComments` on the event's rows.
+    # `observationComments` on the sequence's rows.
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at_utc: Mapped[datetime] = mapped_column(
         UtcDateTime, nullable=False, default=lambda: datetime.now(UTC)
     )
 
     # Relationships
-    deployment: Mapped["Deployment"] = relationship("Deployment", back_populates="events")
+    deployment: Mapped["Deployment"] = relationship("Deployment", back_populates="sequences")
     files: Mapped[list["File"]] = relationship(
-        "File", secondary=event_files, back_populates="events"
+        "File", secondary=sequence_files, back_populates="sequences"
     )
     # passive_deletes=True: the DB owns the cascade (see DEVELOPERS.md,
     # "Deleting analysis data").
-    observations: Mapped[list["EventObservation"]] = relationship(
-        "EventObservation",
-        back_populates="event",
+    observations: Mapped[list["SequenceObservation"]] = relationship(
+        "SequenceObservation",
+        back_populates="sequence",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
 
     # Indexes
     __table_args__ = (
-        Index("idx_events_deployment", "deployment_id"),
-        Index("idx_events_local", "event_start_local", "event_end_local"),
+        Index("idx_sequences_deployment", "deployment_id"),
+        Index("idx_sequences_local", "sequence_start_local", "sequence_end_local"),
     )
 
     def __repr__(self) -> str:
         return (
-            f"<Event(id={self.id}, event_start_local={self.event_start_local}, "
+            f"<Sequence(id={self.id}, sequence_start_local={self.sequence_start_local}, "
             f"file_count={self.file_count})>"
         )

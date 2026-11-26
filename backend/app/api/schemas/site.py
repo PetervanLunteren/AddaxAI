@@ -127,7 +127,7 @@ class SiteInfoResponse(BaseModel):
     Investigation-level payload for the Sites → Info sheet.
 
     Aggregates across every deployment at this site: file and size
-    totals, verification progress, event and observation counts, the
+    totals, verification progress, sequence and observation counts, the
     detection-category breakdown, the top species, trap nights and the
     observation rate, plus the first and last capture timestamps.
     """
@@ -146,7 +146,7 @@ class SiteInfoResponse(BaseModel):
     # or when size_bytes is null for every file.
     total_size_bytes: int
     verification: SiteVerification
-    event_count: int
+    sequence_count: int
     observation_count: int
     detection_categories: ClassCounts
     top_species: list[SiteTopSpecies]

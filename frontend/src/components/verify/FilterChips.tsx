@@ -5,7 +5,7 @@
  */
 
 import { X } from "lucide-react";
-import type { EmptyFilter, EventFilterParams } from "../../api/types";
+import type { EmptyFilter, SequenceFilterParams } from "../../api/types";
 import { Badge } from "../ui/badge";
 
 /** True when any user filter is set on these params. Shared by every
@@ -13,7 +13,7 @@ import { Badge } from "../ui/badge";
  *  the chips this component actually renders. `emptyDefault` is the
  *  page's resting empty value (Counts "hide", Files "all"). */
 export function hasAnyActiveFilter(
-  filters: EventFilterParams,
+  filters: SequenceFilterParams,
   emptyDefault: EmptyFilter = "hide",
 ): boolean {
   return (
@@ -33,8 +33,8 @@ export function hasAnyActiveFilter(
 }
 
 interface FilterChipsProps {
-  filters: EventFilterParams;
-  onChange: (filters: EventFilterParams) => void;
+  filters: SequenceFilterParams;
+  onChange: (filters: SequenceFilterParams) => void;
   siteNames: Record<string, string>;
   displayLabels?: Record<string, string>;
   /** Project counting_threshold — used to detect when det range is "default". */

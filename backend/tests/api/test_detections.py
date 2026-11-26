@@ -375,8 +375,8 @@ def test_drawing_a_box_marks_the_file_verified_past_the_request(client, db):
     `get_db` yields a session and then only closes it, so anything a route
     leaves pending is discarded. `recompute_file_verified` does not commit
     (its caller owns the transaction) and the commit after it used to sit
-    behind "did this file belong to an event", which a file only fails when
-    event generation never reached it. So the box was saved, the rollup was
+    behind "did this file belong to a sequence", which a file only fails when
+    sequence generation never reached it. So the box was saved, the rollup was
     not, and the photo exported `is_verified = FALSE` right after a person
     had drawn on it.
 
@@ -385,11 +385,11 @@ def test_drawing_a_box_marks_the_file_verified_past_the_request(client, db):
     the assertion reads the live transaction and passes either way, which is
     what let this sit unnoticed.
     """
-    from app.models import Event, File
+    from app.models import File, Sequence
 
     f = _setup_file(db)
     db.commit()
-    assert not db.query(Event).filter(Event.deployment_id == f.deployment_id).all()
+    assert not db.query(Sequence).filter(Sequence.deployment_id == f.deployment_id).all()
 
     resp = client.post("/api/detections", json={
         "file_id": f.id,

@@ -3,10 +3,10 @@ The label filter, in two parts that change at different times.
 
 - **The tree** (`build_label_filter_tree`): which labels the project has,
   nested by taxonomy. It changes only when labels change, so it travels
-  with the rest of what the project has in `GET /api/events/filter-options`.
+  with the rest of what the project has in `GET /api/sequences/filter-options`.
 - **The counts** (`count_labels_under_filters`): how many of each label
   the page would show under its active filters. They change with every
-  filter, so they are their own request, `GET /api/events/label-counts`.
+  filter, so they are their own request, `GET /api/sequences/label-counts`.
 
 Keeping them apart is the point: a filter change costs one pass over the
 project's boxes for the counts, not a second one to rebuild the tree.
@@ -29,7 +29,7 @@ from app.models.label_taxonomy import LabelTaxonomy
 logger = get_logger(__name__)
 
 LEVEL_ORDER = ["class", "order", "family", "genus"]
-CountUnit = Literal["event", "file", "detection"]
+CountUnit = Literal["sequence", "file", "detection"]
 
 
 def count_labels_under_filters(
@@ -60,14 +60,14 @@ def count_labels_under_filters(
     verified under the Unverified filter.
 
     Args:
-        count_by: "event" counts distinct events (the Counts page), "file"
+        count_by: "sequence" counts distinct sequences (the Counts page), "file"
             distinct files (the Files tab), "detection" boxes (the Labels
             grid).
         site_ids, date_from, date_to, and the keyword filters: the page's
             active filters, in the list endpoints' vocabulary.
     """
-    from app.api.crud.event import count_events_by_label
     from app.api.crud.file import count_labels_files_by_label
+    from app.api.crud.sequence import count_sequences_by_label
     from app.api.schemas.label import LabelFilters
     from app.services.label_service import count_detections_by_label
 
@@ -120,7 +120,7 @@ def count_labels_under_filters(
             min_label_confidence=min_label_confidence,
             max_label_confidence=max_label_confidence,
         )
-    return count_events_by_label(
+    return count_sequences_by_label(
         db,
         project_id,
         project_floor=threshold,

@@ -1,7 +1,7 @@
 /**
  * LabelsTab - orchestrates the embedding-driven label grid.
  *
- * Manages its own filter state (independent from Events / Files tabs) via
+ * Manages its own filter state (independent from Sequences / Files tabs) via
  * lbl_* URL params. Provides sort/search mode via segmented control,
  * selection model, and coordinates toolbar, grid, bulk actions, settings,
  * and detail sheet.
@@ -102,19 +102,19 @@ import type {
   DetectionSummary,
   LabelFilters,
   LabelSort,
-  EventFilterParams,
+  SequenceFilterParams,
   UndoSnapshot,
   VerifySort,
 } from "../../api/types";
 import {
   invalidateAfterVerify,
   invalidateLabelQueries,
-  isEventFamilyQuery,
+  isSequenceFamilyQuery,
   type DetectionActionKind,
 } from "../../lib/invalidate-label-queries";
 
 // Labels dropdown, kept deliberately small: browse look-alikes or
-// review by event. Low-confidence triage is the confidence slider's
+// review by sequence. Low-confidence triage is the confidence slider's
 // job, not a sort mode. Suggestions is a third mode reached via the
 // toolbar pill, not this list.
 const CROPS_SHORTCUTS: readonly Shortcut[] = [
@@ -143,27 +143,27 @@ const CROPS_SHORTCUTS: readonly Shortcut[] = [
 
 const LABELS_SORT_MODES: readonly VerifySort[] = [
   "similarity",
-  "events",
+  "sequences",
 ];
 
 /**
- * IDs of the first event that still has an unverified crop in view.
+ * IDs of the first sequence that still has an unverified crop in view.
  *
- * The "By event" sort lays each event's crops out contiguously, so we
- * walk the list, take each contiguous run of one event_id, and return
+ * The "By event" sort lays each sequence's crops out contiguously, so we
+ * walk the list, take each contiguous run of one sequence_id, and return
  * the first run that contains an unverified crop. Returns every in-view
- * crop of that event (matching what the user sees under the filters),
- * so the existing bulk shortcuts act on the whole event at once. Empty
+ * crop of that sequence (matching what the user sees under the filters),
+ * so the existing bulk shortcuts act on the whole sequence at once. Empty
  * when nothing is left to verify.
  */
-function firstUnverifiedEventDetectionIds(
+function firstUnverifiedSequenceDetectionIds(
   detections: DetectionSummary[],
 ): string[] {
   let i = 0;
   while (i < detections.length) {
-    const eventId = detections[i].event_id;
+    const sequenceId = detections[i].sequence_id;
     let j = i;
-    while (j < detections.length && detections[j].event_id === eventId) j++;
+    while (j < detections.length && detections[j].sequence_id === sequenceId) j++;
     const run = detections.slice(i, j);
     if (run.some((d) => !d.verified)) return run.map((d) => d.detection_id);
     i = j;
@@ -196,7 +196,7 @@ interface LabelsTabProps {
   onSwitchTab?: () => void;
 }
 
-// ── Labels filter state (independent from Events / Files filters) ──
+// ── Labels filter state (independent from Sequences / Files filters) ──
 
 function toLabelFilters(f: LabelsFilterState): LabelFilters {
   // The Verified filter scopes the sort server-side so the cap counts the
@@ -253,9 +253,9 @@ const NARROW_TIP_MIN_TOTAL = 5000;
 
 /**
  * Loading state for the Labels grid. Shows a real progress bar
- * while the subprocess streams `progress` events; falls back to an
+ * while the subprocess streams `progress` sequences; falls back to an
  * indeterminate spinner during the brief window before the first
- * event arrives.
+ * sequence arrives.
  *
  * `sort` is the sort that is running, which decides how the phases
  * share the bar (see `overallProgressPct`).
@@ -341,14 +341,14 @@ export function LabelsTab({
     [setSearchParams],
   );
 
-  /** Handler for VerifyFilterBar onChange (EventFilterParams shape).
+  /** Handler for VerifyFilterBar onChange (SequenceFilterParams shape).
    *
    *  The bar collapses the page default ("unverified" here, via
    *  verificationDefault) to undefined, so undefined means "default"
    *  and any set value ("verified" / "all") is an explicit filter.
    *  Straight passthrough. */
   const handleFilterBarChange = useCallback(
-    (fp: EventFilterParams) => {
+    (fp: SequenceFilterParams) => {
       setLblFilters(fromFilterBarFilters(fp, lblFilters));
     },
     [lblFilters, setLblFilters],
@@ -360,18 +360,18 @@ export function LabelsTab({
 
   const isLabelSort = (v: unknown): v is LabelSort =>
     v === "similarity" ||
-    v === "events" ||
+    v === "sequences" ||
     v === "suggestions";
 
-  // Default to event sort: it always produces a usable grid (similarity-
-  // clustered events with embeddings, chronological without) and enables
+  // Default to sequence sort: it always produces a usable grid (similarity-
+  // clustered sequences with embeddings, chronological without) and enables
   // the E->M keyboard flow, so a new user never hits the "needs
   // embeddings" card. A user's own choice persists and wins here; the
   // fallback also catches saved sorts that are no longer offered (older
   // builds had time / confidence modes here).
   const initialSort: LabelSort = isLabelSort(savedSettings.sort)
     ? savedSettings.sort
-    : "events";
+    : "sequences";
   const [lblSort, _setLblSort] = useState<LabelSort>(initialSort);
   const setLblSort = useCallback(
     (v: LabelSort) => {
@@ -433,7 +433,7 @@ export function LabelsTab({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const selectionAnchorRef = useRef<string | null>(null);
   // Imperative handle to the grid so the "E" shortcut can scroll the
-  // newly selected event into view.
+  // newly selected sequence into view.
   const cropGridRef = useRef<CropGridHandle>(null);
   // Detection to scroll to after the next render. The post-action advance
   // sets this instead of scrolling inline: the action removes the acted
@@ -465,11 +465,11 @@ export function LabelsTab({
    *  relabelling the half that is wrong.
    *
    *  It replaces the list rather than nesting inside it. Nesting would
-   *  put frames inside the event dividers' counts and Select links, tear
+   *  put frames inside the sequence dividers' counts and Select links, tear
    *  a suggestion cohort in three, and sweep the open track into
    *  select-all, the E key and relabel-to-majority. The card itself is
    *  held, not just its id, because every frame borrows its context
-   *  (event, site, deployment, capture time) to render.
+   *  (sequence, site, deployment, capture time) to render.
    */
   const [openTrack, setOpenTrack] = useState<{
     trackId: string;
@@ -689,7 +689,7 @@ export function LabelsTab({
   const totalMatching = sortResult?.total_matching ?? 0;
   const isCapped = totalMatching > loadedCount;
   // Name the actual cap: similarity (cap 20k) and suggestions (cap 100k)
-  // load embeddings, event sort renders detections (cap 50k). Keyed off
+  // load embeddings, sequence sort renders detections (cap 50k). Keyed off
   // the sort that produced the current result, not the dropdown.
   const capNoun =
     resultSort === "similarity" || resultSort === "suggestions"
@@ -865,11 +865,11 @@ export function LabelsTab({
     // here so the pill catches up after every bulk action, not just
     // the divider's Accept button.
     queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
-    // Cascade to the Media / Events views (File.verified rollup) and the
-    // verified-progress pill, whose key the events prefix does not reach
+    // Cascade to the Media / Sequences views (File.verified rollup) and the
+    // verified-progress pill, whose key the sequences prefix does not reach
     // (see applyDetectionAction). Undoing a track's verdict lands here, not
     // in the patch path: its snapshot holds frames the grid does not show.
-    queryClient.invalidateQueries({ queryKey: ["events"] });
+    queryClient.invalidateQueries({ queryKey: ["sequences"] });
     queryClient.invalidateQueries({ queryKey: ["labels-progress", projectId] });
     // The large view draws its box and pill from the file query; without
     // this, stepping back onto a relabelled crop showed the old label on
@@ -960,7 +960,7 @@ export function LabelsTab({
    *  Also refreshes the counts the action moved, whichever path it came
    *  from. A verify (`kind` "verify") moves only the verified counts, and
    *  waits for the clicks to stop (`invalidateAfterVerify`); a relabel
-   *  ("change") refreshes the progress, cohorts and event queries at once.
+   *  ("change") refreshes the progress, cohorts and sequence queries at once.
    */
   const applyDetectionAction = useCallback(
     (
@@ -1003,10 +1003,10 @@ export function LabelsTab({
       queryClient.invalidateQueries({
         queryKey: ["labels-progress", projectId],
       });
-      // Relabelling rebuilds the event's observations server-side (and
-      // cascades up to File.verified / event verification), so the
-      // Counts page and the filter options need every event query.
-      queryClient.invalidateQueries({ predicate: isEventFamilyQuery });
+      // Relabelling rebuilds the sequence's observations server-side (and
+      // cascades up to File.verified / sequence verification), so the
+      // Counts page and the filter options need every sequence query.
+      queryClient.invalidateQueries({ predicate: isSequenceFamilyQuery });
     },
     [lblSort, openTrack, patchLocalDetections, projectId, queryClient, verificationFilter],
   );
@@ -1134,7 +1134,7 @@ export function LabelsTab({
         queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
         invalidateLabelQueries(queryClient);
         // The Counts page reflects the rebuilt observations.
-        queryClient.invalidateQueries({ predicate: isEventFamilyQuery });
+        queryClient.invalidateQueries({ predicate: isSequenceFamilyQuery });
         toast.success(
           `Relabelled ${cohort.count} label${
             cohort.count === 1 ? "" : "s"
@@ -1337,7 +1337,7 @@ export function LabelsTab({
           }), r.before, "change");
           advanceSelectionAfter(ids);
           // No success toast: this fires on every E->M in a run of
-          // hundreds of events. The grid updating (crops verified /
+          // hundreds of sequences. The grid updating (crops verified /
           // relabelled) is the confirmation; errors still toast.
         })
         .catch((err: Error) => toast.error(err.message));
@@ -1448,25 +1448,25 @@ export function LabelsTab({
         return;
       }
 
-      // "E" selects the first event that still needs work, so the bulk
-      // shortcuts above (Enter, M, R, X, number keys) can act on the whole event.
-      // Only meaningful in "By event" sort, where each event's crops are
+      // "E" selects the first sequence that still needs work, so the bulk
+      // shortcuts above (Enter, M, R, X, number keys) can act on the whole sequence.
+      // Only meaningful in "By event" sort, where each sequence's crops are
       // contiguous; a no-op in other sorts, and inside an open track,
-      // whose cards are one animal's frames from a single event: "the
-      // next event that needs checking" would select all of them and
+      // whose cards are one animal's frames from a single sequence: "the
+      // next sequence that needs checking" would select all of them and
       // mean nothing.
       if (
         (e.key === "e" || e.key === "E") &&
         !e.ctrlKey &&
         !e.metaKey &&
         !openTrack &&
-        resultSort === "events"
+        resultSort === "sequences"
       ) {
         e.preventDefault();
-        const ids = firstUnverifiedEventDetectionIds(allDetections);
+        const ids = firstUnverifiedSequenceDetectionIds(allDetections);
         if (ids.length > 0) {
           setSelectedIds(new Set(ids));
-          // Bring the newly selected event into view (it is usually
+          // Bring the newly selected sequence into view (it is usually
           // below the fold after verifying the ones above it).
           cropGridRef.current?.scrollToDetection(ids[0]);
         }
@@ -1537,7 +1537,7 @@ export function LabelsTab({
   // Verified-detections progress for the toolbar pill.
   // Progress over the whole dataset (unfiltered project stats), not the
   // currently-loaded / filtered detections, so a narrowed view does
-  // not read as 100% verified. Same source as the Events and Media
+  // not read as 100% verified. Same source as the Sequences and Media
   // pills, so all three views report the same number.
   // Counted in labels, shared with the Files tab. The two tabs show
   // different units but are one job, and a bar that jumped when you
@@ -1566,7 +1566,7 @@ export function LabelsTab({
   // is embedded yet. Only the coverage count tells them apart, so the
   // loading view stays until it is in rather than naming the wrong one.
   const emptyCauseUnknown =
-    !stats && lblSort !== "events" && sortResult?.detections.length === 0;
+    !stats && lblSort !== "sequences" && sortResult?.detections.length === 0;
   const isLoading = (isSorting && !isBackgroundSort) || emptyCauseUnknown;
 
   const handleEmbedNow = async () => {
@@ -1613,9 +1613,9 @@ export function LabelsTab({
 
   // Similarity sort with no embeddings: rendered as a content-area
   // branch below (NOT a full early return), so the toolbar with the
-  // sort dropdown stays visible and the user can switch to event sort.
+  // sort dropdown stays visible and the user can switch to sequence sort.
   const similarityNeedsEmbeddings =
-    !!stats && stats.embedded_detections === 0 && lblSort !== "events";
+    !!stats && stats.embedded_detections === 0 && lblSort !== "sequences";
 
   const handleProcessUnprocessed = async () => {
     try {
@@ -1756,9 +1756,9 @@ export function LabelsTab({
           embedded ones and this offers to fill the rest. Requires
           embedded > 0 so it never overlaps the zero-embedding empty
           card below, and so "Embed now" is only offered when a working
-          embedding model exists. Suppressed in event mode (shows all). */}
+          embedding model exists. Suppressed in sequence mode (shows all). */}
       {!focused &&
-        lblSort !== "events" &&
+        lblSort !== "sequences" &&
         stats &&
         stats.embedded_detections > 0 &&
         stats.missing_embeddings > 0 && (
@@ -1776,14 +1776,14 @@ export function LabelsTab({
           Sort by similarity only shows detections that have an embedding. A
           box you draw yourself does not come with one, and neither does
           anything analysed while embedding was switched off in settings.
-          Switch to Sort by event to see all of them, or click "Embed now" to
+          Switch to Sort by sequence to see all of them, or click "Embed now" to
           embed them.
         </Callout>
       )}
 
       {/* Unprocessed low-confidence tail in the selected range. Same as
           above: only meaningful for Sort by similarity. */}
-      {!focused && lblSort !== "events" && unprocessedCount > 0 && (
+      {!focused && lblSort !== "sequences" && unprocessedCount > 0 && (
         <Callout
           variant="info"
           title={`${unprocessedCount.toLocaleString()} more detection${
@@ -1832,7 +1832,7 @@ export function LabelsTab({
           </CardContent>
         </Card>
       ) : similarityNeedsEmbeddings ? (
-        // No embeddings: similarity has nothing to walk. Event sort
+        // No embeddings: similarity has nothing to walk. Sequence sort
         // works without them, so the sort dropdown stays visible above.
         // Simple rule: a model is set -> offer to embed; no model ->
         // nudge to where you pick one (settings for a project, the setup
@@ -1982,7 +1982,7 @@ export function LabelsTab({
             onBackgroundClick={clearSelection}
             onRelabelCohort={relabelCohort}
             onDismissCohort={dismissCohort}
-            onSelectEvent={(ids) => setSelectedIds(new Set(ids))}
+            onSelectSequence={(ids) => setSelectedIds(new Set(ids))}
             tileSize={tileSize}
             dividers={
               // Tie dividers to the sort that PRODUCED the current
@@ -1992,7 +1992,7 @@ export function LabelsTab({
               // dividers over the old data.
               //
               // An open track has none at all: its cards are one
-              // animal's frames, all from one file and one event, so
+              // animal's frames, all from one file and one sequence, so
               // every divider rule would draw a single header over the
               // lot and the cohort scan would tear them into groups that
               // mean nothing.
@@ -2000,8 +2000,8 @@ export function LabelsTab({
                 ? "none"
                 : resultSort === "suggestions"
                   ? "cohort"
-                  : resultSort === "events"
-                    ? "event"
+                  : resultSort === "sequences"
+                    ? "sequence"
                     : "none"
             }
           />

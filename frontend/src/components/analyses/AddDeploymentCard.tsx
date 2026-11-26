@@ -202,7 +202,7 @@ export function AddDeploymentCard({ projectId }: AddDeploymentCardProps) {
   }
 
   // Reprocess: delete the existing deployment (cascades away its files,
-  // detections, events, observations and verifications), then queue the
+  // detections, sequences, observations and verifications), then queue the
   // folder again. Sequential; if the delete fails nothing is queued.
   const reprocess = useMutation({
     mutationFn: async () => {

@@ -64,7 +64,7 @@ export function RerunConfirmDialog({
   const hasProgress =
     !failed &&
     ((run?.verified_label_count ?? 0) > 0 ||
-      (run?.confirmed_event_count ?? 0) > 0);
+      (run?.confirmed_sequence_count ?? 0) > 0);
   const resume = failed && canContinue ? run?.detection_resume ?? null : null;
 
   return (
@@ -189,7 +189,7 @@ function formatRunCounts(run: FolderRunLookup): string {
 
 // The app frames verification as two metrics (see the dashboard's
 // VerificationProgressChart): "Labels verified" (cards and empty files
-// checked on the Labels page) and "Counts confirmed" (events confirmed on
+// checked on the Labels page) and "Counts confirmed" (sequences confirmed on
 // the Counts page).
 // Re-running discards both, so the dialog shows both.
 
@@ -205,9 +205,9 @@ function formatLabelsVerified(run: FolderRunLookup): string | null {
 }
 
 function formatCountsConfirmed(run: FolderRunLookup): string | null {
-  const total = run.event_count;
+  const total = run.sequence_count;
   if (total === 0) return null;
-  const confirmed = run.confirmed_event_count;
+  const confirmed = run.confirmed_sequence_count;
   if (confirmed === total) {
     return `All ${total.toLocaleString()} counts confirmed`;
   }

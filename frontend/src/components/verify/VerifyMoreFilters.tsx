@@ -2,7 +2,7 @@
  * "More" popover for the verify tabs.
  *
  * Hosts the rare filters that don't justify a permanent slot in the
- * filter row: liked / flagged / empty (Events and Files only) plus the
+ * filter row: liked / flagged / empty (Sequences and Files only) plus the
  * detection / classification confidence ranges (every tab). Sort is not
  * a filter and lives in the second toolbar instead.
  *
@@ -28,14 +28,14 @@ import {
 import { ConfidenceRangeFilter } from "./ConfidenceRangeFilter";
 import type {
   EmptyFilter,
-  EventFilterParams,
+  SequenceFilterParams,
   FavoritedFilter,
   FlaggedFilter,
 } from "../../api/types";
 
 interface VerifyMoreFiltersProps {
-  filters: EventFilterParams;
-  onChange: (next: EventFilterParams) => void;
+  filters: SequenceFilterParams;
+  onChange: (next: SequenceFilterParams) => void;
   /** Project's counting_threshold; the det slider's resting floor. */
   detectionFloor?: number;
   /** Whether the det slider's low handle stops at the floor ("clamp",

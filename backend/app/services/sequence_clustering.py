@@ -1,21 +1,21 @@
 """
-Shared event-clustering primitive.
+Shared sequence-clustering primitive.
 
-One source of truth for how AddaxAI groups files into events. Both
-`generate_events_for_project` (which writes Event rows for the UI) and
+One source of truth for how AddaxAI groups files into sequences. Both
+`generate_sequences_for_project` (which writes Sequence rows for the UI) and
 `build_smoother_input` (which packages the same groupings for the
-MegaDetector smoothing subprocess) call `cluster_files_into_events` here.
+MegaDetector smoothing subprocess) call `cluster_files_into_sequences` here.
 
-Rule: bucket files by folder, then within each folder start a new event
+Rule: bucket files by folder, then within each folder start a new sequence
 whenever the time gap between consecutive files exceeds
-`independence_interval`. Folder bucketing keeps events from bridging
+`independence_interval`. Folder bucketing keeps sequences from bridging
 across SD cards when a user runs a mixed backlog as a single
 deployment. Time gaps handle the standard independence-interval rule
 from camera-trap literature.
 
 Paired cameras (`Deployment.paired_cameras`) invert the folder rule: the
 subfolders are dependent cameras, so all files go in one bucket and an
-animal seen by more than one camera lands in one event. The caller
+animal seen by more than one camera lands in one sequence. The caller
 passes the flag; this module never reads the deployment itself.
 """
 
@@ -38,16 +38,16 @@ def folder_key(f: File) -> str:
     return str(Path(f.file_path).parent)
 
 
-def cluster_files_into_events(
+def cluster_files_into_sequences(
     files: Iterable[File],
     independence_interval: int,
     *,
     paired_cameras: bool,
 ) -> list[list[File]]:
     """
-    Partition `files` into event clusters.
+    Partition `files` into sequence clusters.
 
-    Each returned list is one event's files in capture-time order.
+    Each returned list is one sequence's files in capture-time order.
     Clusters never contain two consecutive files whose capture-time gap
     exceeds `independence_interval` (seconds). With `paired_cameras`
     off, clusters never span different folders either; with it on, the
@@ -56,8 +56,8 @@ def cluster_files_into_events(
     deployment semantics it wants.
 
     Files with `captured_at_local == None` (no EXIF capture date) can't
-    be time-grouped, so each becomes its own single-file event at the
-    end (with NULL event bounds). The caller is expected to filter by
+    be time-grouped, so each becomes its own single-file sequence at the
+    end (with NULL sequence bounds). The caller is expected to filter by
     deployment first — this function does not check deployment membership
     and will happily cluster across deployments if given mixed input.
     """
@@ -70,7 +70,7 @@ def cluster_files_into_events(
         by_folder["" if paired_cameras else folder_key(f)].append(f)
 
     clusters: list[list[File]] = []
-    # Iterate folders in a deterministic order so generated events and
+    # Iterate folders in a deterministic order so generated sequences and
     # smoother inputs are stable across runs (tests, logs, diffing).
     for key in sorted(by_folder):
         folder_files = sorted(
@@ -90,9 +90,9 @@ def cluster_files_into_events(
         clusters.append(current)
 
     # Date-less files can't be time-grouped, so each is its own
-    # single-file event (NULL event bounds). Keeps them visible in the
+    # single-file sequence (NULL sequence bounds). Keeps them visible in the
     # observation / taxa views; time-based stats exclude null-bound
-    # events. Path-sorted for stable output.
+    # sequences. Path-sorted for stable output.
     clusters.extend([f] for f in sorted(dateless, key=lambda f: f.file_path))
 
     return clusters

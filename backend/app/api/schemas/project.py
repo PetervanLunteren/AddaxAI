@@ -144,7 +144,7 @@ class ProjectBase(BaseModel):
             "classified and embedded (0.01-1.0)"
         ),
     )
-    event_smoothing: bool = Field(
+    sequence_smoothing: bool = Field(
         default=True, description="Apply temporal smoothing to detections"
     )
     smoothing_strength: str = Field(
@@ -276,7 +276,7 @@ class ProjectUpdate(BaseModel):
     media_filter: MediaFilter | None = None
     counting_threshold: float | None = Field(None, ge=0.0, le=1.0)
     classification_gate: float | None = Field(None, ge=0.01, le=1.0)
-    event_smoothing: bool | None = None
+    sequence_smoothing: bool | None = None
     smoothing_strength: str | None = Field(None, pattern="^(mild|normal|aggressive)$")
     taxonomic_rollup: bool | None = None
     independence_interval: int | None = Field(None, ge=0)

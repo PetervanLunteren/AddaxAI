@@ -166,8 +166,8 @@ export const projectsApi = {
 
   /**
    * How much count verification a change to the independence interval
-   * would reset (events regroup; confirmations/manual counts on regrouped
-   * events are lost).
+   * would reset (sequences regroup; confirmations/manual counts on regrouped
+   * sequences are lost).
    */
   regroupPreview: (id: string, independenceInterval: number) =>
     api.get<{
@@ -275,8 +275,8 @@ export const projectsApi = {
     api.get<GBIFSuggestion[]>(`/api/projects/gbif/suggest?q=${encodeURIComponent(query)}`),
 
   /**
-   * Sum of the effective per-event count (human count when set, else the
-   * AI MaxN), per label, from the materialized event observations.
+   * Sum of the effective per-sequence count (human count when set, else the
+   * AI MaxN), per label, from the materialized sequence observations.
    */
   getIndependentObservationStats: (id: string) =>
     api.get<{ total: number; labels: { label: string; count: number }[] }>(

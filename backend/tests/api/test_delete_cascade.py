@@ -8,7 +8,7 @@ nulled, and how many statements it takes.
 
 Background: re-running a large folder run used to take hours because the ORM
 loaded every File, Detection and embedding into memory to delete them one by
-one, while SQLite full-scanned `event_observations` for each deleted file
+one, while SQLite full-scanned `sequence_observations` for each deleted file
 (its `max_n_file_id` FK had no index).
 """
 
@@ -23,12 +23,12 @@ from app.models import (
     Deployment,
     Detection,
     DetectionEmbedding,
-    Event,
-    EventObservation,
     File,
     Project,
+    Sequence,
+    SequenceObservation,
 )
-from app.models.event import event_files
+from app.models.sequence import sequence_files
 from tests.conftest import (
     _engine,
     make_deployment,
@@ -41,8 +41,8 @@ from tests.conftest import (
 def _make_run(db, *, files: int = 2):
     """A folder run with the full row chain hanging off it.
 
-    Returns (project, deployment, files, event). Each file gets a detection
-    with an embedding; the event holds one observation whose `max_n_file_id`
+    Returns (project, deployment, files, sequence). Each file gets a detection
+    with an embedding; the sequence holds one observation whose `max_n_file_id`
     points at the first file.
     """
     project = make_project(db, mode="folder_run")
@@ -65,19 +65,19 @@ def _make_run(db, *, files: int = 2):
         )
         made_files.append(f)
 
-    ev = Event(id=str(uuid.uuid4()), deployment_id=dep.id, file_count=files)
+    ev = Sequence(id=str(uuid.uuid4()), deployment_id=dep.id, file_count=files)
     db.add(ev)
     db.flush()
     for seq, f in enumerate(made_files):
         db.execute(
-            event_files.insert().values(
-                event_id=ev.id, file_id=f.id, sequence_number=seq
+            sequence_files.insert().values(
+                sequence_id=ev.id, file_id=f.id, position=seq
             )
         )
     db.add(
-        EventObservation(
+        SequenceObservation(
             id=str(uuid.uuid4()),
-            event_id=ev.id,
+            sequence_id=ev.id,
             label="deer",
             category="animal",
             max_n=1,
@@ -94,10 +94,10 @@ def _counts(db, deployment_id: str) -> dict[str, int]:
         r[0]
         for r in db.query(File.id).filter(File.deployment_id == deployment_id)
     ]
-    event_ids = [
+    sequence_ids = [
         r[0]
-        for r in db.query(Event.id).filter(
-            Event.deployment_id == deployment_id
+        for r in db.query(Sequence.id).filter(
+            Sequence.deployment_id == deployment_id
         )
     ]
     detection_ids = [
@@ -115,16 +115,16 @@ def _counts(db, deployment_id: str) -> dict[str, int]:
         .count()
         if detection_ids
         else 0,
-        "events": len(event_ids),
-        "event_files": db.query(event_files)
-        .filter(event_files.c.event_id.in_(event_ids))
+        "sequences": len(sequence_ids),
+        "sequence_files": db.query(sequence_files)
+        .filter(sequence_files.c.sequence_id.in_(sequence_ids))
         .count()
-        if event_ids
+        if sequence_ids
         else 0,
-        "observations": db.query(EventObservation)
-        .filter(EventObservation.event_id.in_(event_ids))
+        "observations": db.query(SequenceObservation)
+        .filter(SequenceObservation.sequence_id.in_(sequence_ids))
         .count()
-        if event_ids
+        if sequence_ids
         else 0,
     }
 
@@ -155,9 +155,9 @@ def test_deleting_one_run_leaves_the_other_untouched(client, db):
 
     # Run B's observation still points at run B's file.
     surviving = (
-        db.query(EventObservation)
-        .join(Event, Event.id == EventObservation.event_id)
-        .filter(Event.deployment_id == dep_b.id)
+        db.query(SequenceObservation)
+        .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
+        .filter(Sequence.deployment_id == dep_b.id)
         .all()
     )
     assert surviving
@@ -167,14 +167,14 @@ def test_deleting_one_run_leaves_the_other_untouched(client, db):
 def test_deleting_a_file_nulls_max_n_file_id_but_keeps_the_observation(db):
     """`max_n_file_id` is SET NULL, not CASCADE.
 
-    An observation records a species count for an event; the file reference
+    An observation records a species count for a sequence; the file reference
     is only "the frame where the peak count was seen". Losing that frame
     must not lose the count.
     """
     _, dep, files, ev = _make_run(db, files=2)
     obs_id = (
-        db.query(EventObservation.id)
-        .filter(EventObservation.event_id == ev.id)
+        db.query(SequenceObservation.id)
+        .filter(SequenceObservation.sequence_id == ev.id)
         .scalar()
     )
 
@@ -182,7 +182,7 @@ def test_deleting_a_file_nulls_max_n_file_id_but_keeps_the_observation(db):
     db.commit()
     db.expire_all()
 
-    obs = db.get(EventObservation, obs_id)
+    obs = db.get(SequenceObservation, obs_id)
     assert obs is not None, "observation was cascade-deleted, expected SET NULL"
     assert obs.max_n_file_id is None
     assert obs.max_n == 1
@@ -209,7 +209,7 @@ def test_deleting_a_deployment_costs_the_same_at_any_size(db):
     """Deleting a deployment must not scale with how much it holds.
 
     Before `passive_deletes=True` this emitted one SELECT per file, per
-    detection and per event (277,014 statements for a 50k-file run). Now the
+    detection and per sequence (277,014 statements for a 50k-file run). Now the
     database does the cascade, so the statement count is flat. Asserting the
     two sizes are *equal* pins O(1) without hard-coding a number that would
     churn on unrelated changes.
@@ -287,9 +287,9 @@ def test_purge_reports_what_it_removed(db):
     assert removed["files"] == 3
     assert removed["detections"] == 3
     assert removed["detection_embeddings"] == 3
-    assert removed["events"] == 1
-    assert removed["event_files"] == 3
-    assert removed["event_observations"] == 1
+    assert removed["sequences"] == 1
+    assert removed["sequence_files"] == 3
+    assert removed["sequence_observations"] == 1
 
 
 def test_purge_empties_the_leaves_before_their_parents(db):
@@ -315,9 +315,9 @@ def test_purge_empties_the_leaves_before_their_parents(db):
     assert order.index("detection_embeddings") < order.index("detections")
     assert order.index("detections") < order.index("tracks")
     assert order.index("tracks") < order.index("files")
-    assert order.index("event_observations") < order.index("events")
-    assert order.index("event_files") < order.index("events")
-    assert order.index("events") < order.index("files")
+    assert order.index("sequence_observations") < order.index("sequences")
+    assert order.index("sequence_files") < order.index("sequences")
+    assert order.index("sequences") < order.index("files")
 
 
 def test_a_folder_that_cannot_be_cleaned_does_not_fail_the_delete(

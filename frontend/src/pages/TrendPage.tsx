@@ -120,7 +120,7 @@ export function TrendPage() {
               that average is: with more sites, or sites that agree, the band is
               narrower. Hover a point for its dates, its 95% confidence interval
               and the number of sites behind it. An observation counts
-              individuals: each event's confirmed count, or the AI's count where
+              individuals: each sequence's confirmed count, or the AI's count where
               not yet confirmed. A trap night is one day a camera was active.
               The average of the site rates differs from the single rate on the
               dashboard when sites ran for different lengths of time: here every

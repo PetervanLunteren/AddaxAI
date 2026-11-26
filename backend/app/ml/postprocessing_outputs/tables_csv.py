@@ -1,8 +1,8 @@
 """Folder-run tabular CSV outputs.
 
 A folder run writes five tables: a per-species summary (what was found
-and how much of it), a per-event counts table (one row per species per
-event, with the count the user confirmed on the Counts step or else the
+and how much of it), a per-sequence counts table (one row per species per
+sequence, with the count the user confirmed on the Counts step or else the
 AI's MaxN), a per-file files table (the complete media list, including
 empties), a detections table (one row per card: a photo box or a video
 track) and a frames table (every box of those tracks, one row per
@@ -100,7 +100,7 @@ def write_tables_csv(
         summary_path,
         *folder_run_table(*export_crud.build_summary_rows(db, project)),
     )
-    # One row per species per event, the count a person confirmed on the
+    # One row per species per sequence, the count a person confirmed on the
     # Counts step or else the AI's MaxN.
     counts_path = target_dir / COUNTS_FILENAME
     counts_count = export_formats.write_csv(

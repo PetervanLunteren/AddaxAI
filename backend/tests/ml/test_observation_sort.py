@@ -1,8 +1,8 @@
 """Unit tests for app.ml.inference.observation_sort.
 
 Covers VALID_SORTS and the cohort-grouped `suggestions_order`. The
-`similarity` and `events` orders run in the FAISS subprocess and are
-exercised in test_event_sort_without_embeddings.py.
+`similarity` and `sequences` orders run in the FAISS subprocess and are
+exercised in test_sequence_sort_without_embeddings.py.
 """
 
 import pytest
@@ -11,7 +11,7 @@ from app.ml.inference.observation_sort import VALID_SORTS, suggestions_order
 
 
 def test_valid_sorts_lists_every_supported_mode():
-    assert VALID_SORTS == {"similarity", "events", "suggestions"}
+    assert VALID_SORTS == {"similarity", "sequences", "suggestions"}
 
 
 # ── suggestions_order ────────────────────────────────────────────────────

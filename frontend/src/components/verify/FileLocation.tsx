@@ -4,7 +4,7 @@
  * file explorer. A user with many subfolders could not tell where to
  * look for the raw photo outside the app (Grant Hiebert, 2026-08-25).
  * The button only renders inside Electron, where opening the explorer
- * is possible; the event view offers the same action in its menu
+ * is possible; the sequence view offers the same action in its menu
  * through the same hook.
  *
  * Shared by the Detections and Files large views so the two cards

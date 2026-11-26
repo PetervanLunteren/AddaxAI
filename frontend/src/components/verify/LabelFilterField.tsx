@@ -15,10 +15,10 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import {
-  eventsApi,
+  sequencesApi,
   type LabelCountUnit,
   type LabelTreeScope,
-} from "../../api/events";
+} from "../../api/sequences";
 import { collectLiveLeafIds, withCounts } from "../../lib/taxonomy-utils";
 import { speciesLabelMap } from "../../lib/species-name-mode";
 import { Button } from "../ui/button";
@@ -41,7 +41,7 @@ export function LabelFilterField({
   projectId,
   value,
   onChange,
-  countBy = "event",
+  countBy = "sequence",
   scope,
 }: LabelFilterFieldProps) {
   const [open, setOpen] = useState(false);
@@ -51,8 +51,8 @@ export function LabelFilterField({
   // chip beside it agree). Also the options of the flat list for
   // projects without a tree.
   const { data: filterOptions } = useQuery({
-    queryKey: ["event-filter-options", projectId],
-    queryFn: () => eventsApi.getFilterOptions(projectId),
+    queryKey: ["sequence-filter-options", projectId],
+    queryFn: () => sequencesApi.getFilterOptions(projectId),
     enabled: !!projectId,
   });
   const shape = filterOptions?.label_tree ?? null;
@@ -65,7 +65,7 @@ export function LabelFilterField({
   // When they land, a label the filters leave nothing of turns grey.
   const { data: labelCounts } = useQuery({
     queryKey: ["label-counts", projectId, countBy, scope],
-    queryFn: () => eventsApi.getLabelCounts(projectId, countBy, scope),
+    queryFn: () => sequencesApi.getLabelCounts(projectId, countBy, scope),
     enabled: !!projectId && !!shape,
   });
   const tree = useMemo(

@@ -17,7 +17,7 @@ class CaptureDateCoverage(BaseModel):
 class DashboardOverview(BaseModel):
     total_files: int
     total_observations: int
-    total_events: int
+    total_sequences: int
     total_deployments: int
     total_sites: int
     trap_nights: int

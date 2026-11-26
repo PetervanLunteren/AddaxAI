@@ -12,14 +12,14 @@ from datetime import date, datetime
 
 from app.api.crud import rate_trend
 from app.api.crud import statistics as stats_crud
-from app.models.event_observation import EventObservation
 from app.models.label_taxonomy import LabelTaxonomy
+from app.models.sequence_observation import SequenceObservation
 from tests.conftest import (
     make_deployment,
     make_detection,
-    make_event_with_files,
     make_file,
     make_project,
+    make_sequence_with_files,
     make_site,
     make_track,
 )
@@ -39,9 +39,9 @@ def _taxon(db, name: str) -> LabelTaxonomy:
     return row
 
 
-def _observe(db, event, *, label, taxon=None, category="animal", max_n=1, **kw):
-    obs = EventObservation(
-        event_id=event.id,
+def _observe(db, sequence, *, label, taxon=None, category="animal", max_n=1, **kw):
+    obs = SequenceObservation(
+        sequence_id=sequence.id,
         label=label,
         label_taxonomy_id=taxon.id if taxon else None,
         category=category,
@@ -54,7 +54,7 @@ def _observe(db, event, *, label, taxon=None, category="animal", max_n=1, **kw):
 
 
 def _project(db):
-    """One site, one deployment, events in June and August 2024.
+    """One site, one deployment, sequences in June and August 2024.
 
     June: 2 leopards. August: 3 lions (one cohort set to female adult
     resting) and 1 person, who is not wildlife but can be picked.
@@ -66,12 +66,12 @@ def _project(db):
     )
     leopard, lion = _taxon(db, "leopard"), _taxon(db, "lion")
     person = _taxon(db, "person")
-    june = make_event_with_files(
-        db, deployment_id=dep.id, event_start_local=datetime(2024, 6, 10, 6, 0)
+    june = make_sequence_with_files(
+        db, deployment_id=dep.id, sequence_start_local=datetime(2024, 6, 10, 6, 0)
     )
     _observe(db, june, label="leopard", taxon=leopard, max_n=2)
-    august = make_event_with_files(
-        db, deployment_id=dep.id, event_start_local=datetime(2024, 8, 20, 22, 0)
+    august = make_sequence_with_files(
+        db, deployment_id=dep.id, sequence_start_local=datetime(2024, 8, 20, 22, 0)
     )
     _observe(
         db, august, label="lion", taxon=lion, max_n=3,
@@ -193,7 +193,7 @@ def test_summary_follows_taxon_and_dates(db):
 
 def test_summary_uses_the_human_count(db):
     project, *_ = _project(db)
-    lion_row = db.query(EventObservation).filter_by(label="lion").one()
+    lion_row = db.query(SequenceObservation).filter_by(label="lion").one()
     lion_row.human_count = 5
     db.flush()
 
@@ -234,9 +234,9 @@ def test_demographics_split_observations_and_count_unknown(db):
 def test_demographics_count_a_human_only_cohort(db):
     """A split-off cohort has max_n 0 and only a human count."""
     project, _, dep, _, lion, _ = _project(db)
-    event = db.query(EventObservation).filter_by(label="lion").one().event
+    sequence = db.query(SequenceObservation).filter_by(label="lion").one().sequence
     _observe(
-        db, event, label="lion", taxon=lion, max_n=0,
+        db, sequence, label="lion", taxon=lion, max_n=0,
         human_count=1, sex="male",
     )
 

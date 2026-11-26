@@ -40,8 +40,8 @@ describe("invalidateAfterVerify", () => {
     ["cohorts", PROJECT],
     ["label-counts", PROJECT, "detection", {}],
     ["statistics", PROJECT],
-    ["event-filter-options", PROJECT],
-    ["events", PROJECT],
+    ["sequence-filter-options", PROJECT],
+    ["sequences", PROJECT],
   ];
 
   const stale = (client: QueryClient, key: unknown[]) =>
@@ -68,7 +68,7 @@ describe("invalidateAfterVerify", () => {
     const { client, fetches } = await clientWith(keys);
     invalidateAfterVerify(client, PROJECT, true);
     await vi.advanceTimersByTimeAsync(VERIFY_SETTLE_MS);
-    expect(fetched(fetches, ["event-filter-options", PROJECT])).toBe(1);
+    expect(fetched(fetches, ["sequence-filter-options", PROJECT])).toBe(1);
     expect(fetched(fetches, ["statistics", PROJECT])).toBe(1);
   });
 
@@ -84,10 +84,10 @@ describe("invalidateAfterVerify", () => {
     const { client, fetches } = await clientWith(keys);
     invalidateAfterVerify(client, PROJECT, true);
     await vi.advanceTimersByTimeAsync(VERIFY_SETTLE_MS);
-    expect(stale(client, ["event-filter-options", PROJECT])).toBe(true);
-    expect(stale(client, ["events", PROJECT])).toBe(true);
-    expect(fetched(fetches, ["event-filter-options", PROJECT])).toBe(1);
-    expect(fetched(fetches, ["events", PROJECT])).toBe(1);
+    expect(stale(client, ["sequence-filter-options", PROJECT])).toBe(true);
+    expect(stale(client, ["sequences", PROJECT])).toBe(true);
+    expect(fetched(fetches, ["sequence-filter-options", PROJECT])).toBe(1);
+    expect(fetched(fetches, ["sequences", PROJECT])).toBe(1);
   });
 });
 
@@ -100,8 +100,8 @@ describe("invalidateAfterDetectionAction", () => {
     ["cohorts", PROJECT],
     ["label-counts", PROJECT, "file", {}],
     ["statistics", PROJECT],
-    ["event-filter-options", PROJECT],
-    ["events", PROJECT],
+    ["sequence-filter-options", PROJECT],
+    ["sequences", PROJECT],
   ];
   const fetched = (fetches: Map<string, number>, key: unknown[]) =>
     fetches.get(JSON.stringify(key));
@@ -116,7 +116,7 @@ describe("invalidateAfterDetectionAction", () => {
     await vi.advanceTimersByTimeAsync(VERIFY_SETTLE_MS);
     expect(fetched(fetches, ["labels-progress", PROJECT])).toBe(2);
     expect(fetched(fetches, ["label-counts", PROJECT, "file", {}])).toBe(2);
-    expect(fetched(fetches, ["event-filter-options", PROJECT])).toBe(1);
+    expect(fetched(fetches, ["sequence-filter-options", PROJECT])).toBe(1);
   });
 
   it("a change of label refreshes everything that lists labels at once", async () => {

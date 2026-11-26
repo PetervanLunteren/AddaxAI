@@ -324,10 +324,10 @@ def relink_taxa_list_labels(db: Session, project: Project, labels: list[str]) ->
     from app.models import (
         Deployment,
         Detection,
-        Event,
-        EventObservation,
         File,
         LabelTaxonomy,
+        Sequence,
+        SequenceObservation,
     )
 
     stale = (
@@ -353,12 +353,15 @@ def relink_taxa_list_labels(db: Session, project: Project, labels: list[str]) ->
         Detection.classification_method.is_distinct_from("track"),
     )
     open_observation = and_(
-        EventObservation.human_count.is_(None),
-        EventObservation.event_id.notin_(select(Event.id).where(Event.confirmed.is_(True))),
+        SequenceObservation.human_count.is_(None),
+        SequenceObservation.sequence_id.notin_(select(Sequence.id).where(Sequence.confirmed.is_(True))),
     )
     stale_ids = [row_id for row_id, _ in stale]
     if stale_ids:
-        for model, is_open in ((Detection, open_detection), (EventObservation, open_observation)):
+        for model, is_open in (
+            (Detection, open_detection),
+            (SequenceObservation, open_observation),
+        ):
             db.execute(
                 update(model)
                 .where(model.label_taxonomy_id.in_(stale_ids), is_open)
@@ -366,8 +369,8 @@ def relink_taxa_list_labels(db: Session, project: Project, labels: list[str]) ->
             )
         in_use = union(
             select(Detection.label_taxonomy_id).where(Detection.label_taxonomy_id.in_(stale_ids)),
-            select(EventObservation.label_taxonomy_id).where(
-                EventObservation.label_taxonomy_id.in_(stale_ids)
+            select(SequenceObservation.label_taxonomy_id).where(
+                SequenceObservation.label_taxonomy_id.in_(stale_ids)
             ),
         )
         stale_rows = db.query(LabelTaxonomy).filter(LabelTaxonomy.id.in_(stale_ids))
@@ -398,21 +401,21 @@ def relink_taxa_list_labels(db: Session, project: Project, labels: list[str]) ->
     link_detections_to_taxonomy(project.id, db)
 
     # Observations by the same rule, so counts and exports agree with the
-    # detections before the events are next rebuilt.
+    # detections before the sequences are next rebuilt.
     resolved = batch_resolve_taxonomy_ids(
         sorted(names), project.classification_model_id, project.id, db
     )
-    project_events = (
-        select(Event.id)
-        .join(Deployment, Event.deployment_id == Deployment.id)
+    project_sequences = (
+        select(Sequence.id)
+        .join(Deployment, Sequence.deployment_id == Deployment.id)
         .where(Deployment.project_id == project.id)
     )
     for name in names:
         db.execute(
-            update(EventObservation)
+            update(SequenceObservation)
             .where(
-                EventObservation.event_id.in_(project_events),
-                func.lower(EventObservation.label) == name,
+                SequenceObservation.sequence_id.in_(project_sequences),
+                func.lower(SequenceObservation.label) == name,
                 open_observation,
             )
             .values(label_taxonomy_id=resolved[name][0] if name in resolved else None)

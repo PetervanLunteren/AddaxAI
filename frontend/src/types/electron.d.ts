@@ -63,7 +63,7 @@ export interface ElectronAPI {
   ) => () => void;
   /**
    * Resolve the absolute filesystem path of a `File` produced by a
-   * drag-and-drop event. Wraps Electron's `webUtils.getPathForFile()`.
+   * drag-and-drop sequence. Wraps Electron's `webUtils.getPathForFile()`.
    */
   getDroppedFolderPath: (file: File) => string;
   /**

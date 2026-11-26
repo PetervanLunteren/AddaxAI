@@ -1,7 +1,7 @@
 """
 Postprocessing worker for reprocessing classification results.
 
-Applies event smoothing and taxonomic rollup to all deployments in a project
+Applies sequence smoothing and taxonomic rollup to all deployments in a project
 by reading raw predictions from JSON files and writing smoothed results to DB.
 
 Created by Claude Code on 2026-02-14
@@ -13,9 +13,9 @@ from pathlib import Path
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.api.crud import event as event_crud
 from app.api.crud import job as job_crud
 from app.api.crud import project as project_crud
+from app.api.crud import sequence as sequence_crud
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
 from app.db.base import get_db, refresh_query_statistics
@@ -99,7 +99,7 @@ async def process_postprocessing_job(job_id: str) -> None:
         # Rollup, the taxa list and smoothing together: the label cleanup
         # steps of docs/understanding/label-cleanup.md.
         label_cleanup_enabled = (
-            project.event_smoothing
+            project.sequence_smoothing
             or project.taxonomic_rollup
             or bool(project.taxa_mapping)
         )
@@ -369,13 +369,13 @@ async def process_postprocessing_job(job_id: str) -> None:
             if n_skipped:
                 message += f", {n_skipped} skipped"
 
-        # Auto-regenerate events (independence_interval may have changed).
-        # In a thread, like the statistics refresh below: the job runs on the event
+        # Auto-regenerate sequences (independence_interval may have changed).
+        # In a thread, like the statistics refresh below: the job runs on the sequence
         # loop that serves the app, and both take minutes on a large project.
-        event_count = await asyncio.to_thread(
-            event_crud.generate_events_for_project, db, project_id
+        sequence_count = await asyncio.to_thread(
+            sequence_crud.generate_sequences_for_project, db, project_id
         )
-        logger.info(f"Postprocessing job {job_id}: Regenerated {event_count} events")
+        logger.info(f"Postprocessing job {job_id}: Regenerated {sequence_count} sequences")
 
         await asyncio.to_thread(refresh_query_statistics, db)
         db.commit()

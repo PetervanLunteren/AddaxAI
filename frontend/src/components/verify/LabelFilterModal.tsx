@@ -2,7 +2,7 @@
  * Label Filter Modal for the Verify page.
  *
  * Accepts a pre-built taxonomy tree (already pruned server-side to only
- * detected labels with event counts). Uses a working-copy pattern:
+ * detected labels with sequence counts). Uses a working-copy pattern:
  * changes are only applied on "Apply".
  */
 
@@ -97,7 +97,7 @@ export function LabelFilterModal({
             onSelectionChange={setWorkingSet}
             fillHeight
             emptyMessage="No labels with observations"
-            countUnit={countUnit ?? "event"}
+            countUnit={countUnit ?? "sequence"}
             countsLoading={countsLoading}
           />
         </div>

@@ -6,7 +6,7 @@
  * about the project as a whole: a random animal for the eye, how much was
  * recorded (files) and the effort behind it (trap nights, and when the
  * cameras ran), what lives there, and how much a person has checked.
- * Event and observation totals depend on which labels you count, so they
+ * Sequence and observation totals depend on which labels you count, so they
  * live on the Explore tab, next to the filter that decides that.
  */
 

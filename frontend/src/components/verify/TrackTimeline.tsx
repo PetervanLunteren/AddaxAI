@@ -18,7 +18,7 @@
  * frame sits in the middle of colour or of a hole, never on an edge. The species
  * is named on the group's first row, with a MaxN button beside it when
  * the row has a marker: the frame its MaxN was counted on, which the
- * Counts modal takes from the event's rows and the Files viewer from
+ * Counts modal takes from the sequence's rows and the Files viewer from
  * the file itself (`fileMaxNMarkers`). A playhead follows the player.
  * Click a bar to select that animal and jump to it; hover the ruler
  * above the rows for a moment's time and frame and click to go there

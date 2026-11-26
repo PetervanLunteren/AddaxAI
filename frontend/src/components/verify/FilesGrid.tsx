@@ -70,13 +70,13 @@ interface FilesGridProps {
   /** The project's counting threshold: which boxes the tiles draw. */
   detectionThreshold: number;
   tileSize?: TileSize;
-  /** Divider rows per event (the events sort): the page's items are
+  /** Divider rows per sequence (the sequences sort): the page's items are
    *  grouped by consecutive `event_id`, each group headed by its first
    *  file's capture time, a count and a Select link, mirroring the
-   *  Detections tab's event dividers. */
-  groupByEvent?: boolean;
-  /** Replace the selection with one event's files (the divider link). */
-  onSelectEvent?: (fileIds: string[]) => void;
+   *  Detections tab's sequence dividers. */
+  groupBySequence?: boolean;
+  /** Replace the selection with one sequence's files (the divider link). */
+  onSelectSequence?: (fileIds: string[]) => void;
   /** Applied to the grid container, e.g. to dim held-over tiles. */
   className?: string;
 }
@@ -89,8 +89,8 @@ export function FilesGrid({
   onBackgroundClick,
   detectionThreshold,
   tileSize = "M",
-  groupByEvent = false,
-  onSelectEvent,
+  groupBySequence = false,
+  onSelectSequence,
   className,
 }: FilesGridProps) {
   const wide = useWideModeValue();
@@ -138,20 +138,20 @@ export function FilesGrid({
     return () => ro.disconnect();
   }, [tileSize, wide]);
 
-  // Consecutive runs of one event_id; the list arrives ordered by
-  // event, so runs are whole events (an event split across a page
+  // Consecutive runs of one sequence_id; the list arrives ordered by
+  // sequence, so runs are whole sequences (a sequence split across a page
   // boundary repeats its divider on the next page, which is honest).
   const groups = useMemo(() => {
-    if (!groupByEvent) return [{ key: "all", items }];
+    if (!groupBySequence) return [{ key: "all", items }];
     const out: { key: string; items: LabelsFileItem[] }[] = [];
     for (const item of items) {
-      const key = item.event_id ?? "none";
+      const key = item.sequence_id ?? "none";
       const last = out[out.length - 1];
       if (last && last.key === key) last.items.push(item);
       else out.push({ key, items: [item] });
     }
     return out;
-  }, [groupByEvent, items]);
+  }, [groupBySequence, items]);
 
   return (
     <div
@@ -167,11 +167,11 @@ export function FilesGrid({
     >
       {groups.map((group, gi) => (
         <Fragment key={`${group.key}-${gi}`}>
-          {groupByEvent && (
+          {groupBySequence && (
             <div
               className="flex items-center gap-2 px-1 pt-1"
               style={{ gridColumn: "1 / -1" }}
-              data-event-divider={group.key}
+              data-sequence-divider={group.key}
             >
               <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">
                 {group.key === "none"
@@ -182,14 +182,14 @@ export function FilesGrid({
                 ({group.items.length})
               </span>
               <div className="h-px flex-1 bg-border" />
-              {onSelectEvent && (
+              {onSelectSequence && (
                 <button
                   type="button"
                   onClick={(e) => {
                     // Don't bubble to the grid's background handler,
                     // which would clear the selection we just set.
                     e.stopPropagation();
-                    onSelectEvent(group.items.map((i) => i.id));
+                    onSelectSequence(group.items.map((i) => i.id));
                   }}
                   className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline whitespace-nowrap"
                 >

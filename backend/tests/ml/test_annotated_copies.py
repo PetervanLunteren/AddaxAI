@@ -634,7 +634,7 @@ def test_deferred_separation_writes_each_file_once(db, tmp_path):
     sep = separate_into_folders(
         db, project.id, ctx,
         media_threshold=0.5, group_by="none",
-        include_empty=True, group_events=False,
+        include_empty=True, group_sequences=False,
         place_files=False,
     )
     # Placements were planned for both files, but nothing is on disk yet.

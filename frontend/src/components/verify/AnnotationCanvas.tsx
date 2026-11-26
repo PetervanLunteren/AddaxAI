@@ -67,7 +67,7 @@ interface AnnotationCanvasProps {
   onDrawModeChange: (active: boolean) => void;
   /**
    * Called after a successful create / update / delete mutation. The parent
-   * is responsible for invalidating its own query keys (events vs files vs
+   * is responsible for invalidating its own query keys (sequences vs files vs
    * grid lists). The canvas itself does not know which keys to touch.
    */
   onMutated?: () => void;

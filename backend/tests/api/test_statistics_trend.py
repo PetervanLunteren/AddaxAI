@@ -13,13 +13,13 @@ import pytest
 
 from app.api.crud import rate_trend
 from app.api.crud.rate_trend import build_periods, period_of, pick_granularity
-from app.models.event_observation import EventObservation
 from app.models.label_taxonomy import LabelTaxonomy
+from app.models.sequence_observation import SequenceObservation
 from tests.conftest import (
     make_deployment,
-    make_event_with_files,
     make_file,
     make_project,
+    make_sequence_with_files,
     make_site,
 )
 
@@ -57,13 +57,13 @@ def _taxon(db, name: str) -> LabelTaxonomy:
 
 
 def _sighting(db, dep, day: date, count: int, *, label="deer", taxon=None):
-    event = make_event_with_files(
+    sequence = make_sequence_with_files(
         db, deployment_id=dep.id,
-        event_start_local=datetime(day.year, day.month, day.day, 6),
+        sequence_start_local=datetime(day.year, day.month, day.day, 6),
     )
     db.add(
-        EventObservation(
-            event_id=event.id, label=label,
+        SequenceObservation(
+            sequence_id=sequence.id, label=label,
             label_taxonomy_id=taxon.id if taxon else None,
             category="animal", max_n=count,
         )
@@ -353,12 +353,12 @@ def test_observations_without_a_label_get_a_row_per_category(db):
     used to land in one "unknown" row with their counts added up."""
     project, _, deps = _three_sites(db)
     for category, count in (("person", 7), ("vehicle", 14)):
-        event = make_event_with_files(
-            db, deployment_id=deps[2].id, event_start_local=datetime(2024, 1, 5, 6)
+        sequence = make_sequence_with_files(
+            db, deployment_id=deps[2].id, sequence_start_local=datetime(2024, 1, 5, 6)
         )
         db.add(
-            EventObservation(
-                event_id=event.id, label=None, label_taxonomy_id=None,
+            SequenceObservation(
+                sequence_id=sequence.id, label=None, label_taxonomy_id=None,
                 category=category, max_n=count,
             )
         )

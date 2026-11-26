@@ -1177,3 +1177,67 @@ def test_a8b2c4d6e8f0_changes_nothing_when_every_box_is_linked(engine) -> None:
     upgrade_to("a8b2c4d6e8f0")
     assert _rows(engine, "SELECT * FROM label_taxonomy ORDER BY id") == before_tax
     assert _rows(engine, "SELECT * FROM detections ORDER BY id") == before_det
+
+
+# ---------------------------------------------------------------------------
+# b7d9f1a3c5e7 — events become sequences
+# ---------------------------------------------------------------------------
+
+
+def test_b7d9f1a3c5e7_keeps_every_row_under_the_new_names(engine) -> None:
+    """The three tables, their columns and the project flag are renamed and
+    every value comes through, and the foreign keys follow the renamed table:
+    deleting a sequence still cascades to its files and observations."""
+    upgrade_to("fa19b0f2a459")
+
+    with engine.begin() as conn:
+        project_id, deployment_id = seed_deployment(conn)
+        conn.execute(text("UPDATE projects SET event_smoothing = 1 WHERE id = :p"),
+                     {"p": project_id})
+        file_id = insert_row(
+            conn, "files", deployment_id=deployment_id, file_path="/a.jpg",
+            file_type="image",
+        )
+        event_id = insert_row(
+            conn, "events", deployment_id=deployment_id, file_count=1,
+            event_start_local="2024-06-01 12:00:00", event_end_local="2024-06-01 12:01:00",
+            confirmed=1, notes="two foxes",
+        )
+        insert_row(conn, "event_files", event_id=event_id, file_id=file_id, sequence_number=3)
+        obs_id = insert_row(
+            conn, "event_observations", event_id=event_id, category="animal",
+            label="fox", max_n=2, human_count=3, sex="female",
+        )
+
+    upgrade_to("b7d9f1a3c5e7")
+
+    with engine.connect() as conn:
+        tables = {r[0] for r in conn.execute(text(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        ))}
+        assert {"sequences", "sequence_files", "sequence_observations"} <= tables
+        assert not tables & {"events", "event_files", "event_observations"}
+        assert conn.execute(text(
+            "SELECT deployment_id, file_count, sequence_start_local, sequence_end_local, "
+            "confirmed, notes FROM sequences WHERE id = :i"
+        ), {"i": event_id}).one() == (
+            deployment_id, 1, "2024-06-01 12:00:00", "2024-06-01 12:01:00", 1, "two foxes"
+        )
+        assert conn.execute(text(
+            "SELECT sequence_id, file_id, position FROM sequence_files"
+        )).one() == (event_id, file_id, 3)
+        assert conn.execute(text(
+            "SELECT id, sequence_id, label, max_n, human_count, sex FROM sequence_observations"
+        )).one() == (obs_id, event_id, "fox", 2, 3, "female")
+        assert conn.execute(text(
+            "SELECT sequence_smoothing FROM projects WHERE id = :p"
+        ), {"p": project_id}).scalar() == 1
+        references = {r[2] for t in ("sequence_files", "sequence_observations")
+                      for r in conn.execute(text(f"PRAGMA foreign_key_list({t})"))}
+        assert "sequences" in references and "events" not in references
+
+    with engine.begin() as conn:
+        conn.execute(text("PRAGMA foreign_keys = ON"))
+        conn.execute(text("DELETE FROM sequences WHERE id = :i"), {"i": event_id})
+        assert conn.execute(text("SELECT count(*) FROM sequence_files")).scalar() == 0
+        assert conn.execute(text("SELECT count(*) FROM sequence_observations")).scalar() == 0

@@ -6,7 +6,7 @@
  * Optional divider rows: `cohort` groups by
  * `(current_label, neighbor_top_label, category)` and surfaces a
  * "Relabel all (N)" button for the suggestions sort; `event` groups by
- * event and surfaces a "Select" link to select that event's crops.
+ * sequence and surfaces a "Select" link to select that sequence's crops.
  */
 
 import { forwardRef, memo, useImperativeHandle, useRef, useMemo, useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
@@ -54,7 +54,7 @@ class SelectionStore {
 
 export type TileSize = "S" | "M" | "L";
 
-export type GridDividerMode = "none" | "cohort" | "event";
+export type GridDividerMode = "none" | "cohort" | "sequence";
 
 type CohortRowPos = "first" | "middle" | "last" | "only";
 
@@ -89,9 +89,9 @@ interface CropGridProps {
    * Hides the suggestion without touching the crops; parent owns the
    * mutation and the Undo toast. The divider is presentational. */
   onDismissCohort?: (cohort: CohortItem) => void;
-  /** Fires when the user clicks "Select" on an event divider. Selects
-   *  that event's in-view crops so the existing bulk actions apply. */
-  onSelectEvent?: (detectionIds: string[]) => void;
+  /** Fires when the user clicks "Select" on a sequence divider. Selects
+   *  that sequence's in-view crops so the existing bulk actions apply. */
+  onSelectSequence?: (detectionIds: string[]) => void;
   tileSize?: TileSize;
   dividers?: GridDividerMode;
 }
@@ -108,11 +108,11 @@ const ESTIMATE_SIZE: Record<TileSize, number> = {
   L: 380,
 };
 
-// Event divider height estimate (real height is measured). The header
+// Sequence divider height estimate (real height is measured). The header
 // below uses asymmetric padding (pt-1 pb-4): the crop row above already
 // carries its own bottom padding (GAP_CLASS `pb-*`), so a smaller top +
 // larger bottom padding lands the label visually centered in the gap
-// between the two events rather than hugging one side.
+// between the two sequences rather than hugging one side.
 const DIVIDER_HEIGHT = 44;
 // Cohort dividers carry a header line + chips + a Relabel-all button so
 // they need more vertical real estate than a plain label divider. The
@@ -226,7 +226,7 @@ const GridCell = memo(function GridCell({
 export interface CropGridHandle {
   /** Scroll the given detection's row into view (jumping to the event's
    *  divider header when it has one). `align` "start" pins it to the top
-   *  (the "E" event jump); "auto" scrolls the minimum to make it visible
+   *  (the "E" sequence jump); "auto" scrolls the minimum to make it visible
    *  and is a no-op when it already is (the post-action advance, so the
    *  grid doesn't lurch on every keypress). Defaults to "start". */
   scrollToDetection: (detectionId: string, align?: "start" | "auto") => void;
@@ -242,7 +242,7 @@ export const CropGrid = forwardRef<CropGridHandle, CropGridProps>(
   onBackgroundClick,
   onRelabelCohort,
   onDismissCohort,
-  onSelectEvent,
+  onSelectSequence,
   tileSize = "M",
   dividers = "none",
 }: CropGridProps, ref) {
@@ -268,10 +268,10 @@ export const CropGrid = forwardRef<CropGridHandle, CropGridProps>(
     }
 
     // Group key by dividers mode: cohort groups by the (label, suggested
-    // descendant, category) triple; event groups by the detection's
-    // event. ("none" is handled above.)
+    // descendant, category) triple; sequence groups by the detection's
+    // sequence. ("none" is handled above.)
     const keyOf = (d: DetectionSummary) =>
-      dividers === "cohort" ? cohortKey(d) : eventKey(d);
+      dividers === "cohort" ? cohortKey(d) : sequenceKey(d);
 
     const result: GridRow[] = [];
     let i = 0;
@@ -306,11 +306,11 @@ export const CropGrid = forwardRef<CropGridHandle, CropGridProps>(
           result.push({ type: "cohort_gap" });
         }
       } else {
-        // Only event dividers remain in this branch (label dividers were
+        // Only sequence dividers remain in this branch (label dividers were
         // removed; cohort is handled above).
         result.push({
           type: "divider",
-          label: eventDividerLabel(slice[0]),
+          label: sequenceDividerLabel(slice[0]),
           count: slice.length,
           detectionIds: slice.map((d) => d.detection_id),
         });
@@ -362,8 +362,8 @@ export const CropGrid = forwardRef<CropGridHandle, CropGridProps>(
             r.detections.some((d) => d.detection_id === detectionId),
         );
         if (idx < 0) return;
-        // Land on the event's divider header when there is one, so the
-        // reader gets the event label plus its first crops in view.
+        // Land on the sequence's divider header when there is one, so the
+        // reader gets the sequence label plus its first crops in view.
         const target =
           idx > 0 && rows[idx - 1].type === "divider" ? idx - 1 : idx;
         virtualizer.scrollToIndex(target, { align });
@@ -411,14 +411,14 @@ export const CropGrid = forwardRef<CropGridHandle, CropGridProps>(
                   {row.label} ({row.count})
                 </span>
                 <div className="h-px flex-1 bg-border" />
-                {onSelectEvent && row.detectionIds.length > 0 && (
+                {onSelectSequence && row.detectionIds.length > 0 && (
                   <button
                     type="button"
                     onClick={(e) => {
                       // Don't bubble to the grid's background handler,
                       // which would clear the selection we just set.
                       e.stopPropagation();
-                      onSelectEvent(row.detectionIds);
+                      onSelectSequence(row.detectionIds);
                     }}
                     className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline whitespace-nowrap"
                   >
@@ -612,23 +612,23 @@ export const CropGrid = forwardRef<CropGridHandle, CropGridProps>(
 // ── Grouping helpers (used by the dividers union above) ─────────────────
 
 
-function eventKey(d: DetectionSummary): string {
-  // Detections without an event (clustering not run) all fall into one
+function sequenceKey(d: DetectionSummary): string {
+  // Detections without a sequence (clustering not run) all fall into one
   // trailing group; the "By event" sort places them last.
-  return d.event_id ?? "__no_event__";
+  return d.sequence_id ?? "__no_sequence__";
 }
 
 
-/** Header text for an event divider: the event start (camera-local) and
- *  site, matching how event cards label themselves on the Counts page. */
-function eventDividerLabel(d: DetectionSummary): string {
-  if (!d.event_start_local) return d.site_name || "No event";
-  const date = formatCameraDate(d.event_start_local, {
+/** Header text for a sequence divider: the sequence start (camera-local) and
+ *  site, matching how sequence cards label themselves on the Counts page. */
+function sequenceDividerLabel(d: DetectionSummary): string {
+  if (!d.sequence_start_local) return d.site_name || "No event";
+  const date = formatCameraDate(d.sequence_start_local, {
     day: "numeric",
     month: "short",
     year: "numeric",
   });
-  const time = formatCameraTime(d.event_start_local, {
+  const time = formatCameraTime(d.sequence_start_local, {
     hour: "2-digit",
     minute: "2-digit",
   });

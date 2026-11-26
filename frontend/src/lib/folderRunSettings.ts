@@ -62,7 +62,7 @@ export interface PersistedAnalysisSettings {
   media_filter?: MediaFilter;
   detection_augment?: boolean;
   detection_image_size?: number | null;
-  event_smoothing?: boolean;
+  sequence_smoothing?: boolean;
   smoothing_strength?: "mild" | "normal" | "aggressive";
   taxonomic_rollup?: boolean;
   independence_interval?: number;
@@ -138,7 +138,7 @@ export interface PersistedSaveOutputsSettings {
   summary?: boolean;
   mediaEnabled: boolean;
   groupBy: SeparateGroupBy;
-  groupEvents: boolean;
+  groupSequences: boolean;
   speciesLast: boolean;
   copyEmpties: boolean;
   drawBoxes: boolean;

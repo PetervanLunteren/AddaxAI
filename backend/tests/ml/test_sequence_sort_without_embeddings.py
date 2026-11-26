@@ -1,8 +1,8 @@
-"""Event sort works without embeddings.
+"""Sequence sort works without embeddings.
 
-The labels grid's "Sort by event" orders detections by event / capture
+The labels grid's "Sort by sequence" orders detections by sequence / capture
 time, which needs no embeddings. Historically the shared sort subprocess
-loaded everything ``FROM detection_embeddings``, so event sort silently
+loaded everything ``FROM detection_embeddings``, so sequence sort silently
 dropped detections that were never embedded (a project with the
 embedding model off, or the below-gate tail). ``do_sort`` now takes a
 metadata-only load path for the non-embedding sort modes.
@@ -31,7 +31,7 @@ from app.ml.inference.similarity_script import (
     do_sort,
 )
 from app.models.detection_embedding import DetectionEmbedding
-from app.models.event import Event, event_files
+from app.models.sequence import Sequence, sequence_files
 from tests.conftest import (
     make_deployment,
     make_detection,
@@ -88,11 +88,11 @@ def _embed(session, detection_id: str, vector=None) -> None:
     )
 
 
-def _detection_in_event(
+def _detection_in_sequence(
     session,
     deployment_id: str,
     *,
-    event_id: str,
+    sequence_id: str,
     start: datetime,
     seq: int = 0,
     confidence: float = 0.9,
@@ -100,16 +100,16 @@ def _detection_in_event(
     embed: bool = False,
     vector=None,
 ):
-    """Create one event (if new), a file in it, and a detection on that
+    """Create one sequence (if new), a file in it, and a detection on that
     file. Optionally embed the detection (with an optional vector)."""
-    ev = session.get(Event, event_id)
+    ev = session.get(Sequence, sequence_id)
     if ev is None:
         session.add(
-            Event(
-                id=event_id,
+            Sequence(
+                id=sequence_id,
                 deployment_id=deployment_id,
-                event_start_local=start,
-                event_end_local=start,
+                sequence_start_local=start,
+                sequence_end_local=start,
                 file_count=0,
             )
         )
@@ -123,8 +123,8 @@ def _detection_in_event(
         height_px=1080,
     )
     session.execute(
-        event_files.insert().values(
-            event_id=event_id, file_id=f.id, sequence_number=seq
+        sequence_files.insert().values(
+            sequence_id=sequence_id, file_id=f.id, position=seq
         )
     )
     d = make_detection(
@@ -140,11 +140,11 @@ def test_metadata_load_includes_non_embedded_detections(sort_db):
     db_path, s = sort_db
     p = make_project(s)
     dep = make_deployment(s, project_id=p.id)
-    embedded = _detection_in_event(
-        s, dep.id, event_id="ev-b", start=datetime(2024, 1, 2, 12), embed=True
+    embedded = _detection_in_sequence(
+        s, dep.id, sequence_id="ev-b", start=datetime(2024, 1, 2, 12), embed=True
     )
-    plain = _detection_in_event(
-        s, dep.id, event_id="ev-a", start=datetime(2024, 1, 1, 12), embed=False
+    plain = _detection_in_sequence(
+        s, dep.id, sequence_id="ev-a", start=datetime(2024, 1, 1, 12), embed=False
     )
     s.commit()
 
@@ -156,22 +156,22 @@ def test_metadata_load_includes_non_embedded_detections(sort_db):
     assert set(ids_emb) == {embedded.id}
 
 
-def test_event_sort_returns_non_embedded_in_event_order(sort_db):
+def test_sequence_sort_returns_non_embedded_in_sequence_order(sort_db):
     db_path, s = sort_db
     p = make_project(s)
     dep = make_deployment(s, project_id=p.id)
-    older = _detection_in_event(
-        s, dep.id, event_id="ev-old", start=datetime(2024, 1, 1, 12), embed=False
+    older = _detection_in_sequence(
+        s, dep.id, sequence_id="ev-old", start=datetime(2024, 1, 1, 12), embed=False
     )
-    newer = _detection_in_event(
-        s, dep.id, event_id="ev-new", start=datetime(2024, 1, 2, 12), embed=True
+    newer = _detection_in_sequence(
+        s, dep.id, sequence_id="ev-new", start=datetime(2024, 1, 2, 12), embed=True
     )
     s.commit()
 
-    result = do_sort(db_path, p.id, {"sort": "events", "filters": {}})
+    result = do_sort(db_path, p.id, {"sort": "sequences", "filters": {}})
     ids = [d["detection_id"] for d in result["detections"]]
 
-    # Newest event first; the non-embedded detection is present.
+    # Newest sequence first; the non-embedded detection is present.
     assert ids == [newer.id, older.id]
     assert result["total_detections"] == 2
     # Metadata path carries no neighbour signal.
@@ -183,12 +183,12 @@ def test_metadata_load_applies_project_floor(sort_db):
     db_path, s = sort_db
     p = make_project(s)
     dep = make_deployment(s, project_id=p.id)
-    low_unverified = _detection_in_event(
-        s, dep.id, event_id="e1", start=datetime(2024, 1, 1, 12),
+    low_unverified = _detection_in_sequence(
+        s, dep.id, sequence_id="e1", start=datetime(2024, 1, 1, 12),
         confidence=0.05, verified=False,
     )
-    low_verified = _detection_in_event(
-        s, dep.id, event_id="e2", start=datetime(2024, 1, 2, 12),
+    low_verified = _detection_in_sequence(
+        s, dep.id, sequence_id="e2", start=datetime(2024, 1, 2, 12),
         confidence=0.05, verified=True,
     )
     s.commit()
@@ -210,12 +210,12 @@ def test_metadata_load_lets_unclassified_boxes_through_the_classification_range(
     db_path, s = sort_db
     p = make_project(s)
     dep = make_deployment(s, project_id=p.id)
-    weak = _detection_in_event(
-        s, dep.id, event_id="e1", start=datetime(2024, 1, 1, 12),
+    weak = _detection_in_sequence(
+        s, dep.id, sequence_id="e1", start=datetime(2024, 1, 1, 12),
     )
     weak.label, weak.label_confidence = "dog", 0.3
-    unclassified = _detection_in_event(
-        s, dep.id, event_id="e2", start=datetime(2024, 1, 2, 12),
+    unclassified = _detection_in_sequence(
+        s, dep.id, sequence_id="e2", start=datetime(2024, 1, 2, 12),
     )
     s.commit()
 
@@ -234,16 +234,16 @@ def test_sort_caps_to_newest_and_reports_uncapped_total(sort_db):
     db_path, s = sort_db
     p = make_project(s)
     dep = make_deployment(s, project_id=p.id)
-    _detection_in_event(s, dep.id, event_id="e1", start=datetime(2024, 1, 1, 12))
-    d2 = _detection_in_event(s, dep.id, event_id="e2", start=datetime(2024, 1, 2, 12))
-    d3 = _detection_in_event(s, dep.id, event_id="e3", start=datetime(2024, 1, 3, 12))
+    _detection_in_sequence(s, dep.id, sequence_id="e1", start=datetime(2024, 1, 1, 12))
+    d2 = _detection_in_sequence(s, dep.id, sequence_id="e2", start=datetime(2024, 1, 2, 12))
+    d3 = _detection_in_sequence(s, dep.id, sequence_id="e3", start=datetime(2024, 1, 3, 12))
     s.commit()
 
     result = do_sort(
-        db_path, p.id, {"sort": "events", "filters": {}, "max_detections": 2}
+        db_path, p.id, {"sort": "sequences", "filters": {}, "max_detections": 2}
     )
     ids = [d["detection_id"] for d in result["detections"]]
-    assert ids == [d3.id, d2.id]  # newest two, newest event first
+    assert ids == [d3.id, d2.id]  # newest two, newest sequence first
     assert result["total_detections"] == 2
     assert result["total_matching"] == 3
 
@@ -253,11 +253,11 @@ def test_sort_under_cap_matches_total(sort_db):
     db_path, s = sort_db
     p = make_project(s)
     dep = make_deployment(s, project_id=p.id)
-    _detection_in_event(s, dep.id, event_id="e1", start=datetime(2024, 1, 1, 12))
-    _detection_in_event(s, dep.id, event_id="e2", start=datetime(2024, 1, 2, 12))
+    _detection_in_sequence(s, dep.id, sequence_id="e1", start=datetime(2024, 1, 1, 12))
+    _detection_in_sequence(s, dep.id, sequence_id="e2", start=datetime(2024, 1, 2, 12))
     s.commit()
 
-    result = do_sort(db_path, p.id, {"sort": "events", "filters": {}})
+    result = do_sort(db_path, p.id, {"sort": "sequences", "filters": {}})
     assert result["total_detections"] == 2
     assert result["total_matching"] == 2
 
@@ -268,22 +268,22 @@ def test_sort_verified_filter_scopes_the_cap(sort_db):
     db_path, s = sort_db
     p = make_project(s)
     dep = make_deployment(s, project_id=p.id)
-    u1 = _detection_in_event(s, dep.id, event_id="e1", start=datetime(2024, 1, 1, 12))
-    u2 = _detection_in_event(s, dep.id, event_id="e2", start=datetime(2024, 1, 2, 12))
-    _detection_in_event(
-        s, dep.id, event_id="e3", start=datetime(2024, 1, 3, 12), verified=True
+    u1 = _detection_in_sequence(s, dep.id, sequence_id="e1", start=datetime(2024, 1, 1, 12))
+    u2 = _detection_in_sequence(s, dep.id, sequence_id="e2", start=datetime(2024, 1, 2, 12))
+    _detection_in_sequence(
+        s, dep.id, sequence_id="e3", start=datetime(2024, 1, 3, 12), verified=True
     )
     s.commit()
 
     result = do_sort(
-        db_path, p.id, {"sort": "events", "filters": {"verified": False}}
+        db_path, p.id, {"sort": "sequences", "filters": {"verified": False}}
     )
     ids = {d["detection_id"] for d in result["detections"]}
     assert ids == {u1.id, u2.id}
     assert result["total_matching"] == 2
 
 
-# ── Event ordering by similarity ─────────────────────────────────────
+# ── Sequence ordering by similarity ─────────────────────────────────────
 # The FAISS-dependent greedy walk is isolated in `_greedy_order`, so the
 # grouping / representative / assembly logic is tested here by patching
 # it (no FAISS needed). The real walk is exercised in the faiss-gated
@@ -292,21 +292,21 @@ def test_sort_verified_filter_scopes_the_cap(sort_db):
 from unittest.mock import MagicMock  # noqa: E402
 
 from app.ml.inference.similarity_script import (  # noqa: E402
-    _order_events_by_similarity,
+    _order_sequences_by_similarity,
 )
 
 
-def _meta(event_id, seq, start, confidence):
+def _meta(sequence_id, seq, start, confidence):
     return {
-        "event_id": event_id,
-        "event_sequence": seq,
-        "event_start_local": start,
+        "sequence_id": sequence_id,
+        "sequence_position": seq,
+        "sequence_start_local": start,
         "confidence": confidence,
     }
 
 
-def test_order_events_by_similarity_assembly(monkeypatch):
-    # Events by time desc: C (03) , B (02), A (01). A and B are embedded,
+def test_order_sequences_by_similarity_assembly(monkeypatch):
+    # Sequences by time desc: C (03) , B (02), A (01). A and B are embedded,
     # C is not. A has two detections; its representative must be the
     # most-confident one (a1, conf 0.9), not a0 (0.5).
     metas = [
@@ -314,7 +314,7 @@ def test_order_events_by_similarity_assembly(monkeypatch):
         _meta("A", 0, "2024-01-01T00:00", 0.5),  # 1: a0 (embedded, low conf)
         _meta("B", 0, "2024-01-02T00:00", 0.8),  # 2: b0 (embedded)
         _meta("C", 0, "2024-01-03T00:00", 0.7),  # 3: c0 (NOT embedded)
-        _meta(None, 0, None, 0.6),               # 4: no event
+        _meta(None, 0, None, 0.6),               # 4: no sequence
     ]
     det_ids = ["a1", "a0", "b0", "c0", "n0"]
     va, vb = [1.0, 0.0], [0.0, 1.0]
@@ -328,7 +328,7 @@ def test_order_events_by_similarity_assembly(monkeypatch):
 
     def fake_greedy_order(mat):
         captured["mat"] = mat
-        # rep_eids are the embedded events in time order: [B, A].
+        # rep_eids are the embedded sequences in time order: [B, A].
         # Return them reversed so we can see the walk order is applied.
         return [1, 0]
 
@@ -343,25 +343,25 @@ def test_order_events_by_similarity_assembly(monkeypatch):
         requested.extend(ids)
         return {i: vector_by_id[i] for i in ids}
 
-    order = _order_events_by_similarity(
+    order = _order_sequences_by_similarity(
         det_ids, metas, has_embedding, load_vectors
     )
 
-    # Walk said [B, A] reversed -> events emitted A then B; within A the
-    # sequence order (a0 seq0 before a1 seq1); then the rep-less event C;
-    # then the no-event detection last.
+    # Walk said [B, A] reversed -> sequences emitted A then B; within A the
+    # sequence order (a0 seq0 before a1 seq1); then the rep-less sequence C;
+    # then the no-sequence detection last.
     assert order == [1, 0, 2, 3, 4]
     # Representative matrix was built from [B, A]'s most-confident crops.
     mat = captured["mat"]
     assert np.allclose(mat[0], vb)  # B's representative
     assert np.allclose(mat[1], va)  # A's representative = a1, not a0
     # Only the two representatives were loaded, not a0 (embedded but not
-    # its event's rep) or the rep-less / no-event detections.
+    # its sequence's rep) or the rep-less / no-sequence detections.
     assert set(requested) == {"a1", "b0"}
 
 
-def test_order_events_by_similarity_no_reps_is_time_order(monkeypatch):
-    # No event has an embedded detection -> no walk, pure time order.
+def test_order_sequences_by_similarity_no_reps_is_time_order(monkeypatch):
+    # No sequence has an embedded detection -> no walk, pure time order.
     metas = [
         _meta("A", 0, "2024-01-01T00:00", 0.9),
         _meta("B", 0, "2024-01-02T00:00", 0.8),
@@ -371,13 +371,13 @@ def test_order_events_by_similarity_no_reps_is_time_order(monkeypatch):
     monkeypatch.setattr(
         "app.ml.inference.similarity_script._greedy_order", called
     )
-    order = _order_events_by_similarity(det_ids, metas, set(), lambda ids: {})
+    order = _order_sequences_by_similarity(det_ids, metas, set(), lambda ids: {})
     called.assert_not_called()
-    assert order == [1, 0]  # newest event (B) first
+    assert order == [1, 0]  # newest sequence (B) first
 
 
-def test_order_events_by_similarity_caps_walk_at_max_embeddings(monkeypatch):
-    # Three embedded events; with a FAISS budget of 2, only the newest two
+def test_order_sequences_by_similarity_caps_walk_at_max_embeddings(monkeypatch):
+    # Three embedded sequences; with a FAISS budget of 2, only the newest two
     # are similarity-walked (and their vectors loaded); the third keeps its
     # baseline (chronological) place in the tail and isn't loaded.
     metas = [
@@ -402,7 +402,7 @@ def test_order_events_by_similarity_caps_walk_at_max_embeddings(monkeypatch):
         "app.ml.inference.similarity_script._greedy_order",
         lambda mat: list(range(len(mat))),
     )
-    order = _order_events_by_similarity(
+    order = _order_sequences_by_similarity(
         det_ids, metas, set(vecs), load_vectors, max_embeddings=2
     )
     # Baseline is time-desc [C, B, A]; walk the first two, A falls to tail.
@@ -429,50 +429,50 @@ def test_greedy_order_keeps_identical_vectors_adjacent():
     assert abs(pos[0] - pos[2]) == 1
 
 
-def test_event_sort_similarity_groups_similar_events(sort_db):
+def test_sequence_sort_similarity_groups_similar_sequences(sort_db):
     pytest.importorskip("faiss")
     db_path, s = sort_db
     p = make_project(s, embedding_model_id="DINOV2-VITB14")
     dep = make_deployment(s, project_id=p.id)
-    # Events A and B look alike; C is different; D has no embedding.
-    _detection_in_event(
-        s, dep.id, event_id="A", start=datetime(2024, 1, 1, 12),
+    # Sequences A and B look alike; C is different; D has no embedding.
+    _detection_in_sequence(
+        s, dep.id, sequence_id="A", start=datetime(2024, 1, 1, 12),
         embed=True, vector=[1.0, 0.0, 0.0, 0.0],
     )
-    _detection_in_event(
-        s, dep.id, event_id="B", start=datetime(2024, 1, 2, 12),
+    _detection_in_sequence(
+        s, dep.id, sequence_id="B", start=datetime(2024, 1, 2, 12),
         embed=True, vector=[1.0, 0.0, 0.0, 0.0],
     )
-    _detection_in_event(
-        s, dep.id, event_id="C", start=datetime(2024, 1, 3, 12),
+    _detection_in_sequence(
+        s, dep.id, sequence_id="C", start=datetime(2024, 1, 3, 12),
         embed=True, vector=[0.0, 1.0, 0.0, 0.0],
     )
-    d_plain = _detection_in_event(
-        s, dep.id, event_id="D", start=datetime(2024, 1, 4, 12), embed=False,
+    d_plain = _detection_in_sequence(
+        s, dep.id, sequence_id="D", start=datetime(2024, 1, 4, 12), embed=False,
     )
     s.commit()
 
-    result = do_sort(db_path, p.id, {"sort": "events", "filters": {}})
-    event_seq = [d["event_id"] for d in result["detections"]]
+    result = do_sort(db_path, p.id, {"sort": "sequences", "filters": {}})
+    sequence_seq = [d["sequence_id"] for d in result["detections"]]
 
-    # Look-alike events A and B are adjacent (C not wedged between them).
-    ia, ib = event_seq.index("A"), event_seq.index("B")
+    # Look-alike sequences A and B are adjacent (C not wedged between them).
+    ia, ib = sequence_seq.index("A"), sequence_seq.index("B")
     assert abs(ia - ib) == 1
-    # The non-embedded event D is still present (rep-less, at the tail).
+    # The non-embedded sequence D is still present (rep-less, at the tail).
     assert d_plain.detection_id in {
         d["detection_id"] for d in result["detections"]
     }
-    assert event_seq[-1] == "D"
+    assert sequence_seq[-1] == "D"
 
 
 # ── No-embedding fallback: deployment grouping ───────────────────────
 
-from observation_sort import order_events_by_deployment  # noqa: E402
+from observation_sort import order_sequences_by_deployment  # noqa: E402
 
 
-def test_order_events_by_deployment_groups_cameras():
-    # DEP1 has the newest event (01-05) so it leads; its two events stay
-    # together (01-05 then 01-01) even though DEP2's event (01-03) is
+def test_order_sequences_by_deployment_groups_cameras():
+    # DEP1 has the newest sequence (01-05) so it leads; its two sequences stay
+    # together (01-05 then 01-01) even though DEP2's sequence (01-03) is
     # chronologically between them.
     metas = [
         _meta_dep("DEP1", "E1a", "2024-01-05", 0),  # 0
@@ -480,50 +480,50 @@ def test_order_events_by_deployment_groups_cameras():
         _meta_dep("DEP2", "E2a", "2024-01-03", 0),  # 2
     ]
     # Plain chronological would interleave the cameras ([0, 2, 1]);
-    # deployment grouping keeps DEP1's two events together.
-    assert order_events_by_deployment(metas) == [0, 1, 2]
+    # deployment grouping keeps DEP1's two sequences together.
+    assert order_sequences_by_deployment(metas) == [0, 1, 2]
 
 
-def test_order_events_by_deployment_single_deployment_is_chronological():
+def test_order_sequences_by_deployment_single_deployment_is_chronological():
     metas = [
         _meta_dep("D", "E1", "2024-01-01", 1),
         _meta_dep("D", "E1", "2024-01-01", 0),
         _meta_dep("D", "E2", "2024-01-02", 0),
     ]
-    # One camera: plain chronological (event newest-first, within event
+    # One camera: plain chronological (sequence newest-first, within sequence
     # by ascending sequence) — E2 (01-02), then E1 (01-01) seq 0 then 1.
-    assert order_events_by_deployment(metas) == [2, 1, 0]
+    assert order_sequences_by_deployment(metas) == [2, 1, 0]
 
 
-def _meta_dep(deployment_id, event_id, start, seq):
+def _meta_dep(deployment_id, sequence_id, start, seq):
     return {
         "deployment_id": deployment_id,
-        "event_id": event_id,
-        "event_start_local": start,
-        "event_sequence": seq,
+        "sequence_id": sequence_id,
+        "sequence_start_local": start,
+        "sequence_position": seq,
     }
 
 
-def test_event_sort_no_embeddings_groups_by_deployment(sort_db):
+def test_sequence_sort_no_embeddings_groups_by_deployment(sort_db):
     db_path, s = sort_db
     p = make_project(s)  # no embedding model
     dep1 = make_deployment(s, project_id=p.id)
     dep2 = make_deployment(s, project_id=p.id)
-    # dep1's newest event is the most recent overall, so dep1 leads and
-    # its two events stay together despite dep2's event falling between
+    # dep1's newest sequence is the most recent overall, so dep1 leads and
+    # its two sequences stay together despite dep2's sequence falling between
     # them in time.
-    d1_new = _detection_in_event(
-        s, dep1.id, event_id="d1-new", start=datetime(2024, 1, 5, 12)
+    d1_new = _detection_in_sequence(
+        s, dep1.id, sequence_id="d1-new", start=datetime(2024, 1, 5, 12)
     )
-    d1_old = _detection_in_event(
-        s, dep1.id, event_id="d1-old", start=datetime(2024, 1, 1, 12)
+    d1_old = _detection_in_sequence(
+        s, dep1.id, sequence_id="d1-old", start=datetime(2024, 1, 1, 12)
     )
-    d2 = _detection_in_event(
-        s, dep2.id, event_id="d2", start=datetime(2024, 1, 3, 12)
+    d2 = _detection_in_sequence(
+        s, dep2.id, sequence_id="d2", start=datetime(2024, 1, 3, 12)
     )
     s.commit()
 
-    result = do_sort(db_path, p.id, {"sort": "events", "filters": {}})
+    result = do_sort(db_path, p.id, {"sort": "sequences", "filters": {}})
     ids = [d["detection_id"] for d in result["detections"]]
     assert ids == [d1_new.id, d1_old.id, d2.id]
 
@@ -618,9 +618,9 @@ def test_metadata_load_drops_a_verified_box_off_its_tracks_card(sort_db):
     assert set(ids) == {dets[24].id}
 
 
-def test_order_events_by_similarity_keeps_partial_event_intact(monkeypatch):
-    # Event X has one embedded (x_emb, the representative) and one NON
-    # embedded detection (x_plain); event Y is embedded. Both of X's
+def test_order_sequences_by_similarity_keeps_partial_sequence_intact(monkeypatch):
+    # Sequence X has one embedded (x_emb, the representative) and one NON
+    # embedded detection (x_plain); sequence Y is embedded. Both of X's
     # detections must stay together in the block, in sequence order,
     # even though x_plain has no vector.
     metas = [
@@ -633,12 +633,12 @@ def test_order_events_by_similarity_keeps_partial_event_intact(monkeypatch):
         "x_emb": np.array([1.0, 0.0], dtype=np.float32),
         "y_emb": np.array([0.0, 1.0], dtype=np.float32),
     }
-    # Identity walk over rep events [X, Y].
+    # Identity walk over rep sequences [X, Y].
     monkeypatch.setattr(
         "app.ml.inference.similarity_script._greedy_order",
         lambda mat: list(range(len(mat))),
     )
-    order = _order_events_by_similarity(
+    order = _order_sequences_by_similarity(
         det_ids,
         metas,
         set(vector_by_id),
@@ -647,7 +647,7 @@ def test_order_events_by_similarity_keeps_partial_event_intact(monkeypatch):
 
     # X block first (both its detections, sequence order), then Y.
     assert order == [0, 1, 2]
-    # The non-embedded detection is present and adjacent to its event's
+    # The non-embedded detection is present and adjacent to its sequence's
     # embedded one (not split off to a tail).
     pos = {det_ids[i]: p for p, i in enumerate(order)}
     assert abs(pos["x_emb"] - pos["x_plain"]) == 1

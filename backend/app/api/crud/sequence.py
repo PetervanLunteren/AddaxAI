@@ -1,7 +1,7 @@
 """
-CRUD operations for events.
+CRUD operations for sequences.
 
-Events are time-clustered groups of files within a deployment.
+Sequences are time-clustered groups of files within a deployment.
 """
 
 import uuid
@@ -23,9 +23,9 @@ from app.ml.label_exclusion import (
     threshold_or_verified,
 )
 from app.ml.observation_type import derive_observation_type
-from app.models import Deployment, Detection, Event, File, Project
-from app.models.event import event_files
-from app.models.event_observation import EventObservation
+from app.models import Deployment, Detection, File, Project, Sequence
+from app.models.sequence import sequence_files
+from app.models.sequence_observation import SequenceObservation
 
 logger = get_logger(__name__)
 
@@ -38,11 +38,11 @@ def _build_collage_file_ids(
     max_n_frames: list[dict],
     sorted_files: list[File],
 ) -> list[str]:
-    """Pick up to four representative file IDs for an event card collage.
+    """Pick up to four representative file IDs for a sequence card collage.
 
     The first slots come from `max_n_frames` (one file per dominant
     species, computed by `get_max_n_frames`). Remaining slots are
-    padded with files of the event ranked by their highest detection
+    padded with files of the sequence ranked by their highest detection
     confidence (descending), skipping files already chosen.
     """
     chosen: list[str] = []
@@ -69,38 +69,38 @@ def _build_collage_file_ids(
     return chosen
 
 
-def _event_min_cls_subquery():
+def _sequence_min_cls_subquery():
     """Correlated scalar subquery: MIN(label_confidence) across all detections
-    on any file in the event. Used for the cls_low sort.
+    on any file in the sequence. Used for the cls_low sort.
     """
     return (
         select(func.min(Detection.label_confidence))
-        .select_from(event_files)
-        .join(File, File.id == event_files.c.file_id)
+        .select_from(sequence_files)
+        .join(File, File.id == sequence_files.c.file_id)
         .join(Detection, Detection.file_id == File.id)
-        .where(event_files.c.event_id == Event.id)
-        .correlate(Event)
+        .where(sequence_files.c.sequence_id == Sequence.id)
+        .correlate(Sequence)
         .scalar_subquery()
     )
 
 
-def _event_sort_spec(sort: str, seed: int | None):
+def _sequence_sort_spec(sort: str, seed: int | None):
     """Map (sort, seed) to (sort_key_expression, descending, nulls_last).
 
     The sort_key is a single SQLAlchemy expression that defines display order
-    for the Events tab. The list query orders by it; the adjacent endpoint
+    for the Sequences tab. The list query orders by it; the adjacent endpoint
     derives next/prev predicates from the same key.
     """
     if sort == "newest":
-        return Event.event_start_local, True, False
+        return Sequence.sequence_start_local, True, False
     if sort == "oldest":
-        return Event.event_start_local, False, False
+        return Sequence.sequence_start_local, False, False
     if sort == "random":
         if seed is None:
             raise ValueError("random sort requires a seed")
-        return func.seeded_hash(Event.id, seed), False, False
+        return func.seeded_hash(Sequence.id, seed), False, False
     if sort == "cls_low":
-        return _event_min_cls_subquery(), False, True
+        return _sequence_min_cls_subquery(), False, True
     raise ValueError(f"unknown sort: {sort}")
 
 
@@ -138,7 +138,7 @@ def _sort_adjacency_predicates(
         # SQLite sorts NULL before every value: the NULL rows lead an ASC
         # list and trail a DESC one, ordered by id among themselves. The
         # predicates say so, because a plain comparison with NULL is
-        # NULL: an event without a capture time (most BRUV clips) made
+        # NULL: a sequence without a capture time (most BRUV clips) made
         # the adjacent endpoint answer 500 and the modal's arrows dead
         # (2026-11-03), and the NULL rows were unreachable from the
         # dated ones.
@@ -199,7 +199,7 @@ def _sort_adjacency_predicates(
     return next_pred, prev_pred, next_order, prev_order
 
 
-def _event_box_clauses(
+def _sequence_box_clauses(
     project_floor: float | None,
     min_confidence: float | None,
     max_confidence: float | None,
@@ -210,7 +210,7 @@ def _event_box_clauses(
     filters: the project floor through `threshold_or_verified` (the
     global override rule), the user's detector range applied LITERALLY,
     and the classifier-score range on classified boxes only. Shared by
-    the event filters and the label tree's counts."""
+    the sequence filters and the label tree's counts."""
     clauses = []
     if project_floor is not None:
         clauses.append(threshold_or_verified(project_floor))
@@ -225,7 +225,7 @@ def _event_box_clauses(
     return clauses
 
 
-def _apply_event_filters(
+def _apply_sequence_filters(
     query,
     db: Session,
     site_ids: list[str] | None = None,
@@ -242,11 +242,11 @@ def _apply_event_filters(
     max_label_confidence: float | None = None,
     project_floor: float | None = None,
 ):
-    """Apply shared filters to an event query. Expects Event already joined to Deployment.
+    """Apply shared filters to a sequence query. Expects Sequence already joined to Deployment.
 
     `flagged` / `favorited` filter at the file level (EXISTS a file in the
-    event with File.flagged / File.favorited set). Per the decided mental
-    model, flag and heart live on files; an event is flagged only in the
+    sequence with File.flagged / File.favorited set). Per the decided mental
+    model, flag and heart live on files; a sequence is flagged only in the
     sense that it contains at least one flagged file.
 
     `min_label_confidence` / `max_label_confidence` filter on the
@@ -261,9 +261,9 @@ def _apply_event_filters(
     detection passes the floor but cannot satisfy a narrower user filter.
 
     `empty`:
-      - "show_only": every file in the event has observation_type == "blank"
+      - "show_only": every file in the sequence has observation_type == "blank"
         (i.e. NOT EXISTS a non-blank file). Skips the labels and confidence
-        gates because empty events have no detections by definition.
+        gates because empty sequences have no detections by definition.
       - "hide": at least one file is non-blank
       - any other value (or None): no filter
     """
@@ -282,56 +282,56 @@ def _apply_event_filters(
         query = query.filter(site_clause)
 
     if date_from is not None:
-        query = query.filter(Event.event_start_local >= date_from)
+        query = query.filter(Sequence.sequence_start_local >= date_from)
 
     if date_to is not None:
         # Include the entire end-of-day
         end_of_day = (
             datetime.combine(date_to.date(), time.max) if isinstance(date_to, datetime) else date_to
         )
-        query = query.filter(Event.event_start_local <= end_of_day)
+        query = query.filter(Sequence.sequence_start_local <= end_of_day)
 
-    box_clauses = _event_box_clauses(
+    box_clauses = _sequence_box_clauses(
         project_floor, min_confidence, max_confidence,
         min_label_confidence, max_label_confidence,
     )
     if labels:
-        # EXISTS subquery: event has at least one file with a detection
+        # EXISTS subquery: sequence has at least one file with a detection
         # matching the given labels. Labels are taxonomy UUIDs.
         label_subq = (
-            select(event_files.c.event_id)
-            .join(File, File.id == event_files.c.file_id)
+            select(sequence_files.c.sequence_id)
+            .join(File, File.id == sequence_files.c.file_id)
             .join(Detection, Detection.file_id == File.id)
-            .where(event_files.c.event_id == Event.id)
+            .where(sequence_files.c.sequence_id == Sequence.id)
             .where(Detection.label_taxonomy_id.in_(labels))
             .where(*box_clauses)
         )
         query = query.filter(exists(label_subq))
     elif box_clauses:
-        # Standalone confidence filter: event has at least one detection in range
+        # Standalone confidence filter: sequence has at least one detection in range
         conf_subq = (
-            select(event_files.c.event_id)
-            .join(File, File.id == event_files.c.file_id)
+            select(sequence_files.c.sequence_id)
+            .join(File, File.id == sequence_files.c.file_id)
             .join(Detection, Detection.file_id == File.id)
-            .where(event_files.c.event_id == Event.id)
+            .where(sequence_files.c.sequence_id == Sequence.id)
             .where(*box_clauses)
         )
         query = query.filter(exists(conf_subq))
 
     if verification in ("verified", "unverified"):
-        # Event verification is an explicit human sign-off stored on
-        # Event.confirmed (set on the Observations page when the species
+        # Sequence verification is an explicit human sign-off stored on
+        # Sequence.confirmed (set on the Observations page when the species
         # and counts are confirmed). Distinct from Detection.verified.
         if verification == "verified":
-            query = query.filter(Event.confirmed == True)  # noqa: E712
+            query = query.filter(Sequence.confirmed == True)  # noqa: E712
         else:
-            query = query.filter(Event.confirmed == False)  # noqa: E712
+            query = query.filter(Sequence.confirmed == False)  # noqa: E712
 
     if flagged in ("flagged", "not_flagged"):
         flagged_subq = (
-            select(event_files.c.event_id)
-            .join(File, File.id == event_files.c.file_id)
-            .where(event_files.c.event_id == Event.id)
+            select(sequence_files.c.sequence_id)
+            .join(File, File.id == sequence_files.c.file_id)
+            .where(sequence_files.c.sequence_id == Sequence.id)
             .where(File.flagged == True)  # noqa: E712
         )
         if flagged == "flagged":
@@ -341,9 +341,9 @@ def _apply_event_filters(
 
     if favorited in ("favorited", "not_favorited"):
         favorited_subq = (
-            select(event_files.c.event_id)
-            .join(File, File.id == event_files.c.file_id)
-            .where(event_files.c.event_id == Event.id)
+            select(sequence_files.c.sequence_id)
+            .join(File, File.id == sequence_files.c.file_id)
+            .where(sequence_files.c.sequence_id == Sequence.id)
             .where(File.favorited == True)  # noqa: E712
         )
         if favorited == "favorited":
@@ -353,9 +353,9 @@ def _apply_event_filters(
 
     if empty in ("show_only", "hide"):
         non_blank_file_subq = (
-            select(event_files.c.event_id)
-            .join(File, File.id == event_files.c.file_id)
-            .where(event_files.c.event_id == Event.id)
+            select(sequence_files.c.sequence_id)
+            .join(File, File.id == sequence_files.c.file_id)
+            .where(sequence_files.c.sequence_id == Sequence.id)
             .where(File.observation_type != "blank")
         )
         if empty == "show_only":
@@ -369,9 +369,9 @@ def _apply_event_filters(
 
 
 @dataclass
-class _EventCarry:
-    """The human layer of an event, kept across a regeneration so a new
-    event covering the same files can inherit it."""
+class _SequenceCarry:
+    """The human layer of a sequence, kept across a regeneration so a new
+    sequence covering the same files can inherit it."""
 
     confirmed: bool
     prior: list  # list[PriorObs]
@@ -382,75 +382,75 @@ class _RegroupCarry:
     """What survives a regeneration, with two different rules.
 
     Counts and the sign-off (`by_fileset`) are claims about one exact file
-    set, so they carry only onto a new event with the same files; a merged
-    or split event gets the AI's numbers back and is unconfirmed. Notes are
-    free text nobody can rebuild, so they are never lost: a new event
-    inherits the notes of every old event it shares a file with. A split
+    set, so they carry only onto a new sequence with the same files; a merged
+    or split sequence gets the AI's numbers back and is unconfirmed. Notes are
+    free text nobody can rebuild, so they are never lost: a new sequence
+    inherits the notes of every old sequence it shares a file with. A split
     duplicates the note onto every child, a merge joins the notes in time
     order, one per line."""
 
-    by_fileset: dict[frozenset, _EventCarry]
-    old_event_by_file: dict[str, str]
-    notes_by_old_event: dict[str, tuple[datetime | None, str, str]]
+    by_fileset: dict[frozenset, _SequenceCarry]
+    old_sequence_by_file: dict[str, str]
+    notes_by_old_sequence: dict[str, tuple[datetime | None, str, str]]
 
     def inherited_notes(self, file_ids: Iterable[str]) -> str | None:
         old_ids = {
-            self.old_event_by_file[f]
+            self.old_sequence_by_file[f]
             for f in file_ids
-            if f in self.old_event_by_file
+            if f in self.old_sequence_by_file
         }
         found = sorted(
-            self.notes_by_old_event[i] for i in old_ids if i in self.notes_by_old_event
+            self.notes_by_old_sequence[i] for i in old_ids if i in self.notes_by_old_sequence
         )
         if not found:
             return None
         return "\n".join(note for _start, _id, note in found)
 
 
-def _snapshot_event_carry(
+def _snapshot_sequence_carry(
     db: Session, deployment_ids: list[str]
 ) -> _RegroupCarry:
-    """Snapshot each event's confirmed flag + observation rows, keyed by its
-    exact set of file IDs (files are partitioned across events, so the keys
+    """Snapshot each sequence's confirmed flag + observation rows, keyed by its
+    exact set of file IDs (files are partitioned across sequences, so the keys
     are unique), plus every note keyed by file so it can be carried by
     overlap. See `_RegroupCarry` for the two rules."""
-    from app.api.crud.event_observation import PriorObs
+    from app.api.crud.sequence_observation import PriorObs
 
     carry = _RegroupCarry({}, {}, {})
     if not deployment_ids:
         return carry
 
-    events = (
-        db.query(Event.id, Event.confirmed, Event.notes, Event.event_start_local)
-        .filter(Event.deployment_id.in_(deployment_ids))
+    sequences = (
+        db.query(Sequence.id, Sequence.confirmed, Sequence.notes, Sequence.sequence_start_local)
+        .filter(Sequence.deployment_id.in_(deployment_ids))
         .all()
     )
-    if not events:
+    if not sequences:
         return carry
-    event_ids = [e.id for e in events]
-    for e in events:
+    sequence_ids = [e.id for e in sequences]
+    for e in sequences:
         if e.notes:
-            carry.notes_by_old_event[e.id] = (e.event_start_local, e.id, e.notes)
+            carry.notes_by_old_sequence[e.id] = (e.sequence_start_local, e.id, e.notes)
 
-    # Chunk the event-id filters: one `IN (?, ?, ...)` over every event blows
+    # Chunk the sequence-id filters: one `IN (?, ?, ...)` over every sequence blows
     # SQLite's bound-parameter limit on a large project (see app/db/sql_params).
-    files_by_event: dict[str, set[str]] = defaultdict(set)
-    for chunk in iter_id_chunks(event_ids):
+    files_by_sequence: dict[str, set[str]] = defaultdict(set)
+    for chunk in iter_id_chunks(sequence_ids):
         for eid, fid in db.query(
-            event_files.c.event_id, event_files.c.file_id
-        ).filter(event_files.c.event_id.in_(chunk)):
-            files_by_event[eid].add(fid)
+            sequence_files.c.sequence_id, sequence_files.c.file_id
+        ).filter(sequence_files.c.sequence_id.in_(chunk)):
+            files_by_sequence[eid].add(fid)
 
-    obs_by_event: dict[str, list] = defaultdict(list)
-    for chunk in iter_id_chunks(event_ids):
+    obs_by_sequence: dict[str, list] = defaultdict(list)
+    for chunk in iter_id_chunks(sequence_ids):
         # rowid order: the cohorts of a species keep their order through
         # the regeneration (see `_rows_in_stored_order`).
         for o in (
-            db.query(EventObservation)
-            .filter(EventObservation.event_id.in_(chunk))
-            .order_by(text("event_observations.rowid"))
+            db.query(SequenceObservation)
+            .filter(SequenceObservation.sequence_id.in_(chunk))
+            .order_by(text("sequence_observations.rowid"))
         ):
-            obs_by_event[o.event_id].append(
+            obs_by_sequence[o.sequence_id].append(
                 PriorObs(
                     label=o.label,
                     label_taxonomy_id=o.label_taxonomy_id,
@@ -464,34 +464,34 @@ def _snapshot_event_carry(
                 )
             )
 
-    for e in events:
-        fileset = frozenset(files_by_event.get(e.id, set()))
+    for e in sequences:
+        fileset = frozenset(files_by_sequence.get(e.id, set()))
         if fileset:
-            carry.by_fileset[fileset] = _EventCarry(
-                confirmed=e.confirmed, prior=obs_by_event.get(e.id, [])
+            carry.by_fileset[fileset] = _SequenceCarry(
+                confirmed=e.confirmed, prior=obs_by_sequence.get(e.id, [])
             )
         for fid in fileset:
-            carry.old_event_by_file[fid] = e.id
+            carry.old_sequence_by_file[fid] = e.id
     return carry
 
 
-def generate_events_for_project(db: Session, project_id: str) -> int:
+def generate_sequences_for_project(db: Session, project_id: str) -> int:
     """
-    Generate events for all deployments in a project.
+    Generate sequences for all deployments in a project.
 
-    Idempotent: deletes existing events before regenerating. Clustering
-    logic lives in `app.services.event_clustering.cluster_files_into_events`
+    Idempotent: deletes existing sequences before regenerating. Clustering
+    logic lives in `app.services.sequence_clustering.cluster_files_into_sequences`
     — the single source of truth shared with the smoothing adapter, so
-    events and smoother inputs never disagree.
+    sequences and smoother inputs never disagree.
 
-    Human confirmations (`Event.confirmed`) and manual counts
-    (`EventObservation.human_count`) are carried onto any regenerated event
+    Human confirmations (`Sequence.confirmed`) and manual counts
+    (`SequenceObservation.human_count`) are carried onto any regenerated sequence
     whose file set is unchanged, so a reprocess that doesn't actually
-    regroup an event never loses its count verification. Events that merge
+    regroup a sequence never loses its count verification. Sequences that merge
     or split (an interval change) find no match and reset to unconfirmed
     AI counts.
 
-    Returns total event count created.
+    Returns total sequence count created.
     """
     from app.models import Project
 
@@ -509,38 +509,38 @@ def generate_events_for_project(db: Session, project_id: str) -> int:
     deployment_ids = [d.id for d in deployments]
 
     # Snapshot the human layer before deleting, then re-attach by file set.
-    carry = _snapshot_event_carry(db, deployment_ids)
+    carry = _snapshot_sequence_carry(db, deployment_ids)
 
-    # Delete existing events for all deployments in this project. Chunked
-    # like the event-id filters above: a project with enough deployments
+    # Delete existing sequences for all deployments in this project. Chunked
+    # like the sequence-id filters above: a project with enough deployments
     # would otherwise blow SQLite's bound-parameter limit.
     for chunk in iter_id_chunks(deployment_ids):
-        db.execute(delete(Event).where(Event.deployment_id.in_(chunk)))
+        db.execute(delete(Sequence).where(Sequence.deployment_id.in_(chunk)))
 
-    total_events = 0
+    total_sequences = 0
     for deployment in deployments:
-        total_events += _regenerate_deployment_events(
+        total_sequences += _regenerate_deployment_sequences(
             db, deployment, independence_interval, threshold, carry
         )
 
     db.flush()
     db.commit()
-    return total_events
+    return total_sequences
 
 
-def generate_events_for_deployment(db: Session, deployment: Deployment) -> int:
+def generate_sequences_for_deployment(db: Session, deployment: Deployment) -> int:
     """
-    Regenerate the events of one deployment, carrying the human layer
-    like `generate_events_for_project` does. Used when a deployment-level
+    Regenerate the sequences of one deployment, carrying the human layer
+    like `generate_sequences_for_project` does. Used when a deployment-level
     setting that changes the grouping (`paired_cameras`) is edited.
 
     Does NOT commit: the caller owns the transaction. Returns the number
-    of events created.
+    of sequences created.
     """
     project = deployment.project
-    carry = _snapshot_event_carry(db, [deployment.id])
-    db.execute(delete(Event).where(Event.deployment_id == deployment.id))
-    count = _regenerate_deployment_events(
+    carry = _snapshot_sequence_carry(db, [deployment.id])
+    db.execute(delete(Sequence).where(Sequence.deployment_id == deployment.id))
+    count = _regenerate_deployment_sequences(
         db,
         deployment,
         project.independence_interval,
@@ -551,17 +551,17 @@ def generate_events_for_deployment(db: Session, deployment: Deployment) -> int:
     return count
 
 
-def _regenerate_deployment_events(
+def _regenerate_deployment_sequences(
     db: Session,
     deployment: Deployment,
     independence_interval: int,
     threshold: float,
     carry: _RegroupCarry,
 ) -> int:
-    """Rebuild one deployment's events from its files. The caller has
-    already snapshotted `carry` and deleted the old Event rows. No commit."""
-    from app.api.crud.event_observation import calculate_max_n_for_event
-    from app.services.event_clustering import cluster_files_into_events
+    """Rebuild one deployment's sequences from its files. The caller has
+    already snapshotted `carry` and deleted the old Sequence rows. No commit."""
+    from app.api.crud.sequence_observation import calculate_max_n_for_sequence
+    from app.services.sequence_clustering import cluster_files_into_sequences
 
     files = (
         db.query(File)
@@ -572,21 +572,21 @@ def _regenerate_deployment_events(
     )
 
     count = 0
-    for cluster in cluster_files_into_events(
+    for cluster in cluster_files_into_sequences(
         files, independence_interval, paired_cameras=deployment.paired_cameras
     ):
-        event = _create_event(db, deployment.id, cluster)
+        sequence = _create_sequence(db, deployment.id, cluster)
         file_ids = [f.id for f in cluster]
         carried = carry.by_fileset.get(frozenset(file_ids))
         if carried is not None:
-            event.confirmed = carried.confirmed
-        event.notes = carry.inherited_notes(file_ids)
-        # Rebuild MaxN, carrying the human layer for a matched event.
-        # calculate_max_n_for_event still clears `confirmed` if the
+            sequence.confirmed = carried.confirmed
+        sequence.notes = carry.inherited_notes(file_ids)
+        # Rebuild MaxN, carrying the human layer for a matched sequence.
+        # calculate_max_n_for_sequence still clears `confirmed` if the
         # species/count set changed (e.g. smoothing relabelled a crop).
-        calculate_max_n_for_event(
+        calculate_max_n_for_sequence(
             db,
-            event.id,
+            sequence.id,
             threshold,
             prior=carried.prior if carried is not None else None,
         )
@@ -594,9 +594,9 @@ def _regenerate_deployment_events(
     return count
 
 
-def _format_event_range(start, end) -> str | None:
-    """A human range like "Jan 05, 2024 10:00–10:30" from naive local event
-    bounds (camera wall-clock; no tz conversion). None for dateless events."""
+def _format_sequence_range(start, end) -> str | None:
+    """A human range like "Jan 05, 2024 10:00–10:30" from naive local sequence
+    bounds (camera wall-clock; no tz conversion). None for dateless sequences."""
     if start is None:
         return None
     if end is None or end.date() == start.date():
@@ -607,23 +607,23 @@ def _format_event_range(start, end) -> str | None:
 
 def _regroup_example(
     db: Session,
-    event_id: str,
+    sequence_id: str,
     start,
     end,
-    event_files_set: set[str],
+    sequence_files_set: set[str],
     new_filesets: set[frozenset],
 ) -> dict:
-    """A concrete "here's what you'll lose" example for one confirmed event
+    """A concrete "here's what you'll lose" example for one confirmed sequence
     that regroups: its confirmed animal counts, its time range, and how many
-    new events its files land in (1 = merged into a bigger event, >1 = split)."""
+    new sequences its files land in (1 = merged into a bigger sequence, >1 = split)."""
     # Summed per species: a species split into cohorts is one entry.
     count_by_label: dict[str, int] = defaultdict(int)
     for o in (
-        db.query(EventObservation)
+        db.query(SequenceObservation)
         .filter(
-            EventObservation.event_id == event_id,
-            is_wildlife_category(EventObservation.category),
-            EventObservation.label.isnot(None),
+            SequenceObservation.sequence_id == sequence_id,
+            is_wildlife_category(SequenceObservation.category),
+            SequenceObservation.label.isnot(None),
         )
         .all()
     ):
@@ -631,9 +631,9 @@ def _regroup_example(
     observations = [
         {"label": label, "count": count} for label, count in count_by_label.items()
     ]
-    maps_to = sum(1 for fs in new_filesets if fs & event_files_set)
+    maps_to = sum(1 for fs in new_filesets if fs & sequence_files_set)
     return {
-        "time_range": _format_event_range(start, end),
+        "time_range": _format_sequence_range(start, end),
         "observations": observations,
         "maps_to": maps_to,
     }
@@ -645,15 +645,15 @@ def count_regroup_impact(
     """How much count verification a regrouping at `independence_interval`
     would reset.
 
-    An event's confirmation and manual counts survive a regeneration only
+    A sequence's confirmation and manual counts survive a regeneration only
     when its exact file set still forms one cluster. This clusters the
     project's files at the candidate interval and counts the currently
-    confirmed events (and manual-count rows) whose file set would no longer
-    survive, plus one concrete `example` of a confirmed event that regroups.
+    confirmed sequences (and manual-count rows) whose file set would no longer
+    survive, plus one concrete `example` of a confirmed sequence that regroups.
     Read-only. Returns ``{confirmed_at_risk, counts_at_risk, total_confirmed,
     example}``.
     """
-    from app.services.event_clustering import cluster_files_into_events
+    from app.services.sequence_clustering import cluster_files_into_sequences
 
     deployments = (
         db.query(Deployment).filter(Deployment.project_id == project_id).all()
@@ -676,65 +676,65 @@ def count_regroup_impact(
             .filter(File.file_type.in_(["image", "video"]))
             .all()
         )
-        for cluster in cluster_files_into_events(
+        for cluster in cluster_files_into_sequences(
             files, independence_interval, paired_cameras=dep.paired_cameras
         ):
             new_filesets.add(frozenset(f.id for f in cluster))
 
-    events = (
+    sequences = (
         db.query(
-            Event.id,
-            Event.confirmed,
-            Event.event_start_local,
-            Event.event_end_local,
+            Sequence.id,
+            Sequence.confirmed,
+            Sequence.sequence_start_local,
+            Sequence.sequence_end_local,
         )
-        .filter(Event.deployment_id.in_(deployment_ids))
+        .filter(Sequence.deployment_id.in_(deployment_ids))
         .all()
     )
-    if not events:
+    if not sequences:
         return empty
-    event_ids = [e.id for e in events]
+    sequence_ids = [e.id for e in sequences]
 
-    # Chunk the event-id filters: one `IN (?, ?, ...)` over every event blows
+    # Chunk the sequence-id filters: one `IN (?, ?, ...)` over every sequence blows
     # SQLite's bound-parameter limit on a large project (see app/db/sql_params).
-    files_by_event: dict[str, set[str]] = defaultdict(set)
-    for chunk in iter_id_chunks(event_ids):
+    files_by_sequence: dict[str, set[str]] = defaultdict(set)
+    for chunk in iter_id_chunks(sequence_ids):
         for eid, fid in db.query(
-            event_files.c.event_id, event_files.c.file_id
-        ).filter(event_files.c.event_id.in_(chunk)):
-            files_by_event[eid].add(fid)
+            sequence_files.c.sequence_id, sequence_files.c.file_id
+        ).filter(sequence_files.c.sequence_id.in_(chunk)):
+            files_by_sequence[eid].add(fid)
 
-    human_by_event: dict[str, int] = defaultdict(int)
-    for chunk in iter_id_chunks(event_ids):
-        for (eid,) in db.query(EventObservation.event_id).filter(
-            EventObservation.event_id.in_(chunk),
-            EventObservation.human_count.isnot(None),
+    human_by_sequence: dict[str, int] = defaultdict(int)
+    for chunk in iter_id_chunks(sequence_ids):
+        for (eid,) in db.query(SequenceObservation.sequence_id).filter(
+            SequenceObservation.sequence_id.in_(chunk),
+            SequenceObservation.human_count.isnot(None),
         ):
-            human_by_event[eid] += 1
+            human_by_sequence[eid] += 1
 
     total_confirmed = confirmed_at_risk = counts_at_risk = 0
-    example_event = None  # earliest affected confirmed event, for the example
-    for e in events:
-        survives = frozenset(files_by_event.get(e.id, set())) in new_filesets
+    example_sequence = None  # earliest affected confirmed sequence, for the example
+    for e in sequences:
+        survives = frozenset(files_by_sequence.get(e.id, set())) in new_filesets
         if e.confirmed:
             total_confirmed += 1
             if not survives:
                 confirmed_at_risk += 1
-                if example_event is None or _starts_before(e, example_event):
-                    example_event = e
+                if example_sequence is None or _starts_before(e, example_sequence):
+                    example_sequence = e
         if not survives:
-            counts_at_risk += human_by_event.get(e.id, 0)
+            counts_at_risk += human_by_sequence.get(e.id, 0)
 
     example = (
         _regroup_example(
             db,
-            example_event.id,
-            example_event.event_start_local,
-            example_event.event_end_local,
-            files_by_event.get(example_event.id, set()),
+            example_sequence.id,
+            example_sequence.sequence_start_local,
+            example_sequence.sequence_end_local,
+            files_by_sequence.get(example_sequence.id, set()),
             new_filesets,
         )
-        if example_event is not None
+        if example_sequence is not None
         else None
     )
 
@@ -747,40 +747,40 @@ def count_regroup_impact(
 
 
 def _starts_before(a, b) -> bool:
-    """True when event `a` starts before `b`; dateless (None) sorts last."""
-    if a.event_start_local is None:
+    """True when sequence `a` starts before `b`; dateless (None) sorts last."""
+    if a.sequence_start_local is None:
         return False
-    if b.event_start_local is None:
+    if b.sequence_start_local is None:
         return True
-    return a.event_start_local < b.event_start_local
+    return a.sequence_start_local < b.sequence_start_local
 
 
-def _create_event(db: Session, deployment_id: str, files: list[File]) -> Event:
-    """Create an event with its junction table entries."""
-    event = Event(
+def _create_sequence(db: Session, deployment_id: str, files: list[File]) -> Sequence:
+    """Create a sequence with its junction table entries."""
+    sequence = Sequence(
         id=str(uuid.uuid4()),
         deployment_id=deployment_id,
-        event_start_local=files[0].captured_at_local,
-        event_end_local=files[-1].captured_at_local,
+        sequence_start_local=files[0].captured_at_local,
+        sequence_end_local=files[-1].captured_at_local,
         file_count=len(files),
     )
-    db.add(event)
-    db.flush()  # Get event.id assigned
+    db.add(sequence)
+    db.flush()  # Get sequence.id assigned
 
     # Insert junction table rows
     for seq, file in enumerate(files):
         db.execute(
-            insert(event_files).values(
-                event_id=event.id,
+            insert(sequence_files).values(
+                sequence_id=sequence.id,
                 file_id=file.id,
-                sequence_number=seq,
+                position=seq,
             )
         )
 
-    return event
+    return sequence
 
 
-def get_events_by_project(
+def get_sequences_by_project(
     db: Session,
     project_id: str,
     skip: int = 0,
@@ -802,17 +802,17 @@ def get_events_by_project(
     seed: int | None = None,
 ) -> list[dict]:
     """
-    Get event summaries for a project.
+    Get sequence summaries for a project.
 
-    Returns event data with representative file, label list,
+    Returns sequence data with representative file, label list,
     observation type, and verification progress.
     """
     query = (
-        db.query(Event)
+        db.query(Sequence)
         .join(Deployment)
         .filter(Deployment.project_id == project_id)
     )
-    query = _apply_event_filters(
+    query = _apply_sequence_filters(
         query,
         db,
         site_ids=site_ids,
@@ -829,62 +829,62 @@ def get_events_by_project(
         max_label_confidence=max_label_confidence,
         project_floor=project_floor,
     )
-    sort_key, descending, nulls_last = _event_sort_spec(sort, seed)
+    sort_key, descending, nulls_last = _sequence_sort_spec(sort, seed)
     order_clauses = _sort_order_by_clauses(
-        sort_key, Event.id, descending=descending, nulls_last=nulls_last,
+        sort_key, Sequence.id, descending=descending, nulls_last=nulls_last,
     )
-    events = (
-        query.options(selectinload(Event.files).selectinload(File.detections))
+    sequences = (
+        query.options(selectinload(Sequence.files).selectinload(File.detections))
         .order_by(*order_clauses)
         .offset(skip)
         .limit(limit)
         .all()
     )
 
-    # Deduplicate events (joinedload can produce duplicates)
+    # Deduplicate sequences (joinedload can produce duplicates)
     seen_ids: set[str] = set()
-    unique_events: list[Event] = []
-    for event in events:
-        if event.id not in seen_ids:
-            seen_ids.add(event.id)
-            unique_events.append(event)
+    unique_sequences: list[Sequence] = []
+    for sequence in sequences:
+        if sequence.id not in seen_ids:
+            seen_ids.add(sequence.id)
+            unique_sequences.append(sequence)
 
-    # Batch-load MaxN frames for all events in this page
-    from app.api.crud.event_observation import get_max_n_frames
+    # Batch-load MaxN frames for all sequences in this page
+    from app.api.crud.sequence_observation import get_max_n_frames
 
-    event_ids = [e.id for e in unique_events]
-    max_n_by_event: dict[str, list[dict]] = {}
-    for eid in event_ids:
-        max_n_by_event[eid] = get_max_n_frames(db, eid)
+    sequence_ids = [e.id for e in unique_sequences]
+    max_n_by_sequence: dict[str, list[dict]] = {}
+    for eid in sequence_ids:
+        max_n_by_sequence[eid] = get_max_n_frames(db, eid)
 
     # Gallery-card chips must match the Counts panel's species. Source the
-    # allowed species per event from its EventObservation rows, which
+    # allowed species per sequence from its SequenceObservation rows, which
     # already apply the best-frame gate for videos (see
-    # calculate_max_n_for_event). Without this, non-best-frame per-frame
+    # calculate_max_n_for_sequence). Without this, non-best-frame per-frame
     # classifier noise leaks into the card chips even though it's correctly
     # excluded from the count suggestion.
-    allowed_keys_by_event: dict[str, set[str]] = defaultdict(set)
-    if event_ids:
+    allowed_keys_by_sequence: dict[str, set[str]] = defaultdict(set)
+    if sequence_ids:
         obs_rows = (
             db.query(
-                EventObservation.event_id,
-                EventObservation.label_taxonomy_id,
-                EventObservation.label,
+                SequenceObservation.sequence_id,
+                SequenceObservation.label_taxonomy_id,
+                SequenceObservation.label,
             )
-            .filter(EventObservation.event_id.in_(event_ids))
+            .filter(SequenceObservation.sequence_id.in_(sequence_ids))
             .all()
         )
         for eid, tid, lbl in obs_rows:
             key = tid or lbl
             if key is not None:
-                allowed_keys_by_event[eid].add(key)
+                allowed_keys_by_sequence[eid].add(key)
 
     summaries = []
-    for event in unique_events:
-        # Sort files by sequence within event. Same-second bursts break
+    for sequence in unique_sequences:
+        # Sort files by sequence within sequence. Same-second bursts break
         # ties on file_path (sequential camera filenames = capture order).
         sorted_files = sorted(
-            event.files,
+            sequence.files,
             key=lambda f: (f.captured_at_local, f.file_path),
         )
 
@@ -893,7 +893,7 @@ def get_events_by_project(
         label_set: set[str] = set()
         label_to_scientific: dict[str, str] = {}
         label_to_common: dict[str, str] = {}
-        allowed_keys = allowed_keys_by_event.get(event.id, set())
+        allowed_keys = allowed_keys_by_sequence.get(sequence.id, set())
         for f in sorted_files:
             for d in f.detections:
                 meets_floor = (
@@ -913,7 +913,7 @@ def get_events_by_project(
                     tid = d.label_taxonomy_id
                     raw = d.label
                     # Same gate as the count suggestion: only species the
-                    # event's EventObservation rows kept (best-frame gated
+                    # sequence's SequenceObservation rows kept (best-frame gated
                     # for videos) become chips.
                     if (tid or raw) not in allowed_keys:
                         continue
@@ -934,9 +934,9 @@ def get_events_by_project(
                         if d.common_name and raw not in label_to_common:
                             label_to_common[raw] = d.common_name
 
-        # The event's dominant observation type is the same rule applied
+        # The sequence's dominant observation type is the same rule applied
         # one level up: the category of the strongest detection anywhere
-        # in the event. This used to be a second priority table with its
+        # in the sequence. This used to be a second priority table with its
         # own weights ({"animal": 4, "human": 3, ...}), a duplicate of
         # the one in observation_type.py that could drift from it. Now
         # there is one rule and no vocabulary to keep in step.
@@ -945,7 +945,7 @@ def get_events_by_project(
         }
         # Each file contributes only its visible surface, so a video is
         # represented by its best frame here too. Flattening the raw
-        # relationship would let an off-frame box name the whole event,
+        # relationship would let an off-frame box name the whole sequence,
         # which the species chips built just above already refuse to do.
         dominant_type = derive_observation_type(
             (
@@ -977,7 +977,7 @@ def get_events_by_project(
         any_file_favorited = any(f.favorited for f in sorted_files)
 
         # MaxN verification counts
-        max_n_frames = max_n_by_event.get(event.id, [])
+        max_n_frames = max_n_by_sequence.get(sequence.id, [])
         file_verified_map = {f.id: f.verified for f in sorted_files}
         total_maxn_count = len(max_n_frames)
         verified_maxn_count = sum(
@@ -986,10 +986,10 @@ def get_events_by_project(
             if file_verified_map.get(mf["file_id"], False)
         )
 
-        # Event verification is the explicit human sign-off on species and
-        # counts, stored on Event.confirmed (set on the Observations page).
+        # Sequence verification is the explicit human sign-off on species and
+        # counts, stored on Sequence.confirmed (set on the Observations page).
         # The file-level verified_* counts above stay as secondary detail.
-        is_confirmed = event.confirmed
+        is_confirmed = sequence.confirmed
 
         # MaxN-derived thumbnail: dominant species' MaxN frame, fallback to first file
         thumbnail_file_id = max_n_frames[0]["file_id"] if max_n_frames else (
@@ -1000,16 +1000,16 @@ def get_events_by_project(
 
         summaries.append(
             {
-                "id": event.id,
-                "deployment_id": event.deployment_id,
-                "event_start_local": event.event_start_local,
-                "event_end_local": event.event_end_local,
-                "file_count": event.file_count,
+                "id": sequence.id,
+                "deployment_id": sequence.deployment_id,
+                "sequence_start_local": sequence.sequence_start_local,
+                "sequence_end_local": sequence.sequence_end_local,
+                "file_count": sequence.file_count,
                 "thumbnail_file_id": thumbnail_file_id,
                 "collage_file_ids": collage_file_ids,
                 "max_n_frames": max_n_frames,
-                "site_name": event.deployment.site.name
-                if event.deployment and event.deployment.site
+                "site_name": sequence.deployment.site.name
+                if sequence.deployment and sequence.deployment.site
                 else None,
                 "labels": sorted(label_set),
                 "scientific_labels": dict(label_to_scientific),
@@ -1032,34 +1032,34 @@ def get_events_by_project(
     return summaries
 
 
-def get_event_with_files(db: Session, event_id: str) -> Event | None:
+def get_sequence_with_files(db: Session, sequence_id: str) -> Sequence | None:
     """
-    Get event with its files and their tracks. The boxes are not loaded
+    Get sequence with its files and their tracks. The boxes are not loaded
     here: the router hands each file to `file_payload` in the "cards"
     scope, and the viewer fetches the full file it focuses on itself.
     Until 2026-11-02 every box of every file came along, 28 MB for one
     BRUV clip, and the Counts modal waited 15 s on it.
 
-    Files and tracks load as IN-selects, never joined onto the event
+    Files and tracks load as IN-selects, never joined onto the sequence
     row: joined, a tracked hour of video (12,700 boxes) took 30 seconds
-    to come back, and the events list did the same per page.
+    to come back, and the sequences list did the same per page.
     """
-    event = (
-        db.query(Event)
-        .options(selectinload(Event.files).selectinload(File.tracks))
-        .options(joinedload(Event.deployment).joinedload(Deployment.site))
-        .filter(Event.id == event_id)
+    sequence = (
+        db.query(Sequence)
+        .options(selectinload(Sequence.files).selectinload(File.tracks))
+        .options(joinedload(Sequence.deployment).joinedload(Deployment.site))
+        .filter(Sequence.id == sequence_id)
         .first()
     )
-    return event
+    return sequence
 
 
-class EventCounts(NamedTuple):
+class SequenceCounts(NamedTuple):
     total: int
     confirmed: int
 
 
-def get_event_counts(
+def get_sequence_counts(
     db: Session,
     project_id: str,
     site_ids: list[str] | None = None,
@@ -1075,18 +1075,18 @@ def get_event_counts(
     min_label_confidence: float | None = None,
     max_label_confidence: float | None = None,
     project_floor: float | None = None,
-) -> EventCounts:
-    """How many events pass the filters, and how many of those a person
-    signed off on the Counts page (`Event.confirmed`). One statement."""
+) -> SequenceCounts:
+    """How many sequences pass the filters, and how many of those a person
+    signed off on the Counts page (`Sequence.confirmed`). One statement."""
     query = (
         db.query(
-            func.count(Event.id),
-            func.coalesce(func.sum(func.cast(Event.confirmed, Integer)), 0),
+            func.count(Sequence.id),
+            func.coalesce(func.sum(func.cast(Sequence.confirmed, Integer)), 0),
         )
         .join(Deployment)
         .filter(Deployment.project_id == project_id)
     )
-    query = _apply_event_filters(
+    query = _apply_sequence_filters(
         query,
         db,
         site_ids=site_ids,
@@ -1104,12 +1104,12 @@ def get_event_counts(
         project_floor=project_floor,
     )
     total, confirmed = query.one()
-    return EventCounts(total=total, confirmed=int(confirmed))
+    return SequenceCounts(total=total, confirmed=int(confirmed))
 
 
-def get_adjacent_events(
+def get_adjacent_sequences(
     db: Session,
-    event_id: str,
+    sequence_id: str,
     project_id: str,
     site_ids: list[str] | None = None,
     date_from: datetime | None = None,
@@ -1128,10 +1128,10 @@ def get_adjacent_events(
     seed: int | None = None,
 ) -> dict:
     """
-    Get adjacent event IDs for navigation.
+    Get adjacent sequence IDs for navigation.
 
     Returns previous_id, next_id, next_unconfirmed_id, current_index, total_count.
-    Order matches `get_events_by_project` for the same `(sort, seed)`. The
+    Order matches `get_sequences_by_project` for the same `(sort, seed)`. The
     next/prev predicates are derived from the active sort key so modal
     Next/Prev tracks the displayed grid order.
     """
@@ -1151,13 +1151,13 @@ def get_adjacent_events(
         project_floor=project_floor,
     )
 
-    sort_key, descending, nulls_last = _event_sort_spec(sort, seed)
+    sort_key, descending, nulls_last = _sequence_sort_spec(sort, seed)
 
-    # 1. Get current event's sort key value.
+    # 1. Get current sequence's sort key value.
     current_value = (
-        db.query(sort_key).filter(Event.id == event_id).scalar()
+        db.query(sort_key).filter(Sequence.id == sequence_id).scalar()
     )
-    current = db.query(Event.id).filter(Event.id == event_id).first()
+    current = db.query(Sequence.id).filter(Sequence.id == sequence_id).first()
     if not current:
         return {
             "previous_id": None,
@@ -1170,17 +1170,17 @@ def get_adjacent_events(
     cid = current.id
 
     next_pred, prev_pred, next_order, prev_order = _sort_adjacency_predicates(
-        sort_key, Event.id, current_value, cid,
+        sort_key, Sequence.id, current_value, cid,
         descending=descending, nulls_last=nulls_last,
     )
 
     def base():
         q = (
-            db.query(Event.id)
+            db.query(Sequence.id)
             .join(Deployment)
             .filter(Deployment.project_id == project_id)
         )
-        return _apply_event_filters(q, db, **filter_kwargs)
+        return _apply_sequence_filters(q, db, **filter_kwargs)
 
     # 2. Previous (one row above current in display order).
     prev = base().filter(prev_pred).order_by(*prev_order).first()
@@ -1190,35 +1190,35 @@ def get_adjacent_events(
 
     # 4. Next unconfirmed (next row in display order whose species and
     # counts have not been confirmed). Uses base() so all active filters
-    # apply. This drives the "next event to confirm" jump on the
+    # apply. This drives the "next sequence to confirm" jump on the
     # Observations page.
     nxt_unconf = (
         base()
         .filter(next_pred)
-        .filter(Event.confirmed == False)  # noqa: E712
+        .filter(Sequence.confirmed == False)  # noqa: E712
         .order_by(*next_order)
         .first()
     )
 
     # 5a. Total count
     total_q = (
-        db.query(func.count(Event.id))
+        db.query(func.count(Sequence.id))
         .join(Deployment)
         .filter(Deployment.project_id == project_id)
     )
-    total_q = _apply_event_filters(total_q, db, **filter_kwargs)
+    total_q = _apply_sequence_filters(total_q, db, **filter_kwargs)
     total = total_q.scalar() or 0
 
     # 5b. Current index = number of rows that come BEFORE current in display
     # order. This is the prev_pred set, plus current itself if you want
     # 1-based; we use 0-based to match the existing UI.
     idx_q = (
-        db.query(func.count(Event.id))
+        db.query(func.count(Sequence.id))
         .join(Deployment)
         .filter(Deployment.project_id == project_id)
         .filter(prev_pred)
     )
-    idx_q = _apply_event_filters(idx_q, db, **filter_kwargs)
+    idx_q = _apply_sequence_filters(idx_q, db, **filter_kwargs)
     idx = idx_q.scalar() or 0
 
     return {
@@ -1230,7 +1230,7 @@ def get_adjacent_events(
     }
 
 
-def get_event_verification_stats(
+def get_sequence_verification_stats(
     db: Session,
     project_id: str,
     site_ids: list[str] | None = None,
@@ -1248,9 +1248,9 @@ def get_event_verification_stats(
     project_floor: float | None = None,
 ) -> dict[str, int]:
     """The reprocess dialog's "what is protected" numbers: the filtered
-    events and how many are confirmed, and the cards on those events and
-    how many are verified. A caller that needs the events only uses
-    `get_event_counts`, which skips the pass over the detections."""
+    sequences and how many are confirmed, and the cards on those sequences and
+    how many are verified. A caller that needs the sequences only uses
+    `get_sequence_counts`, which skips the pass over the detections."""
     filter_kwargs = dict(
         site_ids=site_ids,
         date_from=date_from,
@@ -1267,14 +1267,14 @@ def get_event_verification_stats(
         project_floor=project_floor,
     )
 
-    # Base: filtered event IDs
-    event_ids_q = (
-        db.query(Event.id)
+    # Base: filtered sequence IDs
+    sequence_ids_q = (
+        db.query(Sequence.id)
         .join(Deployment)
         .filter(Deployment.project_id == project_id)
     )
-    event_ids_q = _apply_event_filters(event_ids_q, db, **filter_kwargs)
-    event_ids_subq = event_ids_q.subquery()
+    sequence_ids_q = _apply_sequence_filters(sequence_ids_q, db, **filter_kwargs)
+    sequence_ids_subq = sequence_ids_q.subquery()
 
     # Per-detection counts. Denominator and numerator share the same
     # filter so the ratio is meaningful.
@@ -1291,8 +1291,8 @@ def get_event_verification_stats(
             func.sum(func.cast(Detection.verified, Integer)),
         )
         .join(File, File.id == Detection.file_id)
-        .join(event_files, event_files.c.file_id == File.id)
-        .filter(event_files.c.event_id.in_(select(event_ids_subq.c.id)))
+        .join(sequence_files, sequence_files.c.file_id == File.id)
+        .filter(sequence_files.c.sequence_id.in_(select(sequence_ids_subq.c.id)))
         .filter(on_visible_frame())
     )
     if project_floor is not None:
@@ -1301,11 +1301,11 @@ def get_event_verification_stats(
         det_q = det_q.filter(Detection.confidence >= min_confidence)
     total_detections, verified_detections = det_q.one()
 
-    events = get_event_counts(db, project_id, **filter_kwargs)
+    sequences = get_sequence_counts(db, project_id, **filter_kwargs)
 
     return {
-        "events_confirmed": events.confirmed,
-        "events_total": events.total,
+        "sequences_confirmed": sequences.confirmed,
+        "sequences_total": sequences.total,
         "total_detections": int(total_detections or 0),
         "verified_detections": int(verified_detections or 0),
     }
@@ -1352,7 +1352,7 @@ def present_label_rows(
 def get_filter_options(db: Session, project_id: str) -> dict:
     """Everything about the labels a project has, for the filter bars and
     the species colours: which labels (with both names, the colour map
-    and the filter tree), the event date range, and the lowest
+    and the filter tree), the sequence date range, and the lowest
     classification score among the labels' boxes.
 
     One pass over the project's boxes. The counts per label under a
@@ -1404,8 +1404,8 @@ def get_filter_options(db: Session, project_id: str) -> dict:
 
     date_row = (
         db.query(
-            func.min(Event.event_start_local),
-            func.max(Event.event_start_local),
+            func.min(Sequence.sequence_start_local),
+            func.max(Sequence.sequence_start_local),
         )
         .join(Deployment)
         .filter(Deployment.project_id == project_id)
@@ -1426,7 +1426,7 @@ def get_filter_options(db: Session, project_id: str) -> dict:
     }
 
 
-def count_events_by_label(
+def count_sequences_by_label(
     db: Session,
     project_id: str,
     *,
@@ -1443,19 +1443,19 @@ def count_events_by_label(
     min_label_confidence: float | None = None,
     max_label_confidence: float | None = None,
 ) -> dict[str, int]:
-    """Events per label under every filter except the label filter: what
+    """Sequences per label under every filter except the label filter: what
     the Counts page would list if that label were ticked alone. The
-    event set comes from the page's own filters, the boxes from its own
+    sequence set comes from the page's own filters, the boxes from its own
     clauses, so the two cannot disagree.
 
     "Show only empty" is the one exception: the page then ignores the
-    label filter altogether (an empty event has no species), so every
-    label reads 0 rather than the number of empty events.
+    label filter altogether (an empty sequence has no species), so every
+    label reads 0 rather than the number of empty sequences.
     """
     if empty == "show_only":
         return {}
-    events = _apply_event_filters(
-        db.query(Event).join(Deployment).filter(Deployment.project_id == project_id),
+    sequences = _apply_sequence_filters(
+        db.query(Sequence).join(Deployment).filter(Deployment.project_id == project_id),
         db,
         site_ids=site_ids,
         date_from=date_from,
@@ -1470,18 +1470,18 @@ def count_events_by_label(
         min_label_confidence=min_label_confidence,
         max_label_confidence=max_label_confidence,
         project_floor=project_floor,
-    ).with_entities(Event.id).subquery()
+    ).with_entities(Sequence.id).subquery()
     rows = (
         db.query(
             Detection.label_taxonomy_id,
-            func.count(func.distinct(event_files.c.event_id)),
+            func.count(func.distinct(sequence_files.c.sequence_id)),
         )
         .join(File, File.id == Detection.file_id)
-        .join(event_files, event_files.c.file_id == File.id)
-        .filter(event_files.c.event_id.in_(select(events.c.id)))
+        .join(sequence_files, sequence_files.c.file_id == File.id)
+        .filter(sequence_files.c.sequence_id.in_(select(sequences.c.id)))
         .filter(Detection.label_taxonomy_id.isnot(None))
         .filter(
-            *_event_box_clauses(
+            *_sequence_box_clauses(
                 project_floor, min_confidence, max_confidence,
                 min_label_confidence, max_label_confidence,
             )

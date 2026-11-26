@@ -7,9 +7,9 @@ import pytest
 from tests.conftest import (
     make_deployment,
     make_detection,
-    make_event_with_files,
     make_file,
     make_project,
+    make_sequence_with_files,
     make_site,
 )
 
@@ -334,12 +334,12 @@ def test_get_label_stats_empty(client, db):
     assert resp.json() == []
 
 
-def _add_observation(db, *, event_id, label, category="animal", max_n=1, human_count=None):
-    from app.models.event_observation import EventObservation
+def _add_observation(db, *, sequence_id, label, category="animal", max_n=1, human_count=None):
+    from app.models.sequence_observation import SequenceObservation
 
     db.add(
-        EventObservation(
-            event_id=event_id,
+        SequenceObservation(
+            sequence_id=sequence_id,
             label=label,
             label_taxonomy_id=None,
             category=category,
@@ -355,19 +355,19 @@ def test_independent_observation_stats_honours_human_count(client, db):
     counts human-only species, and excludes person/vehicle."""
     from datetime import datetime
 
-    from tests.conftest import make_deployment, make_event_with_files
+    from tests.conftest import make_deployment, make_sequence_with_files
 
     p = make_project(db)
     dep = make_deployment(db, project_id=p.id)
-    ev = make_event_with_files(
-        db, deployment_id=dep.id, event_start_local=datetime(2024, 1, 1, 12, 0, 0)
+    ev = make_sequence_with_files(
+        db, deployment_id=dep.id, sequence_start_local=datetime(2024, 1, 1, 12, 0, 0)
     )
     # AI said 2 lions, human confirmed 5.
-    _add_observation(db, event_id=ev.id, label="lion", max_n=2, human_count=5)
+    _add_observation(db, sequence_id=ev.id, label="lion", max_n=2, human_count=5)
     # Human added a species the AI missed (max_n=0).
-    _add_observation(db, event_id=ev.id, label="fox", max_n=0, human_count=1)
+    _add_observation(db, sequence_id=ev.id, label="fox", max_n=0, human_count=1)
     # Person is not part of label refinement and must be excluded.
-    _add_observation(db, event_id=ev.id, label="person", category="person", max_n=4)
+    _add_observation(db, sequence_id=ev.id, label="person", category="person", max_n=4)
 
     resp = client.get(f"/api/projects/{p.id}/independent-observation-stats")
     assert resp.status_code == 200
@@ -792,22 +792,22 @@ def test_delete_custom_label_is_global_and_reports_usage(client, db):
     assert client.get(f"/api/projects/{a.id}/custom-labels").json() == []
 
 
-def test_delete_custom_label_rebuilds_event_counts(client, db):
-    """Deleting a label rebuilds the counts of events that used it: the
+def test_delete_custom_label_rebuilds_sequence_counts(client, db):
+    """Deleting a label rebuilds the counts of sequences that used it: the
     species' count row is gone and the box counts as its category again."""
     from datetime import datetime
 
-    from app.api.crud.event_observation import (
-        calculate_max_n_for_event,
-        list_event_observations,
+    from app.api.crud.sequence_observation import (
+        calculate_max_n_for_sequence,
+        list_sequence_observations,
     )
-    from tests.conftest import make_event_with_files
+    from tests.conftest import make_sequence_with_files
 
     p = make_project(db, counting_threshold=0.5)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    ev = make_event_with_files(
-        db, deployment_id=d.id, event_start_local=datetime(2024, 1, 1, 12)
+    ev = make_sequence_with_files(
+        db, deployment_id=d.id, sequence_start_local=datetime(2024, 1, 1, 12)
     )
     created = client.post(
         f"/api/projects/{p.id}/custom-labels", json={"name": "rare ibex"}
@@ -817,9 +817,9 @@ def test_delete_custom_label_rebuilds_event_counts(client, db):
         confidence=0.9, label_confidence=0.9, label_taxonomy_id=created["id"],
     )
     db.flush()
-    calculate_max_n_for_event(db, ev.id, 0.5)
+    calculate_max_n_for_sequence(db, ev.id, 0.5)
     db.commit()
-    labels_before = {o.label for o in list_event_observations(db, ev.id)}
+    labels_before = {o.label for o in list_sequence_observations(db, ev.id)}
     assert "rare ibex" in labels_before
 
     assert client.delete(
@@ -827,7 +827,7 @@ def test_delete_custom_label_rebuilds_event_counts(client, db):
     ).status_code == 204
 
     db.expire_all()
-    rows = list_event_observations(db, ev.id)
+    rows = list_sequence_observations(db, ev.id)
     # No row names the deleted species any more; the box now counts as its
     # category ("animal"), not a dangling "rare ibex".
     assert all(o.label != "rare ibex" for o in rows)
@@ -1021,19 +1021,19 @@ def test_categories_include_the_classes_the_project_already_counts(
     """A project whose detector was changed still holds boxes of the old
     one's class, and a person must be able to set a box back to it. The
     picker offers the detector's classes first, then what the project's
-    events count besides."""
+    sequences count besides."""
     from datetime import datetime
 
-    from app.api.crud.event_observation import calculate_max_n_for_event
+    from app.api.crud.sequence_observation import calculate_max_n_for_sequence
 
     project = make_project(db, detection_model_id="SHARKTRACK-1-0")
     site = make_site(db, project_id=project.id)
     dep = make_deployment(db, site_id=site.id)
-    ev = make_event_with_files(
-        db, deployment_id=dep.id, event_start_local=datetime(2026, 2, 10, 8, 0),
+    ev = make_sequence_with_files(
+        db, deployment_id=dep.id, sequence_start_local=datetime(2026, 2, 10, 8, 0),
     )
     make_detection(db, file_id=ev.files[0].id, category="fish")
-    calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    calculate_max_n_for_sequence(db, ev.id, project.counting_threshold)
     db.commit()
 
     _patch_manifest(monkeypatch, classes=["elasmobranch"])

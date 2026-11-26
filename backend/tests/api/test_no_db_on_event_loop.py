@@ -38,7 +38,7 @@ def test_no_async_endpoint_takes_a_database_session():
     assert not offenders, (
         "These endpoints are `async def` and take a database session, so "
         "their queries run on the event loop and block every other request. "
-        "Make them plain `def` (DEVELOPERS.md, 'Endpoints and the event "
+        "Make them plain `def` (DEVELOPERS.md, 'Endpoints and the sequence "
         "loop'):\n" + "\n".join(offenders)
     )
 

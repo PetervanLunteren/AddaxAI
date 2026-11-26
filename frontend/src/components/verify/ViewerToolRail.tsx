@@ -1,5 +1,5 @@
 /**
- * The left tool rail every large viewer shares: the Counts event modal,
+ * The left tool rail every large viewer shares: the Counts sequence modal,
  * the Detections modal and the Files viewer. One mental model: the rail
  * is how you LOOK at the picture (brightness/contrast, the box toggle,
  * flag, like, download and open in file explorer, each a plain icon),

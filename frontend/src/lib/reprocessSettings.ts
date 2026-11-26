@@ -16,7 +16,7 @@ import { projectsApi } from "../api/projects";
 
 /** Settings whose change requires a reprocess job to take effect. */
 export const REPROCESS_TRIGGER_FIELDS = [
-  "event_smoothing",
+  "sequence_smoothing",
   "smoothing_strength",
   "taxonomic_rollup",
   "independence_interval",
@@ -62,7 +62,7 @@ export function formatInterval(seconds: number): string {
 export interface RegroupExample {
   time_range: string | null;
   observations: { label: string; count: number }[];
-  /** How many new events this event's files land in (1 = merged, >1 = split). */
+  /** How many new sequences this sequence's files land in (1 = merged, >1 = split). */
   maps_to: number;
 }
 

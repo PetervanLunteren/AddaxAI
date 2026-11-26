@@ -1,7 +1,7 @@
 /**
  * "Empty only" and the box filters cannot both hold.
  *
- * An empty file (or event) is one where no box passes the floor; a label
+ * An empty file (or sequence) is one where no box passes the floor; a label
  * or confidence-range filter keeps only the ones where a passing box
  * matches. Together they always return nothing, which reads as "no
  * results" rather than as two filters that contradict each other. So the
@@ -9,7 +9,7 @@
  * setting a box filter while "Empty only" is on drops it.
  */
 
-import type { EventFilterParams } from "../api/types";
+import type { SequenceFilterParams } from "../api/types";
 
 const BOX_FILTER_KEYS = [
   "labels",
@@ -27,9 +27,9 @@ function sameValue(a: unknown, b: unknown): boolean {
 }
 
 export function reconcileEmptyFilter(
-  prev: EventFilterParams,
-  next: EventFilterParams,
-): EventFilterParams {
+  prev: SequenceFilterParams,
+  next: SequenceFilterParams,
+): SequenceFilterParams {
   if (next.empty !== "show_only") return next;
 
   if (prev.empty !== "show_only") {

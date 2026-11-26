@@ -626,7 +626,7 @@ export function trackPath(
  * it carries its own label, verdict and crop box but knows nothing
  * about where it sits in the project. Those context fields are copied
  * from the card that was opened: every frame of a track is in the same
- * file, so the same deployment, site, event and capture time.
+ * file, so the same deployment, site, sequence and capture time.
  *
  * `crop_url` is built the way the subprocess builds it, at the same
  * size, so both kinds of card hit one endpoint and share one browser
@@ -661,8 +661,8 @@ export function trackFrameAsCard(
     site_name: parent.site_name,
     deployment_id: parent.deployment_id,
     captured_at_local: parent.captured_at_local,
-    event_id: parent.event_id,
-    event_start_local: parent.event_start_local,
+    sequence_id: parent.sequence_id,
+    sequence_start_local: parent.sequence_start_local,
     crop_url: `/api/detections/${frame.id}/crop?size=200`,
     crop_bbox: frame.crop_bbox,
     frame_number: frame.frame_number,

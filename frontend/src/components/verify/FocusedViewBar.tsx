@@ -15,7 +15,7 @@
  * animal", because whether it was one animal is what the view checks.
  * It names no species: every card below carries its own label chip.
  *
- * It is drawn like the grid's own event rows, a label and a rule, not
+ * It is drawn like the grid's own sequence rows, a label and a rule, not
  * as one more bordered card. The way back is an outline button, the same
  * as the step's Back button below the grid.
  */

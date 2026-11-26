@@ -38,6 +38,25 @@ ROWS_CHANGED_ON_PURPOSE: dict[str, frozenset[str]] = {
 }
 
 
+# Migrations that rename a table, old name to new. The rows must all come
+# through under the new name.
+TABLES_RENAMED: dict[str, dict[str, str]] = {
+    "b7d9f1a3c5e7": {
+        "events": "sequences",
+        "event_files": "sequence_files",
+        "event_observations": "sequence_observations",
+    },
+}
+
+
+def tables_renamed(revisions: Iterable[str]) -> dict[str, str]:
+    """Old table name to new, over the given migrations."""
+    out: dict[str, str] = {}
+    for rev in revisions:
+        out.update(TABLES_RENAMED.get(rev, {}))
+    return out
+
+
 def rows_changed_on_purpose(revisions: Iterable[str]) -> frozenset[str]:
     """The tables whose row count the given migrations may change."""
     return frozenset().union(
@@ -109,15 +128,17 @@ def lost_rows(
     before: dict[str, TableSnapshot],
     after: dict[str, TableSnapshot],
     changed_on_purpose: frozenset[str] = frozenset(),
+    renamed: dict[str, str] | None = None,
 ) -> list[str]:
     """Every way a table came out different in rows: gone, fewer or more
     rows, or a primary key that vanished. A table a migration dropped on
     purpose is reported too; that is rare enough to want a human to look.
     Tables in ``changed_on_purpose`` (see ``rows_changed_on_purpose``) may
-    gain or lose rows."""
+    gain or lose rows. A table in ``renamed`` (see ``tables_renamed``) is
+    compared with its new name."""
     problems: list[str] = []
     for table, b in before.items():
-        a = after.get(table)
+        a = after.get((renamed or {}).get(table, table))
         if a is None:
             problems.append(f"table {table} is gone")
             continue

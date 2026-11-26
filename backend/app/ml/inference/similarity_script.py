@@ -12,7 +12,7 @@ Usage:
         --operation sort \
         --params '{"filters": {...}}'
 
-Output: NDJSON event stream on stdout. Each line is one of:
+Output: NDJSON sequence stream on stdout. Each line is one of:
     {"type": "progress", "phase": "load|sort|neighbors", "done": N, "total": M}
     {"type": "result", "detections": [...], "total_detections": N,
      "total_loaded": N, "total_matching": N}
@@ -40,12 +40,12 @@ import numpy as np
 #   MAX_EMBEDDINGS: the walk budget. The similarity sort runs one FAISS
 #     search per detection to chain them, so its cost grows with the square
 #     of the pool (about 8 s at 20k, 218 s at 100k on an M-series Mac). Also
-#     caps the event representatives and the find-similar pool.
+#     caps the sequence representatives and the find-similar pool.
 #   MAX_SUGGESTION_EMBEDDINGS: the neighbour-vote budget for the suggestions
 #     sort and the cohorts badge. One batched search, no walk (about 5 s at
 #     100k), so it can be five times larger. Peak memory is about 0.5 GB.
 #   MAX_DETECTIONS: the payload/grid budget, the most detections returned
-#     to (and rendered by) the frontend by the event sort. No FAISS cost.
+#     to (and rendered by) the frontend by the sequence sort. No FAISS cost.
 MAX_EMBEDDINGS = 20_000
 MAX_SUGGESTION_EMBEDDINGS = 100_000
 MAX_DETECTIONS = 50_000
@@ -54,7 +54,7 @@ MAX_DETECTIONS = 50_000
 # index is exact) and lets the progress bar move during the search.
 NEIGHBOR_SEARCH_CHUNK = 2_000
 
-# How often to emit progress events during long loops. Tuned for ~50ms
+# How often to emit progress sequences during long loops. Tuned for ~50ms
 # between updates at typical scales: 500 rows per SQL emission, 200
 # steps per O(n) loop. Smaller intervals would flood the wire; larger
 # would make the bar feel stuck.
@@ -68,9 +68,9 @@ PROGRESS_LOOP_EVERY = 200
 NEIGHBOR_MAJORITY_FRACTION = 0.6
 
 
-def _emit_event(event: dict[str, Any]) -> None:
+def _emit_event(sequence: dict[str, Any]) -> None:
     """Write one NDJSON line to stdout. Flushed so the parent sees it live."""
-    sys.stdout.write(json.dumps(event, default=str) + "\n")
+    sys.stdout.write(json.dumps(sequence, default=str) + "\n")
     sys.stdout.flush()
 
 
@@ -79,7 +79,7 @@ def _emit_progress(phase: str, done: int, total: int) -> None:
 
 # ── SQL ──────────────────────────────────────────────────────────────────
 
-# Detection + file + event columns shared by both load paths. `d.id AS
+# Detection + file + sequence columns shared by both load paths. `d.id AS
 # detection_id` equals the embedding table's detection_id via the join,
 # so the two queries return the same column set (the embedding path just
 # adds the vector). Selecting the same columns lets `_row_to_meta` and
@@ -95,26 +95,26 @@ _DETECTION_COLUMNS = """
        d.track_id,
        -- How many frames the tracker followed this animal for. Drives the
        -- badge that opens a track on the Detections tab. Correlated, like
-       -- the event columns: strictly one row per detection.
+       -- the sequence columns: strictly one row per detection.
        (SELECT t2.frame_count FROM tracks t2 WHERE t2.id = d.track_id)
            AS track_frames,
        f.deployment_id, f.captured_at_local, f.width_px, f.height_px,
        f.flagged AS file_flagged, f.favorited AS file_favorited,
        s.name AS site_name,
-       -- Event membership for the "By event" sort and event dividers.
-       -- event_files is many-to-many in the schema but one-event-per-file
-       -- in practice (clustering deletes+recreates a deployment's events,
+       -- Sequence membership for the "By sequence" sort and sequence dividers.
+       -- sequence_files is many-to-many in the schema but one-sequence-per-file
+       -- in practice (clustering deletes+recreates a deployment's sequences,
        -- assigning each file once). Correlated subqueries keep the result
        -- strictly one row per detection, which the greedy walk and counts
        -- depend on; a LEFT JOIN could multiply rows if that invariant ever
-       -- broke. Indexed by idx_event_files_file.
-       (SELECT ef.event_id FROM event_files ef WHERE ef.file_id = f.id LIMIT 1)
-           AS event_id,
-       (SELECT ef.sequence_number FROM event_files ef WHERE ef.file_id = f.id LIMIT 1)
-           AS event_sequence,
-       (SELECT e.event_start_local FROM event_files ef
-        JOIN events e ON e.id = ef.event_id
-        WHERE ef.file_id = f.id LIMIT 1) AS event_start_local"""
+       -- broke. Indexed by idx_sequence_files_file.
+       (SELECT ef.sequence_id FROM sequence_files ef WHERE ef.file_id = f.id LIMIT 1)
+           AS sequence_id,
+       (SELECT ef.position FROM sequence_files ef WHERE ef.file_id = f.id LIMIT 1)
+           AS sequence_position,
+       (SELECT e.sequence_start_local FROM sequence_files ef
+        JOIN sequences e ON e.id = ef.sequence_id
+        WHERE ef.file_id = f.id LIMIT 1) AS sequence_start_local"""
 
 # File / deployment / site joins + the project scope, shared by all three
 # queries. Ends on a WHERE clause so `_build_query` can append " AND ..."
@@ -155,7 +155,7 @@ JOIN detections d ON d.id = de.detection_id
 {_COMMON_JOINS}
 """
 
-# Metadata-only path (event / time sorts): no embedding needed, so the
+# Metadata-only path (sequence / time sorts): no embedding needed, so the
 # base table is detections. Every detection passing the filters is
 # included, embedded or not.
 METADATA_SQL = f"""
@@ -187,7 +187,7 @@ LEFT JOIN sites s ON s.id = dep.site_id{_SCOPE}
 """
 
 # Which filtered detections have an embedding — ids only, no vectors. Used
-# by "Sort by event" to pick one representative per event without loading
+# by "Sort by sequence" to pick one representative per sequence without loading
 # every embedded vector.
 PRESENCE_SQL = f"""
 SELECT de.detection_id AS detection_id
@@ -289,7 +289,7 @@ def _build_query(
         params.append(1 if filters["verified"] else 0)
 
     # File-level triage marks (the Counts filters on Labels). Absent
-    # means "all"; the values mirror the events endpoint's.
+    # means "all"; the values mirror the sequences endpoint's.
     if filters.get("flagged"):
         clauses.append("f.flagged = ?")
         params.append(1 if filters["flagged"] == "flagged" else 0)
@@ -308,16 +308,16 @@ def _build_query(
 def _row_to_meta(row: sqlite3.Row) -> dict:
     """Build the per-detection metadata dict shared by both load paths.
 
-    Reads only detection / file / event columns (no embedding fields),
+    Reads only detection / file / sequence columns (no embedding fields),
     so it works for rows from either ``BASE_SQL`` or ``METADATA_SQL``.
     """
     ts = row["captured_at_local"]
     if ts and not isinstance(ts, str):
         ts = str(ts)
 
-    event_start = row["event_start_local"]
-    if event_start and not isinstance(event_start, str):
-        event_start = str(event_start)
+    sequence_start = row["sequence_start_local"]
+    if sequence_start and not isinstance(sequence_start, str):
+        sequence_start = str(sequence_start)
 
     return {
         # frame_number, track_id and track_frames must be copied here as
@@ -343,9 +343,9 @@ def _row_to_meta(row: sqlite3.Row) -> dict:
         "deployment_id": row["deployment_id"],
         "captured_at_local": ts,
         "site_name": row["site_name"],
-        "event_id": row["event_id"],
-        "event_sequence": row["event_sequence"],
-        "event_start_local": event_start,
+        "sequence_id": row["sequence_id"],
+        "sequence_position": row["sequence_position"],
+        "sequence_start_local": sequence_start,
         "bbox_x": row["bbox_x"],
         "bbox_y": row["bbox_y"],
         "bbox_width": row["bbox_width"],
@@ -364,7 +364,7 @@ def _load_metadata(
     Same filters and ``project_floor`` as the embedding path, but reads
     ``FROM detections`` so detections without an embedding are included.
     No vectors, no FAISS. Emits ``"detections"`` load progress: this is the
-    dominant cost of the event / time sorts now that the cap is up to 50k
+    dominant cost of the sequence / time sorts now that the cap is up to 50k
     rows, so it drives a real progress bar instead of a spinner.
 
     Capped to the newest ``max_detections`` by capture time (a memory
@@ -462,7 +462,7 @@ def _load_embedding_presence(
     """Detection ids (matching the filters) that have an embedding.
 
     Ids only, no vectors, so it stays cheap even for a large pool. Lets
-    the event sort pick each event's representative crop without loading
+    the sequence sort pick each sequence's representative crop without loading
     every embedded vector.
     """
     sql, params = _build_query(project_id, filters, PRESENCE_SQL)
@@ -480,7 +480,7 @@ def _load_vectors_by_id(
     """Load unit-normalised vectors for specific detection ids only.
 
     Chunked to respect SQLite's bound-variable limit. Used to fetch just
-    the event representatives (one per event) rather than every vector.
+    the sequence representatives (one per sequence) rather than every vector.
     """
     if not detection_ids:
         return {}
@@ -651,8 +651,8 @@ def _build_summary(
         "site_name": meta.get("site_name"),
         "deployment_id": meta.get("deployment_id"),
         "captured_at_local": meta.get("captured_at_local"),
-        "event_id": meta.get("event_id"),
-        "event_start_local": meta.get("event_start_local"),
+        "sequence_id": meta.get("sequence_id"),
+        "sequence_start_local": meta.get("sequence_start_local"),
         "crop_url": f"/api/detections/{detection_id}/crop?size=200",
         "crop_bbox": _compute_crop_bbox(meta),
         "frame_number": meta.get("frame_number"),
@@ -702,8 +702,8 @@ def _greedy_walk(
     ``index``): start at a dense seed, then always jump to the nearest
     unvisited neighbour, so adjacent positions in the returned order look
     alike. Used for the per-detection similarity sort and for ordering
-    events by their representative vectors. Emits progress only when
-    ``progress_phase`` is set (the detection walk; the event walk is a
+    sequences by their representative vectors. Emits progress only when
+    ``progress_phase`` is set (the detection walk; the sequence walk is a
     handful of vectors and needs none).
     """
     n = len(vectors)
@@ -754,9 +754,9 @@ def _greedy_order(vectors: np.ndarray) -> list[int]:
     nearest-neighbour chain order.
 
     Convenience wrapper for callers that don't also need the index (the
-    event-similarity sort). The per-detection similarity path builds its
+    sequence-similarity sort). The per-detection similarity path builds its
     own index because it reuses it for the neighbour signals. Isolating
-    the FAISS dependency here also lets the event-ordering logic be
+    the FAISS dependency here also lets the sequence-ordering logic be
     unit-tested without FAISS by patching this function.
     """
     import faiss
@@ -843,64 +843,64 @@ def _compute_neighbor_signals(
     return agreement_scores, top_labels
 
 
-# ── Event sort ordered by similarity ─────────────────────────────────────
+# ── Sequence sort ordered by similarity ─────────────────────────────────────
 
 
-def _order_events_by_similarity(
+def _order_sequences_by_similarity(
     det_ids: list[str],
     metas: list[dict],
     has_embedding: set[str],
     load_vectors: Callable[[list[str]], dict[str, np.ndarray]],
     max_embeddings: int = MAX_EMBEDDINGS,
 ) -> list[int]:
-    """Order detections for "Sort by event" using embedding similarity.
+    """Order detections for "Sort by sequence" using embedding similarity.
 
-    Events stay atomic: a whole event's detections stay together, in
-    capture-sequence order. The events themselves are ordered by a
+    Sequences stay atomic: a whole sequence's detections stay together, in
+    capture-sequence order. The sequences themselves are ordered by a
     greedy nearest-neighbour walk over one representative vector each,
-    so visually similar (usually same-species) events sit next to each
-    other. Each event's representative is its most-confident detection
-    that has an embedding. Events with no embedded detection (nothing to
+    so visually similar (usually same-species) sequences sit next to each
+    other. Each sequence's representative is its most-confident detection
+    that has an embedding. Sequences with no embedded detection (nothing to
     compare) fall to a chronological, camera-grouped tail; detections
-    with no event go last.
+    with no sequence go last.
 
     ``has_embedding`` is the set of ``det_ids`` that have a vector;
     ``load_vectors`` fetches vectors for a list of ids. Only the chosen
-    representatives (one per event) are loaded, not every embedded
+    representatives (one per sequence) are loaded, not every embedded
     detection.
 
     Returns the final index order into ``metas`` / ``det_ids``.
     """
-    from observation_sort import order_events_by_deployment
+    from observation_sort import order_sequences_by_deployment
 
-    # Baseline: chronological, grouped by camera (within-event by
-    # sequence, no-event last). The similarity walk overrides the order
-    # of events that have a representative; events without one keep this
+    # Baseline: chronological, grouped by camera (within-sequence by
+    # sequence, no-sequence last). The similarity walk overrides the order
+    # of sequences that have a representative; sequences without one keep this
     # baseline, so the embedless tail is camera-grouped just like the
     # no-embedding fallback. Single-deployment folder runs reduce to
     # plain chronological.
-    base_order = order_events_by_deployment(metas)
+    base_order = order_sequences_by_deployment(metas)
 
-    # Group baseline indices by event, preserving first-seen (= time)
-    # event order and within-event sequence order.
-    event_to_indices: dict[str, list[int]] = {}
-    events_in_baseline_order: list[str] = []
-    no_event: list[int] = []
+    # Group baseline indices by sequence, preserving first-seen (= time)
+    # sequence order and within-sequence sequence order.
+    sequence_to_indices: dict[str, list[int]] = {}
+    sequences_in_baseline_order: list[str] = []
+    no_sequence: list[int] = []
     for i in base_order:
-        eid = metas[i].get("event_id")
+        eid = metas[i].get("sequence_id")
         if not eid:
-            no_event.append(i)
+            no_sequence.append(i)
             continue
-        if eid not in event_to_indices:
-            event_to_indices[eid] = []
-            events_in_baseline_order.append(eid)
-        event_to_indices[eid].append(i)
+        if eid not in sequence_to_indices:
+            sequence_to_indices[eid] = []
+            sequences_in_baseline_order.append(eid)
+        sequence_to_indices[eid].append(i)
 
-    # Representative detection per event: the most-confident one that has
-    # an embedding. No averaging, so a mixed event places by its clearest
+    # Representative detection per sequence: the most-confident one that has
+    # an embedding. No averaging, so a mixed sequence places by its clearest
     # crop instead of a meaningless centroid.
     rep_det: dict[str, str] = {}
-    for eid, idxs in event_to_indices.items():
+    for eid, idxs in sequence_to_indices.items():
         best_i = -1
         best_conf = -1.0
         for i in idxs:
@@ -913,11 +913,11 @@ def _order_events_by_similarity(
             rep_det[eid] = det_ids[best_i]
 
     # Load vectors for just the representatives, then greedy-walk the
-    # events that have one. Cap the walk at the FAISS budget: only the
-    # first `max_embeddings` events (baseline / time order) are similarity
+    # sequences that have one. Cap the walk at the FAISS budget: only the
+    # first `max_embeddings` sequences (baseline / time order) are similarity
     # ordered; any beyond that keep their baseline order in the tail, so a
-    # project with more events than the budget still loads.
-    rep_eids = [eid for eid in events_in_baseline_order if eid in rep_det]
+    # project with more sequences than the budget still loads.
+    rep_eids = [eid for eid in sequences_in_baseline_order if eid in rep_det]
     walk_eids = rep_eids[:max_embeddings]
     rep_vectors = load_vectors([rep_det[eid] for eid in walk_eids])
     walk_eids = [eid for eid in walk_eids if rep_det[eid] in rep_vectors]
@@ -927,16 +927,16 @@ def _order_events_by_similarity(
     else:
         ordered_rep_eids = walk_eids
 
-    # Assemble: similarity-ordered events first, remaining (rep-less)
-    # events in time order, no-event detections last.
+    # Assemble: similarity-ordered sequences first, remaining (rep-less)
+    # sequences in time order, no-sequence detections last.
     emitted = set(ordered_rep_eids)
     final: list[int] = []
     for eid in ordered_rep_eids:
-        final.extend(event_to_indices[eid])
-    for eid in events_in_baseline_order:
+        final.extend(sequence_to_indices[eid])
+    for eid in sequences_in_baseline_order:
         if eid not in emitted:
-            final.extend(event_to_indices[eid])
-    final.extend(no_event)
+            final.extend(sequence_to_indices[eid])
+    final.extend(no_sequence)
     return final
 
 
@@ -957,7 +957,7 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
 
     - `similarity` (default): loads embeddings and does a greedy
       nearest-neighbour walk (via FAISS) so adjacent tiles look alike.
-    - `events`: groups detections by event and orders the events by the
+    - `sequences`: groups detections by sequence and orders the sequences by the
       similarity of one representative crop each (embedded or not).
     - `suggestions`: cohort-grouped review mode. Filters to unverified
       detections that carry a descendant-promotion suggestion, groups
@@ -974,7 +974,7 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
       whether the cap bit**, so ``total_matching > total_loaded`` is the
       one correct test for "the result was truncated".
     - ``total_detections`` is how many detections the sort returned. It
-      equals ``total_loaded`` for `similarity` and `events`, which return
+      equals ``total_loaded`` for `similarity` and `sequences`, which return
       every row they loaded, but `suggestions` narrows to cohort members
       by design and returns far fewer.
 
@@ -1001,21 +1001,21 @@ def do_sort(db_path: str, project_id: str, params: dict) -> dict:
     )
     max_embeddings = int(params.get("max_embeddings", default_cap))
 
-    # "Sort by event": always show the full detection population grouped
-    # by event (embedded or not). With embeddings, order the still-atomic
-    # events by similarity of their representative crops so same-species
-    # events sit together; without embeddings, keep chronological order.
-    if sort_mode == "events":
+    # "Sort by sequence": always show the full detection population grouped
+    # by sequence (embedded or not). With embeddings, order the still-atomic
+    # sequences by similarity of their representative crops so same-species
+    # sequences sit together; without embeddings, keep chronological order.
+    if sort_mode == "sequences":
         det_ids, metas, total_matching = _load_metadata(
             db_path, project_id, filters, max_detections=max_detections
         )
         if not det_ids:
             return _empty_result()
-        # Order events by similarity of one representative crop each,
+        # Order sequences by similarity of one representative crop each,
         # loading only those rep vectors (not every embedded detection).
         # With no embeddings this falls back to chronological, camera-grouped
         # order; a single-deployment folder run reduces to plain chronological.
-        final_order = _order_events_by_similarity(
+        final_order = _order_sequences_by_similarity(
             det_ids,
             metas,
             _load_embedding_presence(db_path, project_id, filters),
@@ -1472,7 +1472,7 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        # Surface a structured error event so the parent can render it
+        # Surface a structured error sequence so the parent can render it
         # inline. Stderr is reserved for actual log noise; everything
         # the parent should react to goes via NDJSON on stdout.
         _emit_event({"type": "error", "message": str(e)})

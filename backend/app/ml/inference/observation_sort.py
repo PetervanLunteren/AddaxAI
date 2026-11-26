@@ -12,62 +12,62 @@ from __future__ import annotations
 VALID_SORTS: frozenset[str] = frozenset(
     {
         "similarity",
-        "events",
+        "sequences",
         "suggestions",
     }
 )
 
 
-def order_events_by_deployment(metas: list[dict]) -> list[int]:
-    """Deployment-grouped chronological order for the no-embedding event
-    sort. Keeps each camera's (deployment's) events together instead of
+def order_sequences_by_deployment(metas: list[dict]) -> list[int]:
+    """Deployment-grouped chronological order for the no-embedding sequence
+    sort. Keeps each camera's (deployment's) sequences together instead of
     interleaving cameras by time, so a multi-camera project reviews one
     camera at a time.
 
-    Cameras are ordered by their most recent event; within a camera,
-    events are newest-first; within an event, by capture sequence.
-    Detections with no event sort to the end. For a single-deployment
+    Cameras are ordered by their most recent sequence; within a camera,
+    sequences are newest-first; within a sequence, by capture sequence.
+    Detections with no sequence sort to the end. For a single-deployment
     folder run every detection shares one deployment, so this reduces
-    exactly to plain chronological (newest-first) event order.
+    exactly to plain chronological (newest-first) sequence order.
 
-    Used by the no-embedding event sort and as the baseline for the
-    similarity event sort, so the embedless tail (events with no
-    embedded detection) is camera-grouped in both. Events that do have
+    Used by the no-embedding sequence sort and as the baseline for the
+    similarity sequence sort, so the embedless tail (sequences with no
+    embedded detection) is camera-grouped in both. Sequences that do have
     a representative are reordered by appearance on top of this.
     """
     n = len(metas)
 
-    # Each deployment's newest event start = its recency for camera order.
+    # Each deployment's newest sequence start = its recency for camera order.
     dep_newest: dict[str, str] = {}
     for m in metas:
         dep = m.get("deployment_id")
         if dep is None:
             continue
-        start = m.get("event_start_local") or ""
+        start = m.get("sequence_start_local") or ""
         if dep not in dep_newest or start > dep_newest[dep]:
             dep_newest[dep] = start
 
-    with_event = [i for i in range(n) if metas[i].get("event_id")]
-    no_event = [i for i in range(n) if not metas[i].get("event_id")]
+    with_sequence = [i for i in range(n) if metas[i].get("sequence_id")]
+    no_sequence = [i for i in range(n) if not metas[i].get("sequence_id")]
 
-    # Stable multi-pass, weakest key first: sequence within event, then
-    # event (newest first), then camera (newest activity first).
-    with_event.sort(key=lambda i: metas[i].get("event_sequence") or 0)
-    with_event.sort(
+    # Stable multi-pass, weakest key first: sequence within sequence, then
+    # sequence (newest first), then camera (newest activity first).
+    with_sequence.sort(key=lambda i: metas[i].get("sequence_position") or 0)
+    with_sequence.sort(
         key=lambda i: (
-            metas[i].get("event_start_local") or "",
-            metas[i].get("event_id") or "",
+            metas[i].get("sequence_start_local") or "",
+            metas[i].get("sequence_id") or "",
         ),
         reverse=True,
     )
-    with_event.sort(
+    with_sequence.sort(
         key=lambda i: (
             dep_newest.get(metas[i].get("deployment_id"), ""),
             metas[i].get("deployment_id") or "",
         ),
         reverse=True,
     )
-    return with_event + no_event
+    return with_sequence + no_sequence
 
 
 def suggestions_order(

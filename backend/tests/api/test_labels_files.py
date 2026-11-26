@@ -557,7 +557,7 @@ def test_progress_unknown_project_is_404(client, db):
 
 
 def test_labels_filter_keeps_files_containing_the_species(client, db):
-    """Same semantics as the events label filter: a file matches when at
+    """Same semantics as the sequences label filter: a file matches when at
     least one VISIBLE box carries the picked taxonomy id. A weak
     unverified box of the species does not rescue a file (the user
     cannot see it), and a rejected box never matches
@@ -686,15 +686,15 @@ def test_same_second_ties_break_by_file_name(client, db):
     assert [i["id"] for i in got["items"]] == [a.id, b.id, c.id]
 
 
-def test_event_sort_keeps_bursts_together(client, db):
-    """Events newest first, each burst contiguous and in shooting order,
-    files outside any event last. Items carry their event id so the grid
+def test_sequence_sort_keeps_bursts_together(client, db):
+    """Sequences newest first, each burst contiguous and in shooting order,
+    files outside any sequence last. Items carry their sequence id so the grid
     can draw dividers."""
     from sqlalchemy import insert
 
-    from app.models.event import Event
-    from app.models.event import event_files as ef
-    from tests.conftest import make_event_with_files  # noqa: F401
+    from app.models.sequence import Sequence
+    from app.models.sequence import sequence_files as ef
+    from tests.conftest import make_sequence_with_files  # noqa: F401
 
     p, d, _ = _project_with_files(db, 0)
 
@@ -704,12 +704,12 @@ def test_event_sort_keeps_bursts_together(client, db):
                       captured_at_local=start)
             for n in names
         ]
-        ev = Event(deployment_id=d.id, event_start_local=start,
-                   event_end_local=start)
+        ev = Sequence(deployment_id=d.id, sequence_start_local=start,
+                   sequence_end_local=start)
         db.add(ev)
         db.flush()
         for f in files:
-            db.execute(insert(ef).values(event_id=ev.id, file_id=f.id))
+            db.execute(insert(ef).values(sequence_id=ev.id, file_id=f.id))
         return ev, files
 
     old_ev, old_files = burst(
@@ -722,27 +722,27 @@ def test_event_sort_keeps_bursts_together(client, db):
                       captured_at_local=datetime(2024, 3, 1, 8, 0))
     db.commit()
 
-    got = _files(client, p.id, sort="events")
+    got = _files(client, p.id, sort="sequences")
     ids = [i["id"] for i in got["items"]]
     assert ids == [
         new_files[0].id, old_files[1].id, old_files[0].id, loose.id
     ]
-    assert got["items"][0]["event_id"] == new_ev.id
-    assert got["items"][1]["event_id"] == old_ev.id
-    assert got["items"][3]["event_id"] is None
+    assert got["items"][0]["sequence_id"] == new_ev.id
+    assert got["items"][1]["sequence_id"] == old_ev.id
+    assert got["items"][3]["sequence_id"] is None
 
-    # `find` under the same sort: the event join must give the window
+    # `find` under the same sort: the sequence join must give the window
     # the same order, or the handoff position would disagree with the
     # listing.
     for want, fid in enumerate(ids):
-        found = _files(client, p.id, sort="events", find=fid)
+        found = _files(client, p.id, sort="sequences", find=fid)
         assert found["find_index"] == want
 
     # Pages are slices of that one order: every file once, none twice,
     # and the total is the file count, not a count of joined rows.
     paged = []
     for skip in range(0, len(ids), 3):
-        page = _files(client, p.id, sort="events", skip=skip, limit=3)
+        page = _files(client, p.id, sort="sequences", skip=skip, limit=3)
         assert page["total"] == len(ids)
         paged += [i["id"] for i in page["items"]]
     assert paged == ids

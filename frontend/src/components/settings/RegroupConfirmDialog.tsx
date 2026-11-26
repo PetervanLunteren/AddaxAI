@@ -1,7 +1,7 @@
 /**
  * Confirmation shown before an independence-interval change that would
- * regroup events. Regrouped events lose their confirmation and manual
- * counts (events keep them only when their exact grouping is unchanged),
+ * regroup sequences. Regrouped sequences lose their confirmation and manual
+ * counts (sequences keep them only when their exact grouping is unchanged),
  * so this is a type-to-confirm gate that spells out the loss with a real
  * example and the totals.
  *
@@ -84,7 +84,7 @@ export function RegroupConfirmDialog({
           </>
         ) : (
           <>
-            regroups events, so {counts_at_risk} manual{" "}
+            regroups sequences, so {counts_at_risk} manual{" "}
             {plural(counts_at_risk, "count")} will reset to the AI's.
           </>
         )}
@@ -92,7 +92,7 @@ export function RegroupConfirmDialog({
 
       {example && (
         <Callout variant="info">
-          For example, you confirmed {countSummary} in the event
+          For example, you confirmed {countSummary} in the sequence
           {example.time_range ? <> on {example.time_range}</> : null}. The new
           interval{" "}
           {example.maps_to <= 1

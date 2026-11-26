@@ -25,7 +25,7 @@ import { Kbd } from "../ui/kbd";
 import { fileQueryOptions } from "../../api/files";
 import { detectionsApi } from "../../api/detections";
 import { labelsApi } from "../../api/labels";
-import { eventsApi } from "../../api/events";
+import { sequencesApi } from "../../api/sequences";
 import { projectQueryOptions } from "../../api/projects";
 import { API_BASE_URL } from "../../lib/api-client";
 import { formatCameraDate, formatCameraTime } from "../../lib/datetime";
@@ -336,16 +336,16 @@ export function DetectionDetailModal({
     enabled: open && !!detection?.file_id,
   });
 
-  // Load the detection's event for the chronological-context card. Reuses
+  // Load the detection's sequence for the chronological-context card. Reuses
   // the same endpoint the Counts modal uses, so it shows every frame of
-  // the event regardless of embeddings. Absent when event clustering
-  // hasn't run (event_id is null).
-  const { data: eventData } = useQuery({
-    queryKey: ["event", detection?.event_id],
-    queryFn: () => eventsApi.get(detection!.event_id!),
-    enabled: open && !!detection?.event_id,
+  // the sequence regardless of embeddings. Absent when sequence clustering
+  // hasn't run (sequence_id is null).
+  const { data: sequenceData } = useQuery({
+    queryKey: ["sequence", detection?.sequence_id],
+    queryFn: () => sequencesApi.get(detection!.sequence_id!),
+    enabled: open && !!detection?.sequence_id,
   });
-  const eventFiles = eventData?.files ?? [];
+  const sequenceFiles = sequenceData?.files ?? [];
 
   // Project detection threshold for the context thumbnails' box overlay.
   // Shared query key with the rest of the app, so usually a cache hit.
@@ -772,7 +772,7 @@ export function DetectionDetailModal({
                 <FrameWait key={stillSrc} />
               )}
               {!imageFailed && !boxesHidden && fullDetection && fullDetection.bbox_x !== null && (() => {
-                // Event-level observations carry no bbox and never reach
+                // Box-less observations carry no bbox and never reach
                 // this modal (the Observations grid excludes them), but
                 // the type system can't see that — the guard above keeps
                 // the canvas math typesafe.
@@ -1098,16 +1098,16 @@ export function DetectionDetailModal({
                 </div>
               </DetailCard>
 
-              {/* Event context: the event's other frames, so a close-up
+              {/* Sequence context: the sequence's other frames, so a close-up
                   crop can be read in sequence. Hover-only — nothing is
                   opened, so the big image on the left always stays on the
                   crop being verified. */}
-              {eventFiles.length > 1 && (
+              {sequenceFiles.length > 1 && (
                 <ContextCard
                   title="Event context"
                   caption="Other frames in this event"
                   columns={4}
-                  items={eventFiles.map((file) => {
+                  items={sequenceFiles.map((file) => {
                     const isCurrent = file.id === detection.file_id;
                     return {
                       key: file.id,
@@ -1157,7 +1157,7 @@ export function DetectionDetailModal({
               {/* Similarity context: the crop's look-alike neighbours,
                   mirroring the Similarity sort. Meter shows how many
                   neighbours share the label; thumbnails enlarge on hover
-                  like the Event context card. */}
+                  like the Sequence context card. */}
               {!detection.verified && detection.neighbor_agreement != null && (() => {
                 const count = Math.round(detection.neighbor_agreement * 10);
                 const pct = detection.neighbor_agreement * 100;

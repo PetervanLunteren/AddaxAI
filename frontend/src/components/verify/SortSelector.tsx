@@ -3,7 +3,7 @@
  *
  * Each host passes the modes it supports via `availableSorts` (the
  * Counts gallery uses newest / oldest / random, the Labels grid uses
- * similarity / events). The option texts are self-labeling ("Sort by
+ * similarity / sequences). The option texts are self-labeling ("Sort by
  * ..."), so the trigger needs no extra label or icon. The Random mode
  * is seeded so pagination and modal navigation stay stable; the seed
  * lives in URL state and the Shuffle button regenerates it.
@@ -28,7 +28,7 @@ const SORT_LABELS: Record<VerifySort, string> = {
   newest: "Sort by newest first",
   oldest: "Sort by oldest first",
   random: "Sort in random order",
-  events: "Sort by event",
+  sequences: "Sort by event",
   path: "Sort by folder",
 };
 

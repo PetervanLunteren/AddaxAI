@@ -32,7 +32,7 @@ species are present avoids that. The cost is that colours are per
 project and can shift when a new species appears.
 
 This is the only implementation. The frontend reads the map from
-``label_colors`` in ``GET /api/events/filter-options`` and the export
+``label_colors`` in ``GET /api/sequences/filter-options`` and the export
 reads it through
 ``_visualisation_style.detection_color``, so the JPEG on disk always
 matches the grid on screen.
@@ -42,7 +42,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.api.crud.event import present_label_rows
+from app.api.crud.sequence import present_label_rows
 from app.ml.label_exclusion import is_non_label
 from app.models import Project
 from app.models.label_taxonomy import LabelTaxonomy

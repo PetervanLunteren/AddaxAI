@@ -26,9 +26,9 @@ from app.ml.postprocessing_outputs.tables_csv import (
 from tests.conftest import (
     make_deployment,
     make_detection,
-    make_event_with_files,
     make_file,
     make_project,
+    make_sequence_with_files,
     make_track,
 )
 
@@ -92,22 +92,22 @@ def test_counts_table_has_one_row_per_observation_without_deployment_id(
     db, tmp_path
 ):
     """The Counts table carries the number a person confirmed on the Counts
-    step (else the AI's MaxN), one row per species per event, trimmed like
+    step (else the AI's MaxN), one row per species per sequence, trimmed like
     the other tables."""
-    from app.api.crud.event_observation import calculate_max_n_for_event
-    from app.models import EventObservation
+    from app.api.crud.sequence_observation import calculate_max_n_for_sequence
+    from app.models import SequenceObservation
 
     project = make_project(db, name="csv-counts")
     dep = make_deployment(db, project_id=project.id)
-    ev = make_event_with_files(
+    ev = make_sequence_with_files(
         db,
         deployment_id=dep.id,
-        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+        sequence_start_local=datetime(2024, 6, 15, 9, 0, 0),
     )
     make_detection(db, file_id=ev.files[0].id, confidence=0.9, label="deer")
-    calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    calculate_max_n_for_sequence(db, ev.id, project.counting_threshold)
     db.flush()
-    obs = db.query(EventObservation).filter_by(event_id=ev.id).one()
+    obs = db.query(SequenceObservation).filter_by(sequence_id=ev.id).one()
     obs.human_count = 3
     db.commit()
 
@@ -125,7 +125,7 @@ def test_counts_table_has_one_row_per_observation_without_deployment_id(
 
 def test_folder_run_headers_omit_deployment_id_and_notes(db, tmp_path):
     """A folder run has one synthetic deployment and never writes notes,
-    so neither column carries information. `event_id` stays: it is the
+    so neither column carries information. `sequence_id` stays: it is the
     only thing saying which files share a burst."""
     project = make_project(db, name="csv-headers")
     dep = make_deployment(db, project_id=project.id)
@@ -166,7 +166,7 @@ def test_folder_run_headers_omit_deployment_id_and_notes(db, tmp_path):
             "trap_nights",
         ):
             assert name not in headers
-        # The event part stays: it is what says which files share a burst.
+        # The sequence part stays: it is what says which files share a burst.
         for name in ("file_id", "event_id", "event_start", "event_end"):
             assert name in headers
 
@@ -264,11 +264,11 @@ def test_projects_mode_builders_keep_every_column(db, tmp_path):
     assert "deployment_id" in det_headers
 
 
-def test_event_id_is_blank_for_unclustered_files(db, tmp_path):
-    """A file with no event carries a blank event_id, never its own file
+def test_sequence_id_is_blank_for_unclustered_files(db, tmp_path):
+    """A file with no sequence carries a blank sequence_id, never its own file
     id. Pinned here too because the folder-run CSVs are the artifact a
     user actually joins on."""
-    project = make_project(db, name="csv-no-event")
+    project = make_project(db, name="csv-no-sequence")
     dep = make_deployment(db, project_id=project.id)
     file = make_file(
         db,
@@ -285,25 +285,25 @@ def test_event_id_is_blank_for_unclustered_files(db, tmp_path):
         lines = (target / filename).read_text().splitlines()
         headers = lines[0].split(",")
         row = lines[1].split(",")
-        event_idx = headers.index("event_id")
+        sequence_idx = headers.index("event_id")
         file_idx = headers.index("file_id")
 
         assert row[file_idx] != "", filename
-        assert row[event_idx] == "", filename
+        assert row[sequence_idx] == "", filename
 
 
-def test_event_id_carries_the_real_event_id_when_clustered(db, tmp_path):
-    """A clustered file reports its actual event id in both tables, so
-    the two folder-run CSVs group consistently on event_id."""
+def test_sequence_id_carries_the_real_sequence_id_when_clustered(db, tmp_path):
+    """A clustered file reports its actual sequence id in both tables, so
+    the two folder-run CSVs group consistently on sequence_id."""
     from app.models import File
-    from tests.conftest import make_event_with_files
+    from tests.conftest import make_sequence_with_files
 
-    project = make_project(db, name="csv-with-event")
+    project = make_project(db, name="csv-with-sequence")
     dep = make_deployment(db, project_id=project.id)
-    event = make_event_with_files(
+    sequence = make_sequence_with_files(
         db,
         deployment_id=dep.id,
-        event_start_local=datetime(2024, 6, 1, 12, 0, 0),
+        sequence_start_local=datetime(2024, 6, 1, 12, 0, 0),
     )
     clustered = db.query(File).filter(File.deployment_id == dep.id).one()
     clustered.file_path = _write_placeholder(tmp_path / "src" / "IMG.jpg")
@@ -317,7 +317,7 @@ def test_event_id_carries_the_real_event_id_when_clustered(db, tmp_path):
         lines = (target / filename).read_text().splitlines()
         headers = lines[0].split(",")
         row = lines[1].split(",")
-        assert row[headers.index("event_id")] == event.id, filename
+        assert row[headers.index("event_id")] == sequence.id, filename
 
 
 def test_row_count_totals_all_tables(db, tmp_path):
@@ -488,7 +488,7 @@ def test_frames_table_has_one_row_per_box_and_counts_toward_row_count(db, tmp_pa
     assert detections[0]["track_frame_count"] == "3"
     assert "deployment_id" not in frames[0] and "notes" not in frames[0]
     assert len(result.output_paths) == 5
-    # 1 summary + 0 counts (no event) + 1 file + 1 detection + 3 frames.
+    # 1 summary + 0 counts (no sequence) + 1 file + 1 detection + 3 frames.
     assert result.row_count == 6
 
     # Off, the same run writes no frames file and counts no frame rows.

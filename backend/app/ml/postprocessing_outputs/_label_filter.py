@@ -86,7 +86,7 @@ def passing_detections_for_file(
     same box and called the file blank.
 
     Strongest is verified first, then confidence, matching
-    ``derive_observation_type`` and ``build_event_primary_labels``. So
+    ``derive_observation_type`` and ``build_sequence_primary_labels``. So
     ``[0]`` is the detection that decides what the file is.
     """
     rows = db.execute(

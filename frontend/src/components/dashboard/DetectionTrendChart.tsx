@@ -90,7 +90,7 @@ export const DetectionTrendChart: React.FC<DetectionTrendChartProps> = ({
         info={
           <>
             <p>
-              Observations per day, week or month (each event's confirmed
+              Observations per day, week or month (each sequence's confirmed
               count, or the AI's count where not yet confirmed), not
               detections, of the labels, sites and dates chosen above.
             </p>

@@ -81,7 +81,7 @@ def test_the_chain_drops_the_covered_indexes(engine) -> None:
     inspector = inspect(engine)
     for table, name in (
         ("files", "idx_files_deployment"),
-        ("event_files", "idx_event_files_event"),
+        ("sequence_files", "idx_event_files_event"),
     ):
         assert name not in {i["name"] for i in inspector.get_indexes(table)}
 
@@ -119,16 +119,16 @@ def test_schema_problems_reports_a_missing_column(engine) -> None:
 def test_schema_problems_reports_a_missing_index(engine) -> None:
     """The foreign-key indexes nobody queries through are the point.
 
-    `idx_event_obs_max_n_file` covers a foreign key's child column. Its
+    `idx_sequence_obs_max_n_file` covers a foreign key's child column. Its
     absence is invisible to every query and shows up only as a delete
     that takes hours, so a plain table-and-column check would miss it.
     """
     upgrade_to_head()
     with engine.begin() as conn:
-        conn.execute(text("DROP INDEX idx_event_obs_max_n_file"))
+        conn.execute(text("DROP INDEX idx_sequence_obs_max_n_file"))
 
     problems = schema_problems(engine)
-    assert any("idx_event_obs_max_n_file" in p for p in problems), problems
+    assert any("idx_sequence_obs_max_n_file" in p for p in problems), problems
 
 
 def test_schema_problems_reports_a_lost_fk_ondelete(engine) -> None:
@@ -141,24 +141,24 @@ def test_schema_problems_reports_a_lost_fk_ondelete(engine) -> None:
     which is why `schema_problems` walks foreign keys itself.
     """
     upgrade_to_head()
-    # Rebuild event_observations with the ON DELETE clause stripped off
-    # its event_id foreign key, which is what a careless batch migration
+    # Rebuild sequence_observations with the ON DELETE clause stripped off
+    # its sequence_id foreign key, which is what a careless batch migration
     # produces.
     with engine.begin() as conn:
         conn.execute(text("PRAGMA foreign_keys=OFF"))
-        conn.execute(text("ALTER TABLE event_observations RENAME TO _eo_old"))
+        conn.execute(text("ALTER TABLE sequence_observations RENAME TO _eo_old"))
         conn.execute(
             text(
-                "CREATE TABLE event_observations ("
+                "CREATE TABLE sequence_observations ("
                 "id VARCHAR(36) NOT NULL PRIMARY KEY, "
-                "event_id VARCHAR(36) NOT NULL REFERENCES events(id))"
+                "sequence_id VARCHAR(36) NOT NULL REFERENCES sequences(id))"
             )
         )
         conn.execute(text("DROP TABLE _eo_old"))
 
     problems = schema_problems(engine)
     assert any(
-        "event_observations.event_id" in p and "ON DELETE CASCADE" in p
+        "sequence_observations.sequence_id" in p and "ON DELETE CASCADE" in p
         for p in problems
     ), problems
 

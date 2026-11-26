@@ -16,7 +16,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { eventsApi } from "../../api/events";
+import { sequencesApi } from "../../api/sequences";
 import type { SiteResponse } from "../../api/types";
 import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
 import { buildSiteOptions } from "../../lib/site-filter-options";
@@ -73,8 +73,8 @@ export function ExploreFilterBar({
   const { data: noSite } = useNoSiteDeployments(projectId);
 
   const { data: filterOptions } = useQuery({
-    queryKey: ["event-filter-options", projectId],
-    queryFn: () => eventsApi.getFilterOptions(projectId),
+    queryKey: ["sequence-filter-options", projectId],
+    queryFn: () => sequencesApi.getFilterOptions(projectId),
   });
   const names = filterOptions ? speciesLabelMap(filterOptions) : undefined;
 

@@ -24,7 +24,7 @@ describe("overallProgressPct", () => {
   });
 
   it("lets the event sort's one phase span the whole bar", () => {
-    expect(overallProgressPct(at("detections", 25), "events")).toBe(25);
+    expect(overallProgressPct(at("detections", 25), "sequences")).toBe(25);
   });
 
   it("stays at 0 for an empty counter or a phase the sort does not run", () => {

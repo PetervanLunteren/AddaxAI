@@ -15,7 +15,7 @@ from tests.conftest import make_deployment, make_file, make_project, make_site
 
 def _make_project_mock(**overrides):
     defaults = dict(
-        event_smoothing=True,
+        sequence_smoothing=True,
         smoothing_strength="normal",
         taxonomic_rollup=True,
         independence_interval=1800,
@@ -61,8 +61,8 @@ def test_hash_deterministic():
 
 
 def test_hash_changes_on_smoothing_toggle():
-    p1 = _make_project_mock(event_smoothing=True)
-    p2 = _make_project_mock(event_smoothing=False)
+    p1 = _make_project_mock(sequence_smoothing=True)
+    p2 = _make_project_mock(sequence_smoothing=False)
     assert compute_postprocessing_settings_hash(p1) != compute_postprocessing_settings_hash(p2)
 
 
@@ -163,7 +163,7 @@ def test_smoother_input_splits_on_folder_boundary(db):
     )
     result = build_smoother_input(d.id, 1800, db)
     assert len(result) == 2
-    # Different folder → different seq_id, matching Event behaviour.
+    # Different folder → different seq_id, matching Sequence behaviour.
     assert result[0]["seq_id"] != result[1]["seq_id"]
 
 
@@ -450,7 +450,7 @@ def test_successful_smoothing_reports_no_warning(db):
         classification_model_id="CLS-TEST",
         excluded_classes=[],
         taxonomic_rollup=False,
-        event_smoothing=False,  # nothing to smooth, so nothing to warn about
+        sequence_smoothing=False,  # nothing to smooth, so nothing to warn about
         counting_threshold=0.5,
     )
     warnings: list[dict] = []

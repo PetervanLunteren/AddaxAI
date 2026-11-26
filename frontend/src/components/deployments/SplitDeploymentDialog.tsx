@@ -69,7 +69,7 @@ export function SplitDeploymentDialog({
     mutationFn: () => deploymentsApi.split(deploymentId!, depth),
     onSuccess: (data) => {
       // Split creates new deployment rows and re-partitions files,
-      // detections, and events. Blanket invalidate so every page picks
+      // detections, and sequences. Blanket invalidate so every page picks
       // up the new structure.
       invalidateProjectData(queryClient, projectId);
       queryClient.invalidateQueries({

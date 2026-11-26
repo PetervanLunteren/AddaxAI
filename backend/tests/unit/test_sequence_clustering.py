@@ -1,8 +1,8 @@
-"""Unit tests for the shared event-clustering primitive."""
+"""Unit tests for the shared sequence-clustering primitive."""
 
 from datetime import datetime, timedelta
 
-from app.services.event_clustering import cluster_files_into_events
+from app.services.sequence_clustering import cluster_files_into_sequences
 from tests.conftest import make_deployment, make_file, make_project
 
 
@@ -32,9 +32,9 @@ def _paired_layout(db):
 
 
 def test_unpaired_buckets_by_folder(db):
-    """Default rule: subfolders never share an event."""
+    """Default rule: subfolders never share a sequence."""
     _d, files = _paired_layout(db)
-    clusters = cluster_files_into_events(files, 1800, paired_cameras=False)
+    clusters = cluster_files_into_sequences(files, 1800, paired_cameras=False)
     assert sorted(len(c) for c in clusters) == [1, 2, 2]
     for c in clusters:
         assert len({f.file_path.rsplit("/", 1)[0] for f in c}) == 1
@@ -42,10 +42,10 @@ def test_unpaired_buckets_by_folder(db):
 
 def test_paired_clusters_across_folders_in_time_order(db):
     """Paired cameras: both subfolders are one camera, so the interleaved
-    captures form one event ordered by capture time, and the file two
-    hours later still starts a new event."""
+    captures form one sequence ordered by capture time, and the file two
+    hours later still starts a new sequence."""
     _d, files = _paired_layout(db)
-    clusters = cluster_files_into_events(files, 1800, paired_cameras=True)
+    clusters = cluster_files_into_sequences(files, 1800, paired_cameras=True)
     assert [len(c) for c in clusters] == [4, 1]
     first = clusters[0]
     assert [f.captured_at_local for f in first] == sorted(
@@ -64,6 +64,6 @@ def test_paired_keeps_dateless_files_as_singletons(db):
         db, deployment_id=d.id, file_path="/data/station/cam_b/img_nodate.jpg"
     )
     dateless.captured_at_local = None  # the factory fills None with a default
-    clusters = cluster_files_into_events(files + [dateless], 1800, paired_cameras=True)
+    clusters = cluster_files_into_sequences(files + [dateless], 1800, paired_cameras=True)
     assert [len(c) for c in clusters] == [4, 1, 1]
     assert clusters[-1] == [dateless]

@@ -15,7 +15,7 @@ import type { LabelSort } from "../api/types";
 const SORT_PHASES: Record<LabelSort, LabelsProgressPhase[]> = {
   similarity: ["load", "sort", "neighbors"],
   suggestions: ["load", "neighbors"],
-  events: ["detections"],
+  sequences: ["detections"],
 };
 
 export function overallProgressPct(

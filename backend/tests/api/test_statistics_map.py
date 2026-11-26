@@ -9,11 +9,11 @@ aggregation path.
 from datetime import date, datetime
 
 from app.api.crud import statistics as stats_crud
-from app.models.event_observation import EventObservation
+from app.models.sequence_observation import SequenceObservation
 from tests.conftest import (
     make_deployment,
-    make_event_with_files,
     make_project,
+    make_sequence_with_files,
     make_site,
 )
 
@@ -21,14 +21,14 @@ from tests.conftest import (
 def _add_observation(
     db,
     *,
-    event_id: str,
+    sequence_id: str,
     label: str,
     max_n: int,
     label_taxonomy_id: str | None = None,
     category: str = "animal",
-) -> EventObservation:
-    obs = EventObservation(
-        event_id=event_id,
+) -> SequenceObservation:
+    obs = SequenceObservation(
+        sequence_id=sequence_id,
         label=label,
         label_taxonomy_id=label_taxonomy_id,
         category=category,
@@ -40,7 +40,7 @@ def _add_observation(
 
 
 def _build_fixture(db):
-    """One project, two sites, one deployment each, a few events with MaxN."""
+    """One project, two sites, one deployment each, a few sequences with MaxN."""
     project = make_project(db)
 
     site_a = make_site(
@@ -63,23 +63,23 @@ def _build_fixture(db):
         end_date_local=date(2024, 2, 6),  # 5 nights
     )
 
-    # Two events at deployment A
-    ev_a1 = make_event_with_files(
-        db, deployment_id=dep_a.id, event_start_local=datetime(2024, 1, 2, 8, 0)
+    # Two sequences at deployment A
+    ev_a1 = make_sequence_with_files(
+        db, deployment_id=dep_a.id, sequence_start_local=datetime(2024, 1, 2, 8, 0)
     )
-    ev_a2 = make_event_with_files(
-        db, deployment_id=dep_a.id, event_start_local=datetime(2024, 1, 5, 14, 0)
+    ev_a2 = make_sequence_with_files(
+        db, deployment_id=dep_a.id, sequence_start_local=datetime(2024, 1, 5, 14, 0)
     )
 
-    # One event at deployment B
-    ev_b1 = make_event_with_files(
-        db, deployment_id=dep_b.id, event_start_local=datetime(2024, 2, 3, 9, 0)
+    # One sequence at deployment B
+    ev_b1 = make_sequence_with_files(
+        db, deployment_id=dep_b.id, sequence_start_local=datetime(2024, 2, 3, 9, 0)
     )
 
     # MaxN observations
-    _add_observation(db, event_id=ev_a1.id, label="leopard", max_n=2)
-    _add_observation(db, event_id=ev_a2.id, label="leopard", max_n=3)
-    _add_observation(db, event_id=ev_b1.id, label="lion", max_n=1)
+    _add_observation(db, sequence_id=ev_a1.id, label="leopard", max_n=2)
+    _add_observation(db, sequence_id=ev_a2.id, label="leopard", max_n=3)
+    _add_observation(db, sequence_id=ev_b1.id, label="lion", max_n=1)
 
     db.flush()
     return project, site_a, site_b, dep_a, dep_b
@@ -151,13 +151,13 @@ def test_observation_rate_map_filters_by_site(db):
 def test_observation_rate_map_filters_by_date(db):
     project, site_a, site_b, _, _ = _build_fixture(db)
 
-    # Date range that only catches site A's events.
+    # Date range that only catches site A's sequences.
     response = stats_crud.get_observation_rate_map(
         db, project.id, date_from="2024-01-01", date_to="2024-01-31"
     )
     by_id = {f.site_id: f for f in response.features}
 
-    # Site A: events in range, rate computed on clipped trap nights.
+    # Site A: sequences in range, rate computed on clipped trap nights.
     assert site_a.id in by_id
     assert by_id[site_a.id].observation_count == 5
 
@@ -205,19 +205,19 @@ def test_observation_rate_map_aggregates_multiple_deployments_per_site(db):
         end_date_local=date(2024, 6, 7),
     )
 
-    ev_1 = make_event_with_files(
-        db, deployment_id=dep_1.id, event_start_local=datetime(2024, 3, 2, 10, 0)
+    ev_1 = make_sequence_with_files(
+        db, deployment_id=dep_1.id, sequence_start_local=datetime(2024, 3, 2, 10, 0)
     )
-    ev_2 = make_event_with_files(
-        db, deployment_id=dep_1.id, event_start_local=datetime(2024, 3, 8, 11, 0)
+    ev_2 = make_sequence_with_files(
+        db, deployment_id=dep_1.id, sequence_start_local=datetime(2024, 3, 8, 11, 0)
     )
-    ev_3 = make_event_with_files(
-        db, deployment_id=dep_2.id, event_start_local=datetime(2024, 6, 4, 12, 0)
+    ev_3 = make_sequence_with_files(
+        db, deployment_id=dep_2.id, sequence_start_local=datetime(2024, 6, 4, 12, 0)
     )
 
-    _add_observation(db, event_id=ev_1.id, label="leopard", max_n=1)
-    _add_observation(db, event_id=ev_2.id, label="hyena", max_n=2)
-    _add_observation(db, event_id=ev_3.id, label="leopard", max_n=4)
+    _add_observation(db, sequence_id=ev_1.id, label="leopard", max_n=1)
+    _add_observation(db, sequence_id=ev_2.id, label="hyena", max_n=2)
+    _add_observation(db, sequence_id=ev_3.id, label="leopard", max_n=4)
     db.flush()
 
     response = stats_crud.get_observation_rate_map(db, project.id)

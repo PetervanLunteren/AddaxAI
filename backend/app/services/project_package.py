@@ -131,8 +131,8 @@ def _detections_in(src: str) -> str:
     return f"(SELECT id FROM {src}.detections WHERE file_id IN {_files_in(src)})"
 
 
-def _events_in(src: str) -> str:
-    return f"(SELECT id FROM {src}.events WHERE deployment_id IN {_SCOPE})"
+def _sequences_in(src: str) -> str:
+    return f"(SELECT id FROM {src}.sequences WHERE deployment_id IN {_SCOPE})"
 
 
 def _deployment_tables(src: str) -> list[tuple[str, str]]:
@@ -146,9 +146,9 @@ def _deployment_tables(src: str) -> list[tuple[str, str]]:
         ("detections", f"t.file_id IN {_files_in(src)}"),
         ("detection_embeddings", f"t.detection_id IN {_detections_in(src)}"),
         ("calibration_answers", f"t.detection_id IN {_detections_in(src)}"),
-        ("events", f"t.deployment_id IN {_SCOPE}"),
-        ("event_files", f"t.event_id IN {_events_in(src)}"),
-        ("event_observations", f"t.event_id IN {_events_in(src)}"),
+        ("sequences", f"t.deployment_id IN {_SCOPE}"),
+        ("sequence_files", f"t.sequence_id IN {_sequences_in(src)}"),
+        ("sequence_observations", f"t.sequence_id IN {_sequences_in(src)}"),
     ]
 
 
@@ -158,8 +158,8 @@ def _export_tables() -> list[tuple[str, str]]:
     labels = (
         f"t.id IN (SELECT label_taxonomy_id FROM src.detections "
         f"WHERE file_id IN {_files_in(src)} UNION "
-        f"SELECT label_taxonomy_id FROM src.event_observations "
-        f"WHERE event_id IN {_events_in(src)})"
+        f"SELECT label_taxonomy_id FROM src.sequence_observations "
+        f"WHERE sequence_id IN {_sequences_in(src)})"
     )
     jobs = (
         f"t.id IN (SELECT job_id FROM src.detections "
@@ -189,7 +189,7 @@ _NULLED: dict[str, frozenset[str]] = {
 # Columns that point at a label row, remapped through ``temp.tax_map``.
 _LABEL_COLUMNS: dict[str, str] = {
     "detections": "label_taxonomy_id",
-    "event_observations": "label_taxonomy_id",
+    "sequence_observations": "label_taxonomy_id",
 }
 
 

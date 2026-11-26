@@ -9,7 +9,7 @@ Usage:
 
 Where options_json contains:
     {
-        "event_smoothing": bool,
+        "sequence_smoothing": bool,
         "smoothing_strength": "mild" | "normal" | "aggressive",
         "smoother_input": list[dict] | null
     }
@@ -78,7 +78,7 @@ def main() -> None:
     with open(options_path) as f:
         opts = json.load(f)
 
-    event_smoothing = opts.get("event_smoothing", False)
+    sequence_smoothing = opts.get("sequence_smoothing", False)
     counting_threshold = opts.get("counting_threshold", 0.15)
     smoothing_strength = opts.get("smoothing_strength", "normal")
     smoother_input = opts.get("smoother_input")
@@ -117,8 +117,8 @@ def main() -> None:
         options=options,
     )
 
-    # Event-level (aka sequence-level in MegaDetector) smoothing.
-    if event_smoothing and smoother_input:
+    # Sequence-level smoothing, MegaDetector's own term.
+    if sequence_smoothing and smoother_input:
         smoothed = smooth_classification_results_sequence_level(
             input_file=smoothed,
             cct_sequence_information=smoother_input,

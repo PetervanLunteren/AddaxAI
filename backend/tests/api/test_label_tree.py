@@ -9,9 +9,9 @@ from tests.conftest import (
     label_tree,
     make_deployment,
     make_detection,
-    make_event_with_files,
     make_file,
     make_project,
+    make_sequence_with_files,
     make_site,
     make_track,
     make_video_box,
@@ -48,21 +48,21 @@ def _add_taxonomy(db, name, level, **kw):
 
 
 def _setup_project_with_detections(db, label_list):
-    """Create project -> site -> deployment -> events with detections for each label."""
+    """Create project -> site -> deployment -> sequences with detections for each label."""
     p = make_project(db, classification_model_id=MODEL_ID)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
 
     for sp in label_list:
-        ev = make_event_with_files(
+        ev = make_sequence_with_files(
             db,
             deployment_id=d.id,
-            event_start_local=datetime(2024, 6, 1, 12, 0),
+            sequence_start_local=datetime(2024, 6, 1, 12, 0),
         )
-        # Get a file from the event to attach detection
-        from app.models.event import event_files as ef_table
+        # Get a file from the sequence to attach detection
+        from app.models.sequence import sequence_files as ef_table
         file_row = db.execute(
-            ef_table.select().where(ef_table.c.event_id == ev.id)
+            ef_table.select().where(ef_table.c.sequence_id == ev.id)
         ).first()
         make_detection(db, file_id=file_row.file_id, label=sp, label_confidence=0.8)
 
@@ -161,15 +161,15 @@ def test_build_tree_detection_only(db):
     d = make_deployment(db, site_id=s.id)
 
     for cat in ["animal", "person", "vehicle"]:
-        ev = make_event_with_files(
+        ev = make_sequence_with_files(
             db,
             deployment_id=d.id,
-            event_start_local=datetime(2024, 6, 1, 12, 0),
+            sequence_start_local=datetime(2024, 6, 1, 12, 0),
         )
-        from app.models.event import event_files as ef_table
+        from app.models.sequence import sequence_files as ef_table
 
         file_row = db.execute(
-            ef_table.select().where(ef_table.c.event_id == ev.id)
+            ef_table.select().where(ef_table.c.sequence_id == ev.id)
         ).first()
         make_detection(
             db,
@@ -205,8 +205,8 @@ def test_build_tree_no_taxonomy_rows(db):
     assert result is None
 
 
-def test_build_tree_with_event_counts(db):
-    """Events per label, keyed by taxonomy id."""
+def test_build_tree_with_sequence_counts(db):
+    """Sequences per label, keyed by taxonomy id."""
     p = _setup_project_with_detections(db, ["leopard", "leopard", "lion"])
     leopard = _add_taxonomy(db, "leopard", "species",
                             taxon_class="mammalia", taxon_order="carnivora",
@@ -221,7 +221,7 @@ def test_build_tree_with_event_counts(db):
     db.expire_all()
 
     assert label_tree(db, p.id) is not None
-    counts = label_counts(db, p.id, "event")
+    counts = label_counts(db, p.id, "sequence")
     assert counts[leopard.id] == 2
     assert counts[lion.id] == 1
 
@@ -246,7 +246,7 @@ def test_unmatched_label_in_other(db):
 
 
 def test_filter_by_taxonomy_id(client, db):
-    """Event filter uses taxonomy UUIDs for label matching."""
+    """Sequence filter uses taxonomy UUIDs for label matching."""
     p = _setup_project_with_detections(db, ["felidae"])
     felidae_tax = _add_taxonomy(
         db, "felidae", "family",
@@ -258,7 +258,7 @@ def test_filter_by_taxonomy_id(client, db):
 
     # Query with taxonomy UUID
     resp = client.get(
-        f"/api/events?project_id={p.id}&labels={felidae_tax.id}"
+        f"/api/sequences?project_id={p.id}&labels={felidae_tax.id}"
     )
     assert resp.status_code == 200
 
@@ -267,26 +267,26 @@ def test_label_tree_endpoint(client, db):
     """`filter-options` carries the tree, null without labels, and
     `label-counts` answers an empty map."""
     p = make_project(db, classification_model_id=MODEL_ID)
-    resp = client.get(f"/api/events/filter-options?project_id={p.id}")
+    resp = client.get(f"/api/sequences/filter-options?project_id={p.id}")
     assert resp.status_code == 200
     assert resp.json()["label_tree"] is None
-    resp = client.get(f"/api/events/label-counts?project_id={p.id}&count_by=event")
+    resp = client.get(f"/api/sequences/label-counts?project_id={p.id}&count_by=sequence")
     assert resp.status_code == 200
     assert resp.json() == {"counts": {}}
 
 
 def test_label_counts_rejects_an_unknown_unit(client, db):
     p = make_project(db, classification_model_id=MODEL_ID)
-    resp = client.get(f"/api/events/label-counts?project_id={p.id}&count_by=photo")
+    resp = client.get(f"/api/sequences/label-counts?project_id={p.id}&count_by=photo")
     assert resp.status_code == 422
 
 
 def test_label_lists_answer_404_for_an_unknown_project(client):
     """Not an empty answer, so a stale project id cannot pass for a
     project without labels."""
-    resp = client.get("/api/events/filter-options?project_id=no-such-project")
+    resp = client.get("/api/sequences/filter-options?project_id=no-such-project")
     assert resp.status_code == 404
-    resp = client.get("/api/events/label-counts?project_id=no-such-project&count_by=event")
+    resp = client.get("/api/sequences/label-counts?project_id=no-such-project&count_by=sequence")
     assert resp.status_code == 404
 
 
@@ -302,14 +302,14 @@ def test_label_tree_endpoint_with_data(client, db):
     link_detections_to_taxonomy(p.id, db)
     db.expire_all()
 
-    resp = client.get(f"/api/events/filter-options?project_id={p.id}")
+    resp = client.get(f"/api/sequences/filter-options?project_id={p.id}")
     assert resp.status_code == 200
     data = resp.json()["label_tree"]
     assert data is not None
     assert leopard_tax.id in data["all_leaf_ids"]
     leaf = next(n for n in _walk(data["tree"]) if n["id"] == leopard_tax.id)
     assert "count" not in leaf
-    resp = client.get(f"/api/events/label-counts?project_id={p.id}&count_by=event")
+    resp = client.get(f"/api/sequences/label-counts?project_id={p.id}&count_by=sequence")
     assert resp.json() == {"counts": {leopard_tax.id: 1}}
 
 

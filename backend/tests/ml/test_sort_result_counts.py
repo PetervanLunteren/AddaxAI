@@ -5,7 +5,7 @@ run read (``min(total_matching, cap)``), and ``total_detections`` is what
 the sort returned. Only the first two say whether the memory guard bit.
 
 The UI read truncation off ``total_matching > total_detections``, which
-holds for the similarity and event sorts (both return every row they
+holds for the similarity and sequence sorts (both return every row they
 load) and is wrong for `suggestions`, which narrows to cohort members by
 design. A project with 814 embedded detections and one 8-member cohort
 showed "showing the newest 8 of 814, capped to stay responsive" on a pool
@@ -298,7 +298,7 @@ def test_similarity_returns_everything_it_loads(sort_db, fake_faiss):
     assert result["total_matching"] == 9
 
 
-def test_event_sort_reports_loaded_and_matching(sort_db):
+def test_sequence_sort_reports_loaded_and_matching(sort_db):
     """The metadata path carries the same three counts (no FAISS here)."""
     db_path, s = sort_db
     p = make_project(s, classification_model_id=CLS_MODEL)
@@ -317,13 +317,13 @@ def test_event_sort_reports_loaded_and_matching(sort_db):
         )
     s.commit()
 
-    full = do_sort(db_path, p.id, {"sort": "events", "filters": {}})
+    full = do_sort(db_path, p.id, {"sort": "sequences", "filters": {}})
     assert full["total_detections"] == 3
     assert full["total_loaded"] == 3
     assert full["total_matching"] == 3
 
     capped = do_sort(
-        db_path, p.id, {"sort": "events", "filters": {}, "max_detections": 2}
+        db_path, p.id, {"sort": "sequences", "filters": {}, "max_detections": 2}
     )
     assert capped["total_detections"] == 2
     assert capped["total_loaded"] == 2
@@ -355,7 +355,7 @@ def test_flagged_and_liked_ride_on_rows_and_filter_the_pool(sort_db):
     marked = det(2, flagged=True, favorited=True)
     s.commit()
 
-    rows = do_sort(db_path, p.id, {"sort": "events", "filters": {}})
+    rows = do_sort(db_path, p.id, {"sort": "sequences", "filters": {}})
     by_file = {d["file_id"]: d for d in rows["detections"]}
     assert by_file[marked.id]["file_flagged"] is True
     assert by_file[marked.id]["file_favorited"] is True
@@ -363,13 +363,13 @@ def test_flagged_and_liked_ride_on_rows_and_filter_the_pool(sort_db):
     assert by_file[plain.id]["file_favorited"] is False
 
     got = do_sort(
-        db_path, p.id, {"sort": "events", "filters": {"flagged": "flagged"}}
+        db_path, p.id, {"sort": "sequences", "filters": {"flagged": "flagged"}}
     )
     assert [d["file_id"] for d in got["detections"]] == [marked.id]
     got = do_sort(
         db_path,
         p.id,
-        {"sort": "events", "filters": {"favorited": "not_favorited"}},
+        {"sort": "sequences", "filters": {"favorited": "not_favorited"}},
     )
     assert [d["file_id"] for d in got["detections"]] == [plain.id]
 
@@ -400,7 +400,7 @@ def test_a_box_the_model_rejected_is_a_card_like_any_other(sort_db):
     rows = do_sort(
         db_path,
         p.id,
-        {"sort": "events", "filters": {"verified": False, "project_floor": 0.2}},
+        {"sort": "sequences", "filters": {"verified": False, "project_floor": 0.2}},
     )
     by_id = {d["detection_id"]: d for d in rows["detections"]}
     assert set(by_id) == {rejected.id, plain.id}
@@ -415,7 +415,7 @@ def test_empty_result_carries_every_count(sort_db, fake_faiss):
     make_deployment(s, project_id=p.id)
     s.commit()
 
-    for mode in ("similarity", "events", "suggestions"):
+    for mode in ("similarity", "sequences", "suggestions"):
         result = do_sort(db_path, p.id, {"sort": mode, "filters": {}})
         assert result["total_detections"] == 0, mode
         assert result["total_loaded"] == 0, mode
@@ -519,15 +519,15 @@ def test_chunked_neighbour_search_matches_one_batch(monkeypatch, capsys):
 
     monkeypatch.setattr(similarity_script, "NEIGHBOR_SEARCH_CHUNK", 4)
     chunked = _compute_neighbor_signals(index, vectors, labels, "db", "p")
-    events = [
+    sequences = [
         json.loads(line) for line in capsys.readouterr().out.splitlines()
     ]
 
     assert np.array_equal(whole[0], chunked[0])
     assert whole[1] == chunked[1]
     assert any(t is not None for t in chunked[1])  # the vote did something
-    # 0/30 first, then one event per chunk of 4, ending on 30/30.
-    assert [e["done"] for e in events] == [0, 4, 8, 12, 16, 20, 24, 28, 30]
+    # 0/30 first, then one sequence per chunk of 4, ending on 30/30.
+    assert [e["done"] for e in sequences] == [0, 4, 8, 12, 16, 20, 24, 28, 30]
 
 
 # ── the scope: suggestions for some sites and dates ──────────────────────

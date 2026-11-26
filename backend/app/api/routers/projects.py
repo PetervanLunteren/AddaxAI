@@ -45,10 +45,10 @@ from app.ml.label_exclusion import (
 )
 from app.ml.manifest_manager import ManifestManager
 from app.ml.taxa_mapping import TaxaListError
-from app.models import Deployment, Detection, Event, File, Job, Project
+from app.models import Deployment, Detection, File, Job, Project, Sequence
 from app.models.detection_embedding import DetectionEmbedding
-from app.models.event_observation import EventObservation
 from app.models.label_taxonomy import LabelTaxonomy
+from app.models.sequence_observation import SequenceObservation
 
 # Query-only type. The DB column is one of the two real modes, but the
 # list endpoint also accepts `all` to bypass filtering.
@@ -603,7 +603,7 @@ def update_project(
         # Recalculate MaxN if threshold changed
         if threshold_changing:
             from app.api.crud import file as crud_file
-            from app.api.crud.event_observation import recalculate_max_n_for_project
+            from app.api.crud.sequence_observation import recalculate_max_n_for_project
 
             recalculate_max_n_for_project(db, project_id)
             # observation_type is threshold-aware (a file with only
@@ -951,9 +951,9 @@ def get_independent_observation_stats(
     db: Session = Depends(get_db),
 ) -> dict:
     """
-    Sum the effective per-event count across events, per label.
+    Sum the effective per-sequence count across sequences, per label.
 
-    Reads the materialized ``event_observations`` (the same source the
+    Reads the materialized ``sequence_observations`` (the same source the
     dashboard "Observations" and exports use), so it honours human counts
     (``effective_count`` = ``human_count`` if set, else the AI ``max_n``)
     and human-added/removed species. Interval and threshold are baked
@@ -963,16 +963,16 @@ def get_independent_observation_stats(
     """
     rows = (
         db.query(
-            EventObservation.label,
-            func.sum(EventObservation.effective_count).label("count"),
+            SequenceObservation.label,
+            func.sum(SequenceObservation.effective_count).label("count"),
         )
-        .join(Event, Event.id == EventObservation.event_id)
-        .join(Deployment, Event.deployment_id == Deployment.id)
+        .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
+        .join(Deployment, Sequence.deployment_id == Deployment.id)
         .filter(Deployment.project_id == project_id)
-        .filter(is_wildlife_category(EventObservation.category))
-        .filter(EventObservation.label.isnot(None))
-        .group_by(EventObservation.label)
-        .order_by(func.sum(EventObservation.effective_count).desc())
+        .filter(is_wildlife_category(SequenceObservation.category))
+        .filter(SequenceObservation.label.isnot(None))
+        .group_by(SequenceObservation.label)
+        .order_by(func.sum(SequenceObservation.effective_count).desc())
         .all()
     )
 
@@ -989,14 +989,14 @@ def get_regroup_preview(
 ) -> dict:
     """
     How much count verification a change to `independence_interval` would
-    reset. Changing the interval re-clusters events; an event's confirmation
+    reset. Changing the interval re-clusters sequences; a sequence's confirmation
     and manual counts only survive when its file set still forms one cluster.
     Returns ``{confirmed_at_risk, counts_at_risk, total_confirmed}`` so the UI
     can warn before regrouping. Read-only.
     """
-    from app.api.crud import event as crud_event
+    from app.api.crud import sequence as crud_sequence
 
-    return crud_event.count_regroup_impact(db, project_id, independence_interval)
+    return crud_sequence.count_regroup_impact(db, project_id, independence_interval)
 
 
 @router.post(
@@ -1064,7 +1064,7 @@ def get_project_categories(
       detector declares, so the list is right before a single frame has
       been analysed. Deliberately not `class_mapping`: that one is about
       the ids a detector emits and only some models need it.
-    - The classes the project's events already count. A project whose
+    - The classes the project's sequences already count. A project whose
       detector was changed, or one opened where its detector is not
       installed, still holds boxes of the other classes, and a person
       must be able to set a box back to its own class.
@@ -1084,9 +1084,9 @@ def get_project_categories(
     # From the count rows, not the boxes: the same classes, a far smaller
     # table than a marine project's detections.
     present = db.scalars(
-        select(EventObservation.category)
-        .join(Event, Event.id == EventObservation.event_id)
-        .join(Deployment, Deployment.id == Event.deployment_id)
+        select(SequenceObservation.category)
+        .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
+        .join(Deployment, Deployment.id == Sequence.deployment_id)
         .where(Deployment.project_id == project_id)
         .distinct()
     ).all()
@@ -1426,20 +1426,20 @@ def delete_custom_label(
     Every detection that carried it reverts to an unverified box of its
     own category via ``clear_classification`` (the one writer for "no
     species"), human-added count rows of the species are removed, and the
-    affected events' counts are rebuilt. Leaving the text on the boxes
+    affected sequences' counts are rebuilt. Leaving the text on the boxes
     made a ghost: the name stayed on canvases and chips while no list or
     filter could reach it any more.
     """
-    from app.api.crud.event_observation import (
-        calculate_max_n_for_event,
-        get_event_ids_for_detections,
+    from app.api.crud.sequence_observation import (
+        calculate_max_n_for_sequence,
+        get_sequence_ids_for_detections,
     )
     from app.ml.taxonomy_db import (
         clear_classification,
         custom_scope,
         ensure_builtin_labels,
     )
-    from app.models.event_observation import EventObservation
+    from app.models.sequence_observation import SequenceObservation
 
     row = (
         db.query(LabelTaxonomy)
@@ -1465,18 +1465,18 @@ def delete_custom_label(
         .all()
     )
 
-    # Events to rebuild afterwards: those holding the detections, plus any
+    # Sequences to rebuild afterwards: those holding the detections, plus any
     # with a human count row for this species. Gather before the clear, so
     # the links still exist.
-    affected_events = set(
-        get_event_ids_for_detections(db, [d.id for d in detections])
+    affected_sequences = set(
+        get_sequence_ids_for_detections(db, [d.id for d in detections])
     )
     obs_rows = (
-        db.query(EventObservation)
-        .filter(EventObservation.label_taxonomy_id == label_id)
+        db.query(SequenceObservation)
+        .filter(SequenceObservation.label_taxonomy_id == label_id)
         .all()
     )
-    affected_events.update(o.event_id for o in obs_rows)
+    affected_sequences.update(o.sequence_id for o in obs_rows)
 
     # Revert every box to an unverified detection of its own category.
     # clear_classification is the one writer for "no species"; unverifying
@@ -1498,19 +1498,19 @@ def delete_custom_label(
     db.delete(row)
     db.flush()
 
-    # Rebuild each affected event at its OWN project's counting threshold:
-    # the label is global, so the events can span projects.
+    # Rebuild each affected sequence at its OWN project's counting threshold:
+    # the label is global, so the sequences can span projects.
     thresholds = dict(
-        db.query(Event.id, Project.counting_threshold)
-        .join(Deployment, Deployment.id == Event.deployment_id)
+        db.query(Sequence.id, Project.counting_threshold)
+        .join(Deployment, Deployment.id == Sequence.deployment_id)
         .join(Project, Project.id == Deployment.project_id)
-        .filter(Event.id.in_(affected_events))
+        .filter(Sequence.id.in_(affected_sequences))
         .all()
     )
-    for event_id in affected_events:
-        threshold = thresholds.get(event_id)
+    for sequence_id in affected_sequences:
+        threshold = thresholds.get(sequence_id)
         if threshold is not None:
-            calculate_max_n_for_event(db, event_id, threshold)
+            calculate_max_n_for_sequence(db, sequence_id, threshold)
 
     db.commit()
     logger.info(

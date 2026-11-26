@@ -23,7 +23,7 @@ import {
   Hexagon,
 } from "lucide-react";
 
-import { eventsApi } from "../../api/events";
+import { sequencesApi } from "../../api/sequences";
 import { sitesApi } from "../../api/sites";
 import { DateRangePicker } from "../ui/date-range-picker";
 import { MultiSelect, type MultiSelectOption } from "../ui/multi-select";
@@ -79,8 +79,8 @@ export function MapFilterBar({
   });
 
   const { data: filterOptions } = useQuery({
-    queryKey: ["event-filter-options", projectId],
-    queryFn: () => eventsApi.getFilterOptions(projectId),
+    queryKey: ["sequence-filter-options", projectId],
+    queryFn: () => sequencesApi.getFilterOptions(projectId),
     enabled: !!projectId,
   });
 

@@ -9,21 +9,21 @@ from app.models import DetectionEmbedding
 from tests.conftest import make_deployment, make_detection, make_file, make_project
 
 
-def _ndjson_stream(*events: dict) -> list[bytes]:
+def _ndjson_stream(*sequences: dict) -> list[bytes]:
     """Build an NDJSON byte-line list mimicking the subprocess stream."""
-    return [(json.dumps(e) + "\n").encode("utf-8") for e in events]
+    return [(json.dumps(e) + "\n").encode("utf-8") for e in sequences]
 
 
 def _read_result(resp) -> dict:
-    """Parse the streamed NDJSON response and return the final result event."""
+    """Parse the streamed NDJSON response and return the final result sequence."""
     last = None
     for line in resp.iter_lines():
         if not line:
             continue
-        event = json.loads(line)
-        if event["type"] == "result":
-            last = event
-    assert last is not None, "no result event in response"
+        sequence = json.loads(line)
+        if sequence["type"] == "result":
+            last = sequence
+    assert last is not None, "no result sequence in response"
     return last
 
 
@@ -78,13 +78,13 @@ def test_observation_stats_count_only_this_project(client, db):
 def test_sort_observations_success(client, db):
     p = make_project(db)
     mock_result = SortResponse(detections=[], total_detections=0).model_dump()
-    events = _ndjson_stream(
+    sequences = _ndjson_stream(
         {"type": "progress", "phase": "load", "done": 0, "total": 0},
         {"type": "result", **mock_result},
     )
     with patch(
         "app.api.routers.labels.stream_sort_async",
-        return_value=iter(events),
+        return_value=iter(sequences),
     ):
         resp = client.post(
             f"/api/projects/{p.id}/labels/sort",
@@ -100,10 +100,10 @@ def test_sort_observations_default_sort(client, db):
     """Body without `sort` defaults to similarity (matches schema)."""
     p = make_project(db)
     mock_result = SortResponse(detections=[], total_detections=0).model_dump()
-    events = _ndjson_stream({"type": "result", **mock_result})
+    sequences = _ndjson_stream({"type": "result", **mock_result})
     with patch(
         "app.api.routers.labels.stream_sort_async",
-        return_value=iter(events),
+        return_value=iter(sequences),
     ) as mock_sort:
         resp = client.post(
             f"/api/projects/{p.id}/labels/sort",
@@ -155,10 +155,10 @@ def test_search_observations_success(client, db):
     mock_result = SearchResponse(
         anchor=mock_anchor, results=[], total_results=0, threshold_applied=0.0,
     ).model_dump()
-    events = _ndjson_stream({"type": "result", **mock_result})
+    sequences = _ndjson_stream({"type": "result", **mock_result})
     with patch(
         "app.api.routers.labels.stream_search_async",
-        return_value=iter(events),
+        return_value=iter(sequences),
     ):
         resp = client.post(
             f"/api/projects/{p.id}/labels/search",

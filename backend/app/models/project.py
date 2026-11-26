@@ -108,7 +108,7 @@ class Project(Base):
     classification_gate: Mapped[float] = mapped_column(
         Float, nullable=False, default=DEFAULT_CLASSIFICATION_GATE
     )
-    event_smoothing: Mapped[bool] = mapped_column(
+    sequence_smoothing: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True
     )
     smoothing_strength: Mapped[str] = mapped_column(

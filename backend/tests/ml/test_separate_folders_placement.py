@@ -1,7 +1,7 @@
 """Tests for the Save-step media controls on ``separate_folders``:
 
 - Single-destination placement: every file lands in its main-species folder.
-- ``group_events``: keeps a burst together under the event's main species.
+- ``group_sequences``: keeps a burst together under the sequence's main species.
 - The uniform label filter dropping excluded person / vehicle files.
 - Videos copied as the file they are, and as their cover-frame JPEG only
   under ``videos_as_stills`` (the blur case). Their folder comes from
@@ -21,7 +21,7 @@ from app.ml.postprocessing_outputs.separate_folders import (
     separate_into_folders,
 )
 from app.ml.taxonomy_db import ensure_builtin_labels
-from app.models.event import Event, event_files
+from app.models.sequence import Sequence, sequence_files
 from tests.conftest import (
     make_deployment,
     make_detection,
@@ -43,21 +43,21 @@ def _ctx(output_root: Path) -> OutputContext:
     return OutputContext(output_root=output_root)
 
 
-def _link_event(db, deployment_id: str, file_ids: list[str]) -> Event:
-    """Create an event and attach existing files to it."""
-    ev = Event(
+def _link_sequence(db, deployment_id: str, file_ids: list[str]) -> Sequence:
+    """Create a sequence and attach existing files to it."""
+    ev = Sequence(
         id=str(uuid.uuid4()),
         deployment_id=deployment_id,
-        event_start_local=datetime(2024, 1, 1, 8, 0, 0),
-        event_end_local=datetime(2024, 1, 1, 8, 1, 0),
+        sequence_start_local=datetime(2024, 1, 1, 8, 0, 0),
+        sequence_end_local=datetime(2024, 1, 1, 8, 1, 0),
         file_count=len(file_ids),
     )
     db.add(ev)
     db.flush()
     for seq, fid in enumerate(file_ids):
         db.execute(
-            event_files.insert().values(
-                event_id=ev.id, file_id=fid, sequence_number=seq
+            sequence_files.insert().values(
+                sequence_id=ev.id, file_id=fid, position=seq
             )
         )
     db.flush()
@@ -90,13 +90,13 @@ def test_places_multi_species_file_once(db, tmp_path):
 
 
 # ---------------------------------------------------------------------
-# Event grouping
+# Sequence grouping
 # ---------------------------------------------------------------------
 
 
-def test_group_events_keeps_burst_in_one_folder(db, tmp_path):
-    """Two files in one event: file A's top label is dog (0.95), file B's
-    is fox (0.80). With grouping the whole event lands under dog/."""
+def test_group_sequences_keeps_burst_in_one_folder(db, tmp_path):
+    """Two files in one sequence: file A's top label is dog (0.95), file B's
+    is fox (0.80). With grouping the whole sequence lands under dog/."""
     project = make_project(db, name="grp", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
     src_a = _make_source(tmp_path, "A.jpg")
@@ -109,22 +109,22 @@ def test_group_events_keeps_burst_in_one_folder(db, tmp_path):
     )
     make_detection(db, file_id=fa.id, confidence=0.95, label="dog")
     make_detection(db, file_id=fb.id, confidence=0.80, label="fox")
-    _link_event(db, dep.id, [fa.id, fb.id])
+    _link_sequence(db, dep.id, [fa.id, fb.id])
 
     target = tmp_path / "out"
     result = separate_into_folders(
-        db, project.id, _ctx(target), group_events=True
+        db, project.id, _ctx(target), group_sequences=True
     , media_threshold=0.5)
 
-    # Both files land under the event's primary species (dog).
+    # Both files land under the sequence's primary species (dog).
     assert (target / "other" / "dog" / "A.jpg").is_file()
     assert (target / "other" / "dog" / "B.jpg").is_file()
     assert not (target / "other" / "fox").exists()
     assert result.copied_count == 2
 
 
-def test_group_events_prefers_verified_over_higher_confidence(db, tmp_path):
-    """A human-verified species owns the event folder even when an unverified
+def test_group_sequences_prefers_verified_over_higher_confidence(db, tmp_path):
+    """A human-verified species owns the sequence folder even when an unverified
     AI box scored higher."""
     project = make_project(db, name="grp-verified", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
@@ -140,11 +140,11 @@ def test_group_events_prefers_verified_over_higher_confidence(db, tmp_path):
     make_detection(
         db, file_id=fb.id, confidence=0.40, label="fox", verified=True
     )
-    _link_event(db, dep.id, [fa.id, fb.id])
+    _link_sequence(db, dep.id, [fa.id, fb.id])
 
     target = tmp_path / "out"
     separate_into_folders(
-        db, project.id, _ctx(target), group_events=True, media_threshold=0.5
+        db, project.id, _ctx(target), group_sequences=True, media_threshold=0.5
     )
 
     assert (target / "other" / "fox" / "A.jpg").is_file()
@@ -152,8 +152,8 @@ def test_group_events_prefers_verified_over_higher_confidence(db, tmp_path):
     assert not (target / "other" / "dog").exists()
 
 
-def test_group_events_verified_multispecies_picks_most_common(db, tmp_path):
-    """Several verified species in one event: the most common wins, even when
+def test_group_sequences_verified_multispecies_picks_most_common(db, tmp_path):
+    """Several verified species in one sequence: the most common wins, even when
     another verified species scored higher."""
     project = make_project(db, name="grp-common", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
@@ -176,20 +176,20 @@ def test_group_events_verified_multispecies_picks_most_common(db, tmp_path):
             db, file_id=fc.id, confidence=0.5, label="chicken", verified=True
         )
         file_ids.append(fc.id)
-    _link_event(db, dep.id, file_ids)
+    _link_sequence(db, dep.id, file_ids)
 
     target = tmp_path / "out"
     separate_into_folders(
-        db, project.id, _ctx(target), group_events=True, media_threshold=0.5
+        db, project.id, _ctx(target), group_sequences=True, media_threshold=0.5
     )
 
-    # The whole event, deer file included, lands under chicken.
+    # The whole sequence, deer file included, lands under chicken.
     assert (target / "other" / "chicken" / "deer.jpg").is_file()
     assert (target / "other" / "chicken" / "chick0.jpg").is_file()
     assert not (target / "other" / "deer").exists()
 
 
-def test_group_events_off_splits_burst_per_file(db, tmp_path):
+def test_group_sequences_off_splits_burst_per_file(db, tmp_path):
     """Same burst, grouping off: each file follows its own top label."""
     project = make_project(db, name="nogrp", counting_threshold=0.5)
     dep = make_deployment(db, project_id=project.id)
@@ -203,10 +203,10 @@ def test_group_events_off_splits_burst_per_file(db, tmp_path):
     )
     make_detection(db, file_id=fa.id, confidence=0.95, label="dog")
     make_detection(db, file_id=fb.id, confidence=0.80, label="fox")
-    _link_event(db, dep.id, [fa.id, fb.id])
+    _link_sequence(db, dep.id, [fa.id, fb.id])
 
     target = tmp_path / "out"
-    separate_into_folders(db, project.id, _ctx(target), group_events=False, media_threshold=0.5)
+    separate_into_folders(db, project.id, _ctx(target), group_sequences=False, media_threshold=0.5)
 
     assert (target / "other" / "dog" / "A.jpg").is_file()
     assert (target / "other" / "fox" / "B.jpg").is_file()
@@ -690,9 +690,9 @@ def test_video_whose_best_frame_is_empty_reads_blank(db, tmp_path):
     assert skipped.copied_count == 0
 
 
-def test_event_grouping_uses_each_videos_cards(db, tmp_path):
-    """`group_events` keeps a burst in one folder, and that folder is
-    decided by build_event_primary_labels. It must count only cards: a
+def test_sequence_grouping_uses_each_videos_cards(db, tmp_path):
+    """`group_sequences` keeps a burst in one folder, and that folder is
+    decided by build_sequence_primary_labels. It must count only cards: a
     video is summarised by its tracks' representative boxes, so a box on
     another frame of a track naming the burst's folder files every clip
     in it under a label none of their cards show. Caught by an end-to-end
@@ -733,7 +733,7 @@ def test_event_grouping_uses_each_videos_cards(db, tmp_path):
             db, file_id=f.id, confidence=0.95, label="cattle", frame_number=50,
             track_id=track.id,
         )
-    _link_event(db, dep.id, [f.id for f in files])
+    _link_sequence(db, dep.id, [f.id for f in files])
     db.commit()
 
     target = tmp_path / "out"
@@ -743,7 +743,7 @@ def test_event_grouping_uses_each_videos_cards(db, tmp_path):
         _ctx(target),
         media_threshold=0.5,
         group_by="flat",
-        group_events=True,
+        group_sequences=True,
     )
 
     assert (target / "bushbuck").is_dir()
@@ -752,7 +752,7 @@ def test_event_grouping_uses_each_videos_cards(db, tmp_path):
 
 def test_a_rejected_box_never_votes_or_names_a_folder(db, tmp_path):
     """A verified "false detection" box sorts first (verified, high
-    confidence) but is not a species: the event folder comes from the
+    confidence) but is not a species: the sequence folder comes from the
     real boxes, and a file holding only rejected boxes files as blank.
     Without the `is_a_real_detection` clause one X press named a whole
     burst's folder `false detection/`."""
@@ -772,7 +772,7 @@ def test_a_rejected_box_never_votes_or_names_a_folder(db, tmp_path):
     )
     make_detection(db, file_id=fa.id, confidence=0.6, label="dog")
     make_detection(db, file_id=fb.id, confidence=0.7, label="dog")
-    _link_event(db, dep.id, [fa.id, fb.id])
+    _link_sequence(db, dep.id, [fa.id, fb.id])
 
     lone = make_file(
         db, deployment_id=dep.id,
@@ -785,7 +785,7 @@ def test_a_rejected_box_never_votes_or_names_a_folder(db, tmp_path):
 
     target = tmp_path / "out"
     separate_into_folders(
-        db, project.id, _ctx(target), group_events=True, media_threshold=0.5
+        db, project.id, _ctx(target), group_sequences=True, media_threshold=0.5
     )
 
     assert (target / "other" / "dog" / "A.jpg").is_file()

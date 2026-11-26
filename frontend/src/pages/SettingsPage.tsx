@@ -144,7 +144,7 @@ const settingsSchema = z.object({
   detection_image_size: z.number().int().nullable(),
   counting_threshold: z.number().min(0).max(1),
   classification_gate: z.number().min(0.01).max(1),
-  event_smoothing: z.boolean(),
+  sequence_smoothing: z.boolean(),
   smoothing_strength: z.enum(["mild", "normal", "aggressive"]),
   taxonomic_rollup: z.boolean(),
   independence_interval: z.number().min(0),
@@ -246,7 +246,7 @@ export default function SettingsPage() {
       detection_image_size: null,
       counting_threshold: DEFAULT_COUNTING_THRESHOLD,
       classification_gate: DEFAULT_CLASSIFICATION_GATE,
-      event_smoothing: true,
+      sequence_smoothing: true,
       smoothing_strength: "normal" as const,
       taxonomic_rollup: true,
       independence_interval: 1800,
@@ -279,7 +279,7 @@ export default function SettingsPage() {
         detection_image_size: project.detection_image_size,
         counting_threshold: project.counting_threshold,
         classification_gate: project.classification_gate,
-        event_smoothing: project.event_smoothing,
+        sequence_smoothing: project.sequence_smoothing,
         smoothing_strength: (project.smoothing_strength || "normal") as "mild" | "normal" | "aggressive",
         taxonomic_rollup: project.taxonomic_rollup,
         independence_interval: project.independence_interval,
@@ -691,7 +691,7 @@ export default function SettingsPage() {
         detection_image_size: project.detection_image_size,
         counting_threshold: project.counting_threshold,
         classification_gate: project.classification_gate,
-        event_smoothing: project.event_smoothing,
+        sequence_smoothing: project.sequence_smoothing,
         smoothing_strength: (project.smoothing_strength || "normal") as "mild" | "normal" | "aggressive",
         taxonomic_rollup: project.taxonomic_rollup,
         independence_interval: project.independence_interval,
@@ -1209,7 +1209,7 @@ export default function SettingsPage() {
                     analysis panel (one source of truth). */}
                 <AnalysisSettingsRows
                   values={{
-                    event_smoothing: form.watch("event_smoothing"),
+                    sequence_smoothing: form.watch("sequence_smoothing"),
                     smoothing_strength: form.watch("smoothing_strength"),
                     taxonomic_rollup: form.watch("taxonomic_rollup"),
                     independence_interval: form.watch(
@@ -1223,11 +1223,11 @@ export default function SettingsPage() {
                   }
                   onSmoothingChange={(level) => {
                     if (level === "off") {
-                      form.setValue("event_smoothing", false, {
+                      form.setValue("sequence_smoothing", false, {
                         shouldDirty: true,
                       });
                     } else {
-                      form.setValue("event_smoothing", true, {
+                      form.setValue("sequence_smoothing", true, {
                         shouldDirty: true,
                       });
                       form.setValue("smoothing_strength", level, {
@@ -1244,7 +1244,7 @@ export default function SettingsPage() {
                   intervalNote="Affects all statistics retroactively."
                 />
 
-                {/* Camera timezone: affects how event/activity times and
+                {/* Camera timezone: affects how sequence/activity times and
                     exports read (moved from the old one-setting card). */}
                 <FormField
                   control={form.control}

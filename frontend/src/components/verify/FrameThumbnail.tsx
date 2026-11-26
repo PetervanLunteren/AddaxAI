@@ -1,6 +1,6 @@
 /**
  * FrameThumbnail - a file's thumbnail with the shared spotlight + bbox
- * overlay. One renderer for the event collage (event cards) and the event
+ * overlay. One renderer for the sequence collage (sequence cards) and the sequence
  * filmstrip (Counts modal).
  *
  * Draws the 512px thumbnail (?size=thumb) and, when `showBoxes` is on and the
@@ -31,7 +31,7 @@ interface FrameThumbnailProps {
   showBoxes?: boolean;
   /** CSS filter applied to the image (brightness / contrast). */
   imageFilter?: string;
-  /** "cover" fills the tile and crops (event cards, filmstrip); "contain"
+  /** "cover" fills the tile and crops (sequence cards, filmstrip); "contain"
    *  shows the whole frame and letterboxes (Files tiles, where the animal
    *  walking into shot sits at the edge that cover would cut off). */
   fit?: "cover" | "contain";

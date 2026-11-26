@@ -22,12 +22,12 @@ judged it, which is worth recording, keeps undo working, and keeps
 rejected.
 """
 
-from app.api.crud.event_observation import calculate_max_n_for_event
 from app.api.crud.export import (
     build_detection_rows,
     build_files_rows,
 )
-from app.models import Event, EventObservation, File
+from app.api.crud.sequence_observation import calculate_max_n_for_sequence
+from app.models import File, Sequence, SequenceObservation
 from tests.conftest import (
     make_deployment,
     make_detection,
@@ -127,24 +127,24 @@ def test_it_never_becomes_a_counted_observation(client, db):
     query, so it needs the rule applied separately from the file one."""
     project, f = _scaffold(db)
     det = make_detection(db, file_id=f.id, category="animal", confidence=0.9)
-    event = Event(
+    sequence = Sequence(
         id="ev-false",
         deployment_id=f.deployment_id,
-        event_start_local=f.captured_at_local,
-        event_end_local=f.captured_at_local,
+        sequence_start_local=f.captured_at_local,
+        sequence_end_local=f.captured_at_local,
     )
-    db.add(event)
+    db.add(sequence)
     db.flush()
-    event.files.append(f)
+    sequence.files.append(f)
     db.commit()
 
     _mark_false(client, [det.id])
-    calculate_max_n_for_event(db, event.id, 0.2)
+    calculate_max_n_for_sequence(db, sequence.id, 0.2)
     db.commit()
 
     rows = (
-        db.query(EventObservation)
-        .filter(EventObservation.event_id == event.id)
+        db.query(SequenceObservation)
+        .filter(SequenceObservation.sequence_id == sequence.id)
         .all()
     )
     assert [r.label for r in rows] == []

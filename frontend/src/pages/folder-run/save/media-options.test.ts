@@ -13,7 +13,7 @@ function separate(overrides: Partial<SeparateState> = {}): SeparateState {
   return {
     enabled: true,
     groupBy: "flat",
-    groupEvents: true,
+    groupSequences: true,
     speciesLast: false,
     copyEmpties: false,
     mediaThreshold: null,
@@ -86,7 +86,7 @@ describe("mediaRequestFields", () => {
     expect(fields).toEqual({
       media_threshold: 0.2,
       separate_group_by: "flat",
-      group_events: true,
+      group_sequences: true,
       separate_species_last: false,
       include_empty: false,
       excluded_label_ids: ["b", "c"],

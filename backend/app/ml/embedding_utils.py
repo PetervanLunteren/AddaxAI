@@ -117,7 +117,7 @@ def build_embedding_input(
         if skip_detection_ids and det.id in skip_detection_ids:
             continue
 
-        # Event-level observations carry no bbox and therefore no crop
+        # Box-less observations carry no bbox and therefore no crop
         # for the embedder to read. Skip silently — they're a deliberate
         # part of the data, not a failure mode.
         if det.bbox_x is None:
@@ -148,7 +148,7 @@ def build_embedding_input(
         f"Built embedding input: {len(entries)} detections "
         f"({len(detections)} total; "
         f"{skipped_no_pixels} video boxes without a picture on disk skipped; "
-        f"{skipped_no_bbox} event-level observations skipped)"
+        f"{skipped_no_bbox} box-less observations skipped)"
     )
 
     return {"detections": entries}

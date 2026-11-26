@@ -154,7 +154,7 @@ def classification_score_in_range(
 # Superset of NON_LABEL_CLASSES, adding every human and vehicle class
 # name found across the model zoo. Used by wildlife-only statistics
 # (the dashboard "Wildlife detected" chart). Matched case-insensitively
-# against Detection/EventObservation labels. When a new model ships a
+# against Detection/SequenceObservation labels. When a new model ships a
 # class like "person" or "car", add it here.
 NON_WILDLIFE_CLASSES = NON_LABEL_CLASSES | frozenset({
     "human", "homo_sapiens", "vehicle",
@@ -194,7 +194,7 @@ def is_wildlife(category: str | None) -> bool:
 
 def is_wildlife_category(column) -> ColumnElement[bool]:
     """``is_wildlife`` for a query, over ``Detection.category`` or
-    ``EventObservation.category``.
+    ``SequenceObservation.category``.
 
     Two lanes over one rule, the same shape as ``is_a_real_detection`` /
     ``is_non_label`` above and as ``ml/detection_visibility.py``. A

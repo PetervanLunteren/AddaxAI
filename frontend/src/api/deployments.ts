@@ -67,7 +67,7 @@ export const deploymentsApi = {
   delete: (id: string) => api.delete<void>(`/api/deployments/${id}`),
 
   /**
-   * Get bulk stats (file/event/detection counts) for all deployments in a project
+   * Get bulk stats (file/sequence/detection counts) for all deployments in a project
    */
   getBulkStats: (projectId: string) =>
     api.get<Record<string, DeploymentStatsOnly>>(
@@ -124,7 +124,7 @@ export const deploymentsApi = {
 
   /**
    * Split a deployment at the given folder depth. Creates one child per
-   * non-empty subfolder, reassigns files and events, slices .addaxai
+   * non-empty subfolder, reassigns files and sequences, slices .addaxai
    * artifacts, and removes the original deployment.
    */
   split: (id: string, depth: number) =>

@@ -4,7 +4,7 @@
  * Read-only side drawer triggered from the Deployments table's row
  * dropdown. Shows investigation-level metadata that isn't in the row:
  * folder path, file-type split, size on disk, verification progress,
- * event / observation counts, detection-category breakdown, top
+ * sequence / observation counts, detection-category breakdown, top
  * species, trap nights + rate, mean detection / classification
  * confidence, first and last capture timestamps. Plus jump-to links
  * for Verify (filtered by this deployment's site) and Dashboard.
@@ -213,7 +213,7 @@ function InfoBody({ info }: { info: DeploymentInfo }) {
       <Separator />
 
       <Section title="Observations">
-        <Row label="Events" value={info.event_count.toLocaleString()} />
+        <Row label="Events" value={info.sequence_count.toLocaleString()} />
         <Row
           label="Observations"
           value={info.observation_count.toLocaleString()}

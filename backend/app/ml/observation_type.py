@@ -28,7 +28,7 @@ outranks confidence because a human looked at that box, the same
 principle as the verified-override on the threshold itself. Note that it
 does not *count*: ten verified foxes and one verified deer on one file
 resolve to whichever single box scored highest, not to the fox.
-``build_event_primary_labels`` does count, deliberately, because an event
+``build_sequence_primary_labels`` does count, deliberately, because a sequence
 is many noisy looks at one animal where a file is a single look. See
 DEVELOPERS.md "What a file is about" before unifying the two.
 

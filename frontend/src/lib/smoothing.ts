@@ -4,7 +4,7 @@ import type { CaptionedOption } from "../components/ui/captioned-select";
  * Smoothing dropdown options, shared by the project settings and folder-run
  * forms so the wording and order stay identical (one source of truth).
  *
- * "off" maps to event_smoothing=false at each call site; the other three set
+ * "off" maps to sequence_smoothing=false at each call site; the other three set
  * smoothing_strength (matching the `mild | normal | aggressive` enum and the
  * backend SMOOTHING_PRESETS).
  */

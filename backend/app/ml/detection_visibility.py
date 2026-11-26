@@ -50,7 +50,7 @@ detections already in memory? Use `visible_detections`. A parity test
 is what makes having two of them safe.
 
 Places that cannot use any of these and keep a hand-written copy:
-`calculate_max_n_for_event` filters after the query to keep its grouping,
+`calculate_max_n_for_sequence` filters after the query to keep its grouping,
 `similarity_script` is a subprocess with no `app.*` on its path, and
 `shouldDrawBbox` in the frontend is TypeScript (it draws the boxes of
 the frame on screen, which for a card is the representative frame).

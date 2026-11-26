@@ -1,12 +1,12 @@
 /**
- * Events API client
+ * Sequences API client
  */
 
 import { api } from "../lib/api-client";
 
-/** What the label counts count: the Counts page's events, the Files
+/** What the label counts count: the Counts page's sequences, the Files
  *  tab's files, or the Labels grid's boxes. */
-export type LabelCountUnit = "event" | "file" | "detection";
+export type LabelCountUnit = "sequence" | "file" | "detection";
 
 /** The filters a page is applying, for the label tree's counts. The
  *  same vocabulary as the list endpoints. */
@@ -24,22 +24,22 @@ export interface LabelTreeScope {
   maxLabelConfidence?: number;
 }
 import type {
-  EventSummary,
-  EventWithFiles,
+  SequenceSummary,
+  SequenceWithFiles,
   HumanObservationRow,
   ObservationAttributesPatch,
-  AdjacentEventsResponse,
-  EventFilterParams,
-  EventFilterOptions,
-  EventCounts,
-  EventVerificationStats,
+  AdjacentSequencesResponse,
+  SequenceFilterParams,
+  SequenceFilterOptions,
+  SequenceCounts,
+  SequenceVerificationStats,
   LabelCounts,
 } from "./types";
 
 /** Append filter params to a URLSearchParams instance. */
 function appendFilterParams(
   searchParams: URLSearchParams,
-  filters?: EventFilterParams
+  filters?: SequenceFilterParams
 ) {
   if (!filters) return;
   if (filters.site_ids?.length)
@@ -76,14 +76,14 @@ function appendFilterParams(
     searchParams.set("seed", filters.seed.toString());
 }
 
-export const eventsApi = {
-  /** List event summaries for a project with optional filters. */
+export const sequencesApi = {
+  /** List sequence summaries for a project with optional filters. */
   list: async (params: {
     project_id: string;
     skip?: number;
     limit?: number;
-    filters?: EventFilterParams;
-  }): Promise<EventSummary[]> => {
+    filters?: SequenceFilterParams;
+  }): Promise<SequenceSummary[]> => {
     const searchParams = new URLSearchParams();
     searchParams.set("project_id", params.project_id);
     if (params.skip !== undefined)
@@ -91,52 +91,52 @@ export const eventsApi = {
     if (params.limit !== undefined)
       searchParams.set("limit", params.limit.toString());
     appendFilterParams(searchParams, params.filters);
-    return api.get<EventSummary[]>(`/api/events?${searchParams.toString()}`);
+    return api.get<SequenceSummary[]>(`/api/sequences?${searchParams.toString()}`);
   },
 
-  /** How many events pass the filters, and how many are confirmed. */
+  /** How many sequences pass the filters, and how many are confirmed. */
   count: async (
     projectId: string,
-    filters?: EventFilterParams
-  ): Promise<EventCounts> => {
+    filters?: SequenceFilterParams
+  ): Promise<SequenceCounts> => {
     const searchParams = new URLSearchParams();
     searchParams.set("project_id", projectId);
     appendFilterParams(searchParams, filters);
-    return api.get<EventCounts>(
-      `/api/events/count?${searchParams.toString()}`
+    return api.get<SequenceCounts>(
+      `/api/sequences/count?${searchParams.toString()}`
     );
   },
 
-  /** Get event with all files and detections. */
-  get: async (eventId: string): Promise<EventWithFiles> => {
-    return api.get<EventWithFiles>(`/api/events/${eventId}`);
+  /** Get sequence with all files and detections. */
+  get: async (sequenceId: string): Promise<SequenceWithFiles> => {
+    return api.get<SequenceWithFiles>(`/api/sequences/${sequenceId}`);
   },
 
-  /** Set the human confirmation of the event's species and counts. */
+  /** Set the human confirmation of the sequence's species and counts. */
   setConfirmed: async (
-    eventId: string,
+    sequenceId: string,
     confirmed: boolean,
-  ): Promise<EventWithFiles> => {
-    return api.patch<EventWithFiles>(`/api/events/${eventId}/confirm`, {
+  ): Promise<SequenceWithFiles> => {
+    return api.patch<SequenceWithFiles>(`/api/sequences/${sequenceId}/confirm`, {
       confirmed,
     });
   },
 
   /** Set (or clear, count=null) the human count for one species. */
   setObservationCount: async (
-    eventId: string,
+    sequenceId: string,
     observationId: string,
     count: number | null,
-  ): Promise<EventWithFiles> => {
-    return api.patch<EventWithFiles>(
-      `/api/events/${eventId}/observations/${observationId}`,
+  ): Promise<SequenceWithFiles> => {
+    return api.patch<SequenceWithFiles>(
+      `/api/sequences/${sequenceId}/observations/${observationId}`,
       { count },
     );
   },
 
   /** Record a species the AI missed (or bump an existing one). */
   addObservation: async (
-    eventId: string,
+    sequenceId: string,
     data: {
       /** Only for a detector class; a species gets its class on the server. */
       category?: string;
@@ -144,9 +144,9 @@ export const eventsApi = {
       label?: string | null;
       label_taxonomy_id?: string | null;
     },
-  ): Promise<EventWithFiles> => {
-    return api.post<EventWithFiles>(
-      `/api/events/${eventId}/observations`,
+  ): Promise<SequenceWithFiles> => {
+    return api.post<SequenceWithFiles>(
+      `/api/sequences/${sequenceId}/observations`,
       data,
     );
   },
@@ -154,39 +154,39 @@ export const eventsApi = {
   /** Change the species of one count row; its count moves to the target
    *  (summing into the target species when it already has a row). */
   relabelObservation: async (
-    eventId: string,
+    sequenceId: string,
     observationId: string,
     data: {
       category?: string;
       label?: string | null;
       label_taxonomy_id?: string | null;
     },
-  ): Promise<EventWithFiles> => {
-    return api.patch<EventWithFiles>(
-      `/api/events/${eventId}/observations/${observationId}/relabel`,
+  ): Promise<SequenceWithFiles> => {
+    return api.patch<SequenceWithFiles>(
+      `/api/sequences/${sequenceId}/observations/${observationId}/relabel`,
       data,
     );
   },
 
   /** Remove the human contribution to one species. */
   deleteObservation: async (
-    eventId: string,
+    sequenceId: string,
     observationId: string,
-  ): Promise<EventWithFiles> => {
-    return api.delete<EventWithFiles>(
-      `/api/events/${eventId}/observations/${observationId}`,
+  ): Promise<SequenceWithFiles> => {
+    return api.delete<SequenceWithFiles>(
+      `/api/sequences/${sequenceId}/observations/${observationId}`,
     );
   },
 
   /** Set sex / life stage / behaviour on one row. Only the keys in the
    *  patch change; null clears a field. */
   setObservationAttributes: async (
-    eventId: string,
+    sequenceId: string,
     observationId: string,
     patch: ObservationAttributesPatch,
-  ): Promise<EventWithFiles> => {
-    return api.patch<EventWithFiles>(
-      `/api/events/${eventId}/observations/${observationId}/attributes`,
+  ): Promise<SequenceWithFiles> => {
+    return api.patch<SequenceWithFiles>(
+      `/api/sequences/${sequenceId}/observations/${observationId}/attributes`,
       patch,
     );
   },
@@ -194,75 +194,75 @@ export const eventsApi = {
   /** Split one row into two of the same species (source minus one, new
    *  row at one) so each can get its own demographics. */
   splitObservation: async (
-    eventId: string,
+    sequenceId: string,
     observationId: string,
-  ): Promise<EventWithFiles> => {
-    return api.post<EventWithFiles>(
-      `/api/events/${eventId}/observations/${observationId}/split`,
+  ): Promise<SequenceWithFiles> => {
+    return api.post<SequenceWithFiles>(
+      `/api/sequences/${sequenceId}/observations/${observationId}/split`,
     );
   },
 
-  /** Replace the event's visible cohorts with the given rows ("Same as
+  /** Replace the sequence's visible cohorts with the given rows ("Same as
    *  last"). */
   setHumanObservations: async (
-    eventId: string,
+    sequenceId: string,
     observations: HumanObservationRow[],
-  ): Promise<EventWithFiles> => {
-    return api.put<EventWithFiles>(`/api/events/${eventId}/observations`, {
+  ): Promise<SequenceWithFiles> => {
+    return api.put<SequenceWithFiles>(`/api/sequences/${sequenceId}/observations`, {
       observations,
     });
   },
 
-  /** Set the event's free text. Never touches the confirmation. */
+  /** Set the sequence's free text. Never touches the confirmation. */
   setNotes: async (
-    eventId: string,
+    sequenceId: string,
     notes: string | null,
-  ): Promise<EventWithFiles> => {
-    return api.patch<EventWithFiles>(`/api/events/${eventId}/notes`, {
+  ): Promise<SequenceWithFiles> => {
+    return api.patch<SequenceWithFiles>(`/api/sequences/${sequenceId}/notes`, {
       notes,
     });
   },
 
-  /** Drop every human count edit on the event, back to the AI proposal. */
-  resetCounts: async (eventId: string): Promise<EventWithFiles> => {
-    return api.post<EventWithFiles>(
-      `/api/events/${eventId}/observations/reset`,
+  /** Drop every human count edit on the sequence, back to the AI proposal. */
+  resetCounts: async (sequenceId: string): Promise<SequenceWithFiles> => {
+    return api.post<SequenceWithFiles>(
+      `/api/sequences/${sequenceId}/observations/reset`,
     );
   },
 
-  /** Get adjacent event IDs for navigation with optional filters. */
+  /** Get adjacent sequence IDs for navigation with optional filters. */
   getAdjacent: async (
-    eventId: string,
+    sequenceId: string,
     projectId: string,
-    filters?: EventFilterParams
-  ): Promise<AdjacentEventsResponse> => {
+    filters?: SequenceFilterParams
+  ): Promise<AdjacentSequencesResponse> => {
     const searchParams = new URLSearchParams();
     searchParams.set("project_id", projectId);
     appendFilterParams(searchParams, filters);
-    return api.get<AdjacentEventsResponse>(
-      `/api/events/${eventId}/adjacent?${searchParams.toString()}`
+    return api.get<AdjacentSequencesResponse>(
+      `/api/sequences/${sequenceId}/adjacent?${searchParams.toString()}`
     );
   },
 
-  /** The confirmed events and verified cards a reprocess must keep. */
+  /** The confirmed sequences and verified cards a reprocess must keep. */
   verificationStats: async (
     projectId: string,
-    filters?: EventFilterParams
-  ): Promise<EventVerificationStats> => {
+    filters?: SequenceFilterParams
+  ): Promise<SequenceVerificationStats> => {
     const searchParams = new URLSearchParams();
     searchParams.set("project_id", projectId);
     appendFilterParams(searchParams, filters);
-    return api.get<EventVerificationStats>(
-      `/api/events/verification-stats?${searchParams.toString()}`
+    return api.get<SequenceVerificationStats>(
+      `/api/sequences/verification-stats?${searchParams.toString()}`
     );
   },
 
   /** Get available filter options for a project. */
   getFilterOptions: async (
     projectId: string
-  ): Promise<EventFilterOptions> => {
-    return api.get<EventFilterOptions>(
-      `/api/events/filter-options?project_id=${projectId}`
+  ): Promise<SequenceFilterOptions> => {
+    return api.get<SequenceFilterOptions>(
+      `/api/sequences/filter-options?project_id=${projectId}`
     );
   },
 
@@ -295,7 +295,7 @@ export const eventsApi = {
     range("min_label_confidence", scope?.minLabelConfidence);
     range("max_label_confidence", scope?.maxLabelConfidence);
     return api.get<LabelCounts>(
-      `/api/events/label-counts?${search.toString()}`
+      `/api/sequences/label-counts?${search.toString()}`
     );
   },
 };

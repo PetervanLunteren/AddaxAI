@@ -1,7 +1,7 @@
 """
 Classification postprocessing service.
 
-Applies event smoothing and taxonomic rollup to classification results
+Applies sequence smoothing and taxonomic rollup to classification results
 using MegaDetector's classification_postprocessing module. Reads raw
 predictions from JSON files and writes smoothed results back to the DB.
 
@@ -53,7 +53,7 @@ def compute_postprocessing_settings_hash(project: Project) -> str:
         64-character hex SHA-256 hash string
     """
     settings = {
-        "event_smoothing": project.event_smoothing,
+        "event_smoothing": project.sequence_smoothing,
         "smoothing_strength": project.smoothing_strength,
         "taxonomic_rollup": project.taxonomic_rollup,
         "independence_interval": project.independence_interval,
@@ -75,20 +75,20 @@ def build_smoother_input(
     db: Session,
 ) -> list[dict]:
     """
-    Package a deployment's events for MegaDetector's sequence-level smoother.
+    Package a deployment's sequences for MegaDetector's sequence-level smoother.
 
-    Clustering uses `app.services.event_clustering.cluster_files_into_events`
-    — the same primitive that produces `Event` rows in the UI — so the
+    Clustering uses `app.services.sequence_clustering.cluster_files_into_sequences`
+    — the same primitive that produces `Sequence` rows in the UI — so the
     smoother operates on identical groupings to what the user sees.
 
     The returned format is the COCO Camera Traps "images" shape that
     `smooth_classification_results_sequence_level` expects. Each dict
-    carries `seq_id` (MegaDetector's contract for event membership),
+    carries `seq_id` (MegaDetector's contract for sequence membership),
     `file_name` (relative to the deployment folder), and `datetime`.
 
     Args:
         deployment_id: Deployment UUID
-        independence_interval: Gap in seconds that starts a new event
+        independence_interval: Gap in seconds that starts a new sequence
         db: Database session
 
     Returns:
@@ -97,7 +97,7 @@ def build_smoother_input(
     """
     from sqlalchemy.orm import joinedload
 
-    from app.services.event_clustering import cluster_files_into_events
+    from app.services.sequence_clustering import cluster_files_into_sequences
 
     # Use image + video (not frame) because the smoothing script matches
     # file_name against the raw JSON which has video-level entries, not
@@ -120,12 +120,12 @@ def build_smoother_input(
     deployment_folder = deployment.folder_path
 
     smoother_input: list[dict] = []
-    for cluster in cluster_files_into_events(
+    for cluster in cluster_files_into_sequences(
         files, independence_interval, paired_cameras=deployment.paired_cameras
     ):
         seq_id = str(uuid.uuid4())
         for file_record in cluster:
-            # Date-less files form single-file events and can't be
+            # Date-less files form single-file sequences and can't be
             # temporally smoothed; exclude them so the smoother never
             # sees a null datetime (they keep their raw classification).
             if file_record.captured_at_local is None:
@@ -553,27 +553,27 @@ def run_postprocessing_for_deployment(
         md_results = apply_taxa_mapping(md_results, project, cls_model_dir, db, job_id)
         add_taxa_list_ancestor_rows(md_results, project, db)
 
-    # --- Event smoothing (independent of rollup) ---
+    # --- Sequence smoothing (independent of rollup) ---
     # Rollup section above is complete. If smoothing is off, return the
     # (possibly rolled-up) results as-is — no subprocess needed.
-    if not project.event_smoothing:
+    if not project.sequence_smoothing:
         return md_results
-    # Smoothing reconciles the classifier's species across an event. With
+    # Smoothing reconciles the classifier's species across a sequence. With
     # no classifier there is nothing to smooth, and the smoother would only
     # trip over a detector whose categories are not MegaDetector's (it
     # looks up "animal" by name and SharkTrack calls its class elasmobranch).
     if not project.classification_model_id:
-        logger.info("No classification model, skipping event smoothing")
+        logger.info("No classification model, skipping sequence smoothing")
         return md_results
 
-    # Package events for the smoother. Uses the same clustering primitive
-    # as the UI's Event rows, so the smoother sees the same boundaries.
+    # Package sequences for the smoother. Uses the same clustering primitive
+    # as the UI's Sequence rows, so the smoother sees the same boundaries.
     smoother_input = build_smoother_input(
         deployment_id, project.independence_interval, db
     )
     if smoother_input:
         logger.info(
-            f"Running event-level smoothing on {len(smoother_input)} file "
+            f"Running sequence-level smoothing on {len(smoother_input)} file "
             f"rows (independence_interval={project.independence_interval}s)"
         )
 
@@ -581,7 +581,7 @@ def run_postprocessing_for_deployment(
     # CCT-format dict list; `smoothing_script.py` passes it through to
     # MegaDetector's `cct_sequence_information=` parameter unchanged.
     smoothing_options = {
-        "event_smoothing": project.event_smoothing,
+        "sequence_smoothing": project.sequence_smoothing,
         "smoothing_strength": project.smoothing_strength,
         "counting_threshold": project.counting_threshold,
         "smoother_input": smoother_input,
@@ -603,7 +603,7 @@ def run_postprocessing_for_deployment(
         raise
     except Exception as e:
         logger.error(
-            f"Event smoothing failed for deployment {deployment_id}, "
+            f"Sequence smoothing failed for deployment {deployment_id}, "
             f"returning rollup-only results: {e}",
             exc_info=True,
         )
@@ -616,9 +616,9 @@ def run_postprocessing_for_deployment(
             warnings.append({
                 "type": "smoothing_failed",
                 "message": (
-                    f"Event smoothing did not run ({e}). Detections and "
+                    f"Sequence smoothing did not run ({e}). Detections and "
                     f"species labels are unaffected; only the smoothing "
-                    f"pass over each event was skipped."
+                    f"pass over each sequence was skipped."
                 ),
             })
         return md_results
@@ -672,7 +672,7 @@ def update_database_from_smoothed_results(
     # `img["file"]` directly. Legacy frame rows are removed by the
     # one-shot migration that runs on startup, so we never see them
     # here.
-    # Event-level observations have no bbox and are never produced by
+    # Box-less observations have no bbox and are never produced by
     # the AI pipeline, so the smoothing/rollup matcher (which keys on
     # bbox geometry) has nothing to match them against. Excluding them
     # here keeps the lookup keys total and avoids ever overwriting a

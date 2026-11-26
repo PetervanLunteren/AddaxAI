@@ -102,7 +102,7 @@ def _stage_package(
                 on_thumbnail(n_media, total)
             media_out.writerow(media_row)
             obs_out.writerows(observation_rows)
-        obs_out.writerows(builder.event_observations())
+        obs_out.writerows(builder.sequence_observations())
 
     (staging / "datapackage.json").write_bytes(
         _json.dumps(builder.datapackage(), indent=2, ensure_ascii=False).encode("utf-8")

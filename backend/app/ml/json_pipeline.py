@@ -314,7 +314,7 @@ def load_json_to_database(
             # captured_at_local=NULL, still recorded in
             # `skipped_missing_timestamp` so the UI can surface the count.
             # Time-based stats exclude them; each becomes its own
-            # single-file event downstream.
+            # single-file sequence downstream.
 
             # Determine file type (video or image)
             file_format = absolute_path.suffix.lstrip(".").lower() if absolute_path.exists() else ""

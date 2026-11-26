@@ -28,9 +28,9 @@ from app.db.base import Base
 from app.db.types import UtcDateTime
 
 if TYPE_CHECKING:
-    from .event import Event
     from .file import File
     from .project import Project
+    from .sequence import Sequence
     from .site import Site
 
 
@@ -91,7 +91,7 @@ class Deployment(Base):
     tags: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
     # The subfolders of this folder are dependent cameras: one animal
-    # triggers more than one of them. Events cluster across the
+    # triggers more than one of them. Sequences cluster across the
     # subfolders and effort counts once. Off: each subfolder is its own
     # camera or card period. See DEVELOPERS.md "Paired cameras".
     paired_cameras: Mapped[bool] = mapped_column(
@@ -145,15 +145,15 @@ class Deployment(Base):
     )
     # passive_deletes=True: the DB owns the cascade (see DEVELOPERS.md,
     # "Deleting analysis data"). Without it, deleting a deployment loads
-    # every File and Event into memory first.
+    # every File and Sequence into memory first.
     files: Mapped[list["File"]] = relationship(
         "File",
         back_populates="deployment",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-    events: Mapped[list["Event"]] = relationship(
-        "Event",
+    sequences: Mapped[list["Sequence"]] = relationship(
+        "Sequence",
         back_populates="deployment",
         cascade="all, delete-orphan",
         passive_deletes=True,

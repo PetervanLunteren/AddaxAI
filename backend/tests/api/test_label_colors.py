@@ -7,13 +7,13 @@ neighbour a colour, which is what a person scanning a block of rodent
 crops needs to notice the odd one out.
 """
 
-from app.api.crud.event import get_filter_options
 from app.api.crud.label_colors import (
     REJECTED_LABEL_COLOR,
     SPECIES_PALETTE,
     assign_label_colors,
     fallback_color,
 )
+from app.api.crud.sequence import get_filter_options
 from app.ml.taxonomy_db import BUILTIN_MODEL_ID
 from app.models.label_taxonomy import LabelTaxonomy
 from tests.conftest import make_deployment, make_detection, make_file, make_project
@@ -197,7 +197,7 @@ def test_the_filter_options_carry_the_map(client, db):
     rat, brown_rat, mouse, fox, blackbird = _rodents_and_others(db)
     project = _project_with(db, (rat, 0.9, False), (fox, 0.9, False))
 
-    resp = client.get(f"/api/events/filter-options?project_id={project.id}")
+    resp = client.get(f"/api/sequences/filter-options?project_id={project.id}")
 
     assert resp.status_code == 200
     assert resp.json()["label_colors"] == assign_label_colors(db, project.id)

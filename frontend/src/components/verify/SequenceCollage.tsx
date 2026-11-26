@@ -1,5 +1,5 @@
 /**
- * EventCollage - thumbnail area for event cards on the Verify page.
+ * SequenceCollage - thumbnail area for sequence cards on the Verify page.
  *
  * Renders 1 to 4 representative frames inside a fixed 16:9 area:
  *   1: full card
@@ -19,8 +19,8 @@ import { fileQueryOptions } from "../../api/files";
 import { FrameThumbnail } from "./FrameThumbnail";
 import { useImageFilter } from "./viewer-tools";
 
-interface EventCollageProps {
-  /** Up to four file IDs from EventSummary.collage_file_ids. Empty
+interface SequenceCollageProps {
+  /** Up to four file IDs from SequenceSummary.collage_file_ids. Empty
    *  renders the same placeholder as today's empty-thumbnail card. */
   fileIds: string[];
   detectionThreshold: number;
@@ -29,7 +29,7 @@ interface EventCollageProps {
 const FRAME_CLASSES =
   "aspect-video bg-muted relative overflow-hidden rounded-t-lg";
 
-export function EventCollage({ fileIds, detectionThreshold }: EventCollageProps) {
+export function SequenceCollage({ fileIds, detectionThreshold }: SequenceCollageProps) {
   if (fileIds.length === 0) {
     return (
       <div className={FRAME_CLASSES}>
@@ -43,7 +43,7 @@ export function EventCollage({ fileIds, detectionThreshold }: EventCollageProps)
   if (fileIds.length === 1) {
     return (
       <div className={FRAME_CLASSES}>
-        <EventCollageTile
+        <SequenceCollageTile
           fileId={fileIds[0]}
           detectionThreshold={detectionThreshold}
         />
@@ -55,7 +55,7 @@ export function EventCollage({ fileIds, detectionThreshold }: EventCollageProps)
     return (
       <div className={`${FRAME_CLASSES} grid grid-cols-2 gap-0.5`}>
         {fileIds.map((id) => (
-          <EventCollageTile
+          <SequenceCollageTile
             key={id}
             fileId={id}
             detectionThreshold={detectionThreshold}
@@ -68,15 +68,15 @@ export function EventCollage({ fileIds, detectionThreshold }: EventCollageProps)
   if (fileIds.length === 3) {
     return (
       <div className={`${FRAME_CLASSES} grid grid-cols-2 grid-rows-2 gap-0.5`}>
-        <EventCollageTile
+        <SequenceCollageTile
           fileId={fileIds[0]}
           detectionThreshold={detectionThreshold}
         />
-        <EventCollageTile
+        <SequenceCollageTile
           fileId={fileIds[1]}
           detectionThreshold={detectionThreshold}
         />
-        <EventCollageTile
+        <SequenceCollageTile
           fileId={fileIds[2]}
           detectionThreshold={detectionThreshold}
           className="col-span-2"
@@ -88,7 +88,7 @@ export function EventCollage({ fileIds, detectionThreshold }: EventCollageProps)
   return (
     <div className={`${FRAME_CLASSES} grid grid-cols-2 grid-rows-2 gap-0.5`}>
       {fileIds.slice(0, 4).map((id) => (
-        <EventCollageTile
+        <SequenceCollageTile
           key={id}
           fileId={id}
           detectionThreshold={detectionThreshold}
@@ -98,17 +98,17 @@ export function EventCollage({ fileIds, detectionThreshold }: EventCollageProps)
   );
 }
 
-interface EventCollageTileProps {
+interface SequenceCollageTileProps {
   fileId: string;
   detectionThreshold: number;
   className?: string;
 }
 
-function EventCollageTile({
+function SequenceCollageTile({
   fileId,
   detectionThreshold,
   className,
-}: EventCollageTileProps) {
+}: SequenceCollageTileProps) {
   const { data: file } = useQuery(fileQueryOptions(fileId, "cards"));
   const imageFilter = useImageFilter();
 

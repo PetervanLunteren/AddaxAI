@@ -127,7 +127,7 @@ def _apply_project_threshold(
     """Inject the project's detection threshold as `project_floor`.
 
     The floor applies the `(confidence >= floor OR verified)` override
-    rule shared with events / files. The user's `min_confidence` slider
+    rule shared with sequences / files. The user's `min_confidence` slider
     stays untouched and is applied LITERALLY by the subprocess so a
     verified low-confidence detection cannot bypass a narrow user range.
 

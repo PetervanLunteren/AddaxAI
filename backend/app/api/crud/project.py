@@ -22,9 +22,9 @@ from app.api.schemas.project import (
 )
 from app.core.logging_config import get_logger
 from app.ml.taxa_mapping import clear_location, settle_project_taxa_mapping
-from app.models import Deployment, Event, File, LabelTaxonomy, Project, Site
+from app.models import Deployment, File, LabelTaxonomy, Project, Sequence, Site
 from app.models.deployment_queue import DeploymentQueue
-from app.models.event_observation import EventObservation
+from app.models.sequence_observation import SequenceObservation
 
 logger = get_logger(__name__)
 
@@ -44,7 +44,7 @@ _DUPLICATE_SETTINGS_COLUMNS = (
     "video_fps",
     "counting_threshold",
     "classification_gate",
-    "event_smoothing",
+    "sequence_smoothing",
     "smoothing_strength",
     "taxonomic_rollup",
     "independence_interval",
@@ -105,7 +105,7 @@ def create_project(db: Session, project: ProjectCreate) -> Project:
         state_code=project.state_code,
         timezone=project.timezone,
         counting_threshold=project.counting_threshold,
-        event_smoothing=project.event_smoothing,
+        sequence_smoothing=project.sequence_smoothing,
         taxonomic_rollup=project.taxonomic_rollup,
         independence_interval=project.independence_interval,
         mode=project.mode,
@@ -317,7 +317,7 @@ def delete_folder_run(db: Session, project_id: str) -> bool:
     Delete a folder-run project and its on-disk artifacts.
 
     Cascade-deletes the Project + its DeploymentQueue + Deployment(s) +
-    Files + Detections + Events + EventObservations via SQLAlchemy
+    Files + Detections + Sequences + SequenceObservations via SQLAlchemy
     relationships, then removes the per-project ``.addaxai/projects/
     <project_id>/`` cache folder from every source folder the project
     pointed at, and the run's card picture from the user data folder.
@@ -388,7 +388,7 @@ def reset_folder_run_data(
     """
     Reset a folder-run for re-analysis.
 
-    Wipes the analysis output (deployments, files, detections, events,
+    Wipes the analysis output (deployments, files, detections, sequences,
     embeddings) and the on-disk ``.addaxai/projects/<project_id>/``
     cache, but keeps the project row and the queue entry so the run id
     survives across the re-run. The queue entry is moved back to
@@ -479,13 +479,13 @@ def get_project_stats(db: Session, project_id: str) -> dict[str, int] | None:
         or 0
     )
 
-    # Count observations (sum of effective_count from event_observations:
+    # Count observations (sum of effective_count from sequence_observations:
     # human_count when set, else the AI max_n).
     observation_count = (
         db.scalar(
-            select(func.coalesce(func.sum(EventObservation.effective_count), 0))
-            .join(Event, Event.id == EventObservation.event_id)
-            .join(Deployment, Event.deployment_id == Deployment.id)
+            select(func.coalesce(func.sum(SequenceObservation.effective_count), 0))
+            .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
+            .join(Deployment, Sequence.deployment_id == Deployment.id)
             .where(Deployment.project_id == project_id)
         )
         or 0
@@ -544,10 +544,10 @@ def get_all_projects_stats(
     obs_rows = db.execute(
         select(
             Deployment.project_id,
-            func.coalesce(func.sum(EventObservation.effective_count), 0),
+            func.coalesce(func.sum(SequenceObservation.effective_count), 0),
         )
-        .join(Event, Event.deployment_id == Deployment.id)
-        .join(EventObservation, EventObservation.event_id == Event.id)
+        .join(Sequence, Sequence.deployment_id == Deployment.id)
+        .join(SequenceObservation, SequenceObservation.sequence_id == Sequence.id)
         .join(Project, Project.id == Deployment.project_id)
         .where(*project_filter)
         .group_by(Deployment.project_id)

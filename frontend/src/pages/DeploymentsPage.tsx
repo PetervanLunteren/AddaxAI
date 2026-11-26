@@ -104,7 +104,7 @@ interface DeploymentRow extends DeploymentResponse {
   /** Leaf of folder_path, used as the primary table identifier. */
   folder_basename: string;
   file_count: number;
-  event_count: number;
+  sequence_count: number;
   detection_count: number;
 }
 
@@ -207,7 +207,7 @@ export function DeploymentsPage() {
     return deployments.map((d) => {
       const stats: DeploymentStatsOnly = bulkStats?.[d.id] ?? {
         file_count: 0,
-        event_count: 0,
+        sequence_count: 0,
         detection_count: 0,
       };
       const siteName = d.site_id ? (siteMap.get(d.site_id) ?? "Unknown") : "(no site)";
@@ -216,7 +216,7 @@ export function DeploymentsPage() {
         site_name: siteName,
         folder_basename: folderBasename(d.folder_path),
         file_count: stats.file_count,
-        event_count: stats.event_count,
+        sequence_count: stats.sequence_count,
         detection_count: stats.detection_count,
       };
     });

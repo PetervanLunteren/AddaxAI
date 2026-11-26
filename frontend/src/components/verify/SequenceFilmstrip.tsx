@@ -1,6 +1,6 @@
 /**
- * EventFilmstrip - the resizable wrapping-grid filmstrip under the focus
- * image in the Counts modal. Shows every frame of the event; click a tile
+ * SequenceFilmstrip - the resizable wrapping-grid filmstrip under the focus
+ * image in the Counts modal. Shows every frame of the sequence; click a tile
  * to make it the focus. The grid auto-wraps to fill the width at the chosen
  * S/M/L thumbnail size, so dragging the divider taller turns it into a full
  * scanning grid. Thumbnails mirror the focus's box overlay and image filter.
@@ -10,7 +10,7 @@ import { Play } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 import { formatTimeOffset } from "../../lib/datetime";
-import { describeEventMedia } from "../../lib/event-media";
+import { describeSequenceMedia } from "../../lib/sequence-media";
 import { FrameThumbnail } from "./FrameThumbnail";
 import { TileSizeToggle } from "./TileSizeToggle";
 import type { TileSize } from "./CropGrid";
@@ -20,7 +20,7 @@ import type { FileWithDetections } from "../../api/types";
 // width allows.
 const TILE_MIN_WIDTH: Record<TileSize, number> = { S: 96, M: 140, L: 200 };
 
-interface EventFilmstripProps {
+interface SequenceFilmstripProps {
   files: FileWithDetections[];
   selectedIndex: number;
   onSelectFile: (index: number) => void;
@@ -31,7 +31,7 @@ interface EventFilmstripProps {
   onTileSizeChange: (v: TileSize) => void;
 }
 
-export function EventFilmstrip({
+export function SequenceFilmstrip({
   files,
   selectedIndex,
   onSelectFile,
@@ -40,7 +40,7 @@ export function EventFilmstrip({
   imageFilter,
   tileSize,
   onTileSizeChange,
-}: EventFilmstripProps) {
+}: SequenceFilmstripProps) {
   // Each tile shows the time gap since the previous frame, so an unusually
   // large gap (a pause, or really two encounters) jumps out. The first
   // frame and any file without a timestamp show no label.
@@ -54,7 +54,7 @@ export function EventFilmstrip({
           under the picture did not say what the thumbnails were for. */}
       <div className="flex items-center justify-between gap-2 px-3 py-0.5 border-b shrink-0">
         <span className="text-xs text-muted-foreground">
-          Files in this event · {describeEventMedia(files)}
+          Files in this sequence · {describeSequenceMedia(files)}
         </span>
         <TileSizeToggle value={tileSize} onChange={onTileSizeChange} />
       </div>

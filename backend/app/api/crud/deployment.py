@@ -25,12 +25,12 @@ from app.models import (
     Deployment,
     Detection,
     DetectionEmbedding,
-    Event,
-    EventObservation,
     File,
+    Sequence,
+    SequenceObservation,
     Site,
     Track,
-    event_files,
+    sequence_files,
 )
 
 logger = get_logger(__name__)
@@ -135,25 +135,25 @@ def update_deployment(
     When folder_path is updated (re-linking), also updates last_validated_at.
 
     When datetime_offset_seconds changes, the delta is applied in-place
-    to every File.captured_at_local and every Event.event_start_local /
-    event_end_local in the deployment, and the deployment's
+    to every File.captured_at_local and every Sequence.sequence_start_local /
+    sequence_end_local in the deployment, and the deployment's
     start_date_local / end_date_local are recomputed from the new file
     range. Without this cascade, the slideout's first / last dates,
-    dashboard charts, and event listings would stay frozen at the
+    dashboard charts, and sequence listings would stay frozen at the
     pre-edit offset because those views read off the baked
     File.captured_at_local rather than recomputing on every render.
 
-    When paired_cameras changes, the deployment's events are regenerated
-    at once (the grouping rule changed, see `event_clustering`), carrying
-    confirmed counts onto events whose file set stayed the same. The
+    When paired_cameras changes, the deployment's sequences are regenerated
+    at once (the grouping rule changed, see `sequence_clustering`), carrying
+    confirmed counts onto sequences whose file set stayed the same. The
     project's postprocessing hash is cleared so the "needs reprocessing"
     banner asks for a reprocess, which re-runs smoothing on the new
-    grouping. Events of other deployments are untouched.
+    grouping. Sequences of other deployments are untouched.
 
     When camera_offsets changes (paired cameras), each camera's delta is
     applied to the files of that subfolder only, without touching the
-    event bounds: the order of files across cameras changed, so the
-    events are regenerated like for a paired_cameras change, with the
+    sequence bounds: the order of files across cameras changed, so the
+    sequences are regenerated like for a paired_cameras change, with the
     same carry rule and the same hash clearing. A key that disappears is
     a delta back to zero, so unpairing (which sends {}) un-shifts.
     """
@@ -206,13 +206,13 @@ def update_deployment(
     for cam, delta in camera_deltas.items():
         prefix = str(Path(db_deployment.folder_path) / cam) + os.sep
         _apply_offset_shift(
-            db, db_deployment, delta, path_prefix=prefix, shift_events=False
+            db, db_deployment, delta, path_prefix=prefix, shift_sequences=False
         )
 
     if paired_changed or camera_deltas:
-        from app.api.crud.event import generate_events_for_deployment
+        from app.api.crud.sequence import generate_sequences_for_deployment
 
-        generate_events_for_deployment(db, db_deployment)
+        generate_sequences_for_deployment(db, db_deployment)
         db_deployment.project.postprocessing_settings_hash = None
 
     db.commit()
@@ -226,7 +226,7 @@ def _apply_offset_shift(
     delta_seconds: int,
     *,
     path_prefix: str | None = None,
-    shift_events: bool = True,
+    shift_sequences: bool = True,
 ) -> None:
     """
     Shift every observational datetime in a deployment by
@@ -236,12 +236,12 @@ def _apply_offset_shift(
     `path_prefix` limits the file shift to one camera subfolder of a
     paired deployment (an exact prefix match on `File.file_path`, not
     LIKE, because `_` and `%` in folder names are LIKE wildcards). The
-    caller passes `shift_events=False` with it: a partial shift changes
-    the order of files across cameras, so the events are regenerated
+    caller passes `shift_sequences=False` with it: a partial shift changes
+    the order of files across cameras, so the sequences are regenerated
     afterwards instead of translated.
 
-    Touches `File.captured_at_local`, `Event.event_start_local`,
-    `Event.event_end_local`, and `Deployment.start_date_local /
+    Touches `File.captured_at_local`, `Sequence.sequence_start_local`,
+    `Sequence.sequence_end_local`, and `Deployment.start_date_local /
     end_date_local`. Audit datetimes (`*_utc`) are left alone; they
     record server actions, not camera observations.
 
@@ -253,7 +253,7 @@ def _apply_offset_shift(
     """
     from sqlalchemy import func
 
-    from app.models import Event, File
+    from app.models import File, Sequence
 
     # SQLite's datetime() takes signed numeric strings: '+30 seconds',
     # '-3600 seconds'. Build the modifier that way.
@@ -270,13 +270,13 @@ def _apply_offset_shift(
         synchronize_session=False,
     )
 
-    if shift_events:
-        db.query(Event).filter(Event.deployment_id == deployment.id).update(
+    if shift_sequences:
+        db.query(Sequence).filter(Sequence.deployment_id == deployment.id).update(
             {
-                "event_start_local": func.datetime(
-                    Event.event_start_local, modifier
+                "sequence_start_local": func.datetime(
+                    Sequence.sequence_start_local, modifier
                 ),
-                "event_end_local": func.datetime(Event.event_end_local, modifier),
+                "sequence_end_local": func.datetime(Sequence.sequence_end_local, modifier),
             },
             synchronize_session=False,
         )
@@ -329,7 +329,7 @@ def purge_deployment_data(db: Session, deployment_ids: Select) -> list[tuple[str
     """
     file_ids = select(File.id).where(File.deployment_id.in_(deployment_ids))
     detection_ids = select(Detection.id).where(Detection.file_id.in_(file_ids))
-    event_ids = select(Event.id).where(Event.deployment_id.in_(deployment_ids))
+    sequence_ids = select(Sequence.id).where(Sequence.deployment_id.in_(deployment_ids))
 
     stages = (
         (
@@ -349,14 +349,14 @@ def purge_deployment_data(db: Session, deployment_ids: Select) -> list[tuple[str
         # walked for every track row deleted.
         ("tracks", delete(Track).where(Track.file_id.in_(file_ids))),
         (
-            "event_observations",
-            delete(EventObservation).where(EventObservation.event_id.in_(event_ids)),
+            "sequence_observations",
+            delete(SequenceObservation).where(SequenceObservation.sequence_id.in_(sequence_ids)),
         ),
         (
-            "event_files",
-            delete(event_files).where(event_files.c.event_id.in_(event_ids)),
+            "sequence_files",
+            delete(sequence_files).where(sequence_files.c.sequence_id.in_(sequence_ids)),
         ),
-        ("events", delete(Event).where(Event.deployment_id.in_(deployment_ids))),
+        ("sequences", delete(Sequence).where(Sequence.deployment_id.in_(deployment_ids))),
         ("files", delete(File).where(File.deployment_id.in_(deployment_ids))),
     )
 
@@ -376,7 +376,7 @@ def delete_deployment(db: Session, deployment_id: str) -> bool:
     Returns True if deleted, False if deployment doesn't exist.
 
     Cascades to:
-    - related files, events, detections (DB, via SQLAlchemy ondelete=CASCADE,
+    - related files, sequences, detections (DB, via SQLAlchemy ondelete=CASCADE,
       with `purge_deployment_data` emptying the leaves first for speed)
     - on-disk ML artifacts in `<folder_path>/.addaxai/projects/<project_id>/`
       (via _delete_deployment_artifacts; best-effort, never blocks DB delete)
@@ -490,10 +490,10 @@ def get_deployment_stats(db: Session, deployment_id: str) -> dict[str, int] | No
         or 0
     )
 
-    # Count events
-    event_count = (
+    # Count sequences
+    sequence_count = (
         db.scalar(
-            select(func.count(Event.id)).where(Event.deployment_id == deployment_id)
+            select(func.count(Sequence.id)).where(Sequence.deployment_id == deployment_id)
         )
         or 0
     )
@@ -503,7 +503,7 @@ def get_deployment_stats(db: Session, deployment_id: str) -> dict[str, int] | No
 
     return {
         "file_count": file_count,
-        "event_count": event_count,
+        "sequence_count": sequence_count,
         "detection_count": detection_count,
     }
 
@@ -512,10 +512,10 @@ def get_bulk_deployment_stats(
     db: Session, project_id: str
 ) -> dict[str, dict[str, int]]:
     """
-    Get file/event/detection counts for all deployments in a project.
+    Get file/sequence/detection counts for all deployments in a project.
 
     Single round-trip per count type. Returns
-    `{deployment_id: {file_count, event_count, detection_count}}`.
+    `{deployment_id: {file_count, sequence_count, detection_count}}`.
     """
     from app.models import Detection
 
@@ -534,11 +534,11 @@ def get_bulk_deployment_stats(
         ).all()
     )
 
-    event_counts = dict(
+    sequence_counts = dict(
         db.execute(
-            select(Event.deployment_id, func.count(Event.id))
-            .where(Event.deployment_id.in_(select(dep_ids_subq)))
-            .group_by(Event.deployment_id)
+            select(Sequence.deployment_id, func.count(Sequence.id))
+            .where(Sequence.deployment_id.in_(select(dep_ids_subq)))
+            .group_by(Sequence.deployment_id)
         ).all()
     )
 
@@ -551,11 +551,11 @@ def get_bulk_deployment_stats(
         ).all()
     )
 
-    all_ids = set(file_counts) | set(event_counts) | set(detection_counts)
+    all_ids = set(file_counts) | set(sequence_counts) | set(detection_counts)
     return {
         dep_id: {
             "file_count": file_counts.get(dep_id, 0),
-            "event_count": event_counts.get(dep_id, 0),
+            "sequence_count": sequence_counts.get(dep_id, 0),
             "detection_count": detection_counts.get(dep_id, 0),
         }
         for dep_id in all_ids
@@ -572,7 +572,7 @@ def get_deployment_info(db: Session, deployment_id: str):
     """
     from sqlalchemy import case
 
-    from app.api.crud.event_observation import count_individuals_by_class
+    from app.api.crud.sequence_observation import count_individuals_by_class
     from app.api.crud.statistics import _apply_threshold, _get_counting_threshold
     from app.api.schemas.deployment import (
         DeploymentFileCounts,
@@ -581,7 +581,7 @@ def get_deployment_info(db: Session, deployment_id: str):
         DeploymentVerification,
     )
     from app.api.schemas.statistics import ClassCounts
-    from app.models import Detection, EventObservation, LabelTaxonomy
+    from app.models import Detection, LabelTaxonomy, SequenceObservation
 
     deployment = get_deployment(db, deployment_id)
     if deployment is None:
@@ -614,22 +614,22 @@ def get_deployment_info(db: Session, deployment_id: str):
     ).one()
     total_files, images, videos, verified_files, total_size_bytes = file_row
 
-    event_count = (
+    sequence_count = (
         db.scalar(
-            select(func.count(Event.id)).where(
-                Event.deployment_id == deployment_id
+            select(func.count(Sequence.id)).where(
+                Sequence.deployment_id == deployment_id
             )
         )
         or 0
     )
 
-    # Sum of MaxN across event observations belonging to this deployment.
+    # Sum of MaxN across sequence observations belonging to this deployment.
     observation_count = (
         db.scalar(
-            select(func.coalesce(func.sum(EventObservation.effective_count), 0))
-            .select_from(EventObservation)
-            .join(Event, Event.id == EventObservation.event_id)
-            .where(Event.deployment_id == deployment_id)
+            select(func.coalesce(func.sum(SequenceObservation.effective_count), 0))
+            .select_from(SequenceObservation)
+            .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
+            .where(Sequence.deployment_id == deployment_id)
         )
         or 0
     )
@@ -653,25 +653,25 @@ def get_deployment_info(db: Session, deployment_id: str):
     # coalesce pattern in the activity-overlap CRUD).
     top_species_rows = db.execute(
         select(
-            EventObservation.label,
+            SequenceObservation.label,
             LabelTaxonomy.scientific_name,
             LabelTaxonomy.common_name,
-            func.sum(EventObservation.effective_count),
+            func.sum(SequenceObservation.effective_count),
         )
-        .select_from(EventObservation)
-        .join(Event, Event.id == EventObservation.event_id)
+        .select_from(SequenceObservation)
+        .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
         .outerjoin(
-            LabelTaxonomy, LabelTaxonomy.id == EventObservation.label_taxonomy_id
+            LabelTaxonomy, LabelTaxonomy.id == SequenceObservation.label_taxonomy_id
         )
-        .where(Event.deployment_id == deployment_id)
-        .where(is_wildlife_category(EventObservation.category))
-        .where(EventObservation.label.isnot(None))
+        .where(Sequence.deployment_id == deployment_id)
+        .where(is_wildlife_category(SequenceObservation.category))
+        .where(SequenceObservation.label.isnot(None))
         .group_by(
-            EventObservation.label,
+            SequenceObservation.label,
             LabelTaxonomy.scientific_name,
             LabelTaxonomy.common_name,
         )
-        .order_by(func.sum(EventObservation.effective_count).desc())
+        .order_by(func.sum(SequenceObservation.effective_count).desc())
         .limit(5)
     ).all()
 
@@ -744,7 +744,7 @@ def get_deployment_info(db: Session, deployment_id: str):
         verification=DeploymentVerification(
             verified=int(verified_files), total=int(total_files)
         ),
-        event_count=int(event_count),
+        sequence_count=int(sequence_count),
         observation_count=int(observation_count),
         detection_categories=ClassCounts(classes=class_counts, empty=int(empty_count)),
         top_species=top_species,

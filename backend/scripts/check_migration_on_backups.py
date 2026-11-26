@@ -57,6 +57,7 @@ def main() -> int:
         rows_changed_on_purpose,
         snapshot,
         sqlite_health,
+        tables_renamed,
     )
     from app.db.migrations import (
         get_current_revision,
@@ -102,8 +103,12 @@ def main() -> int:
             end_rev = get_current_revision(engine)
             engine.dispose()
             problems += sqlite_health(str(dst))
+            ran = _ran(start_rev, head)
             problems += lost_rows(
-                before, snapshot(str(dst)), rows_changed_on_purpose(_ran(start_rev, head))
+                before,
+                snapshot(str(dst)),
+                rows_changed_on_purpose(ran),
+                tables_renamed(ran),
             )
 
             rows = sum(t.count for t in before.values())

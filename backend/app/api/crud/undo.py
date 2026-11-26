@@ -13,11 +13,11 @@ from typing import NamedTuple, TypeVar
 from sqlalchemy.orm import Session
 
 from app.api.crud.detection import _resolve_detection_taxonomy
-from app.api.crud.event_observation import (
-    get_event_ids_for_files,
-    recalculate_max_n_for_events,
-)
 from app.api.crud.file import _project_threshold_for_file, _set_observation_type
+from app.api.crud.sequence_observation import (
+    get_sequence_ids_for_files,
+    recalculate_max_n_for_sequences,
+)
 from app.api.schemas.undo import DetectionState, FileState, UndoSnapshot
 from app.db.sql_params import iter_id_chunks
 from app.ml.taxonomy_db import clear_classification, ensure_builtin_labels
@@ -61,7 +61,7 @@ def restore(db: Session, snap: UndoSnapshot) -> Restored:
     Boxes and files get their snapshot values verbatim. ``label_taxonomy_id``
     is re-derived from the label (or, with no label, from the category's
     builtin row via ``clear_classification``), the same way relabel sets it.
-    Then ``observation_type`` and the event MaxN are re-derived for every
+    Then ``observation_type`` and the sequence MaxN are re-derived for every
     file involved, because both read ``verified``. ``recompute_file_verified``
     is deliberately not run: the snapshot's file flag is the truth, and the
     rollup would override it.
@@ -109,14 +109,14 @@ def restore(db: Session, snap: UndoSnapshot) -> Restored:
 
     touched = {f.id for f in files} | {d.file_id for d in detections}
     derive = _rows(db, File, touched)
-    # One MaxN pass per event, at its own project's threshold.
-    event_thresholds: dict[str, float] = {}
+    # One MaxN pass per sequence, at its own project's threshold.
+    sequence_thresholds: dict[str, float] = {}
     for f in derive:
         threshold = _project_threshold_for_file(db, f)
         _set_observation_type(db, f, threshold)
-        for event_id in get_event_ids_for_files(db, [f.id]):
-            event_thresholds[event_id] = threshold
-    for event_id, threshold in event_thresholds.items():
-        recalculate_max_n_for_events(db, [event_id], threshold)
+        for sequence_id in get_sequence_ids_for_files(db, [f.id]):
+            sequence_thresholds[sequence_id] = threshold
+    for sequence_id, threshold in sequence_thresholds.items():
+        recalculate_max_n_for_sequences(db, [sequence_id], threshold)
     db.commit()
     return Restored(detections=detections, file_count=len(files))

@@ -1,13 +1,13 @@
 /**
- * Event detail modal — the Counts-page event viewer.
+ * Sequence detail modal — the Counts-page sequence viewer.
  *
  * Center: one focused image (the annotation canvas / video player) where
- * every tool acts, above a resizable wrapping-grid filmstrip of the event's
+ * every tool acts, above a resizable wrapping-grid filmstrip of the sequence's
  * frames; drag the divider to trade focus size for scanning room, and click
  * a thumbnail to focus it. Left: the shared tool rail (`ViewerToolRail`:
  * brightness/contrast, hide boxes, flag, like, download, explorer) plus
- * the cine-loop. Right: the event-level species
- * + count editor (EventCountPanel) with the single "Confirm" sign-off.
+ * the cine-loop. Right: the sequence-level species
+ * + count editor (SequenceCountPanel) with the single "Confirm" sign-off.
  * Per-detection label cleanup at scale lives on the Labels page.
  */
 
@@ -40,11 +40,11 @@ import {
 } from "../../lib/track-utils";
 import { ClipTimeline } from "./TrackTimeline";
 import { ApiError } from "../../lib/api-client";
-import { eventsApi } from "../../api/events";
+import { sequencesApi } from "../../api/sequences";
 import { detectionsApi } from "../../api/detections";
 import { projectQueryOptions } from "../../api/projects";
 import { basename } from "../../lib/path-utils";
-import { describeEventMedia } from "../../lib/event-media";
+import { describeSequenceMedia } from "../../lib/sequence-media";
 import {
   formatCameraDate,
   formatCameraTime,
@@ -53,18 +53,18 @@ import {
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 import type {
-  EventFilterParams,
-  EventObservationItem,
+  SequenceFilterParams,
+  SequenceObservationItem,
   FileWithDetections,
   HumanObservationRow,
 } from "../../api/types";
-import { EventFilmstrip } from "./EventFilmstrip";
+import { SequenceFilmstrip } from "./SequenceFilmstrip";
 import { ShortcutKey } from "./LabelsKeyboardPopover";
 import { ViewerToolRail } from "./ViewerToolRail";
 import { useFileTriage, useHoldToPeek, useImageAdjust } from "./viewer-tools";
 import type { TileSize } from "./CropGrid";
 import { AnnotationCanvas } from "./AnnotationCanvas";
-import { EventCountPanel } from "./EventCountPanel";
+import { SequenceCountPanel } from "./SequenceCountPanel";
 import { LabelPicker } from "./LabelPicker";
 import { VideoPlayer, isPlayableVideo } from "./VideoPlayer";
 import { useLabelOptions } from "../../hooks/useLabelOptions";
@@ -80,25 +80,25 @@ const COUNTS_SETTINGS = "addaxai:countsSettings";
 // Auto-play cadence: how long each frame is shown before advancing (2 fps).
 const AUTOPLAY_INTERVAL_MS = 500;
 
-interface EventDetailModalProps {
-  eventId: string | null;
+interface SequenceDetailModalProps {
+  sequenceId: string | null;
   projectId: string;
   isOpen: boolean;
   onClose: () => void;
-  filters?: EventFilterParams;
+  filters?: SequenceFilterParams;
 }
 
-export function EventDetailModal({
-  eventId,
+export function SequenceDetailModal({
+  sequenceId,
   projectId,
   isOpen,
   onClose,
   filters,
-}: EventDetailModalProps) {
+}: SequenceDetailModalProps) {
   const queryClient = useQueryClient();
   const [selectedFileIndex, setSelectedFileIndex] = useState(0);
   const [viewMode, setViewMode] = useState<"frame" | "video">("frame");
-  // Auto-play: cine-loop the event's frames on a timer. A ref mirrors the
+  // Auto-play: cine-loop the sequence's frames on a timer. A ref mirrors the
   // value so the busiest-frame open effect can read it without re-running.
   const [autoPlay, setAutoPlay] = useState(false);
   const autoPlayRef = useRef(false);
@@ -125,7 +125,7 @@ export function EventDetailModal({
   );
   const [boxesHidden, setBoxesHidden] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
-  // "Same as last": the visible cohort rows of the last non-empty event
+  // "Same as last": the visible cohort rows of the last non-empty sequence
   // confirmed while the modal is open. Deliberately not tied to the camera
   // or the time, matching Connect: one rule is easier to hold in the head
   // than a rule with exceptions. Cleared when the modal closes.
@@ -165,46 +165,46 @@ export function EventDetailModal({
     height: window.innerHeight,
   });
 
-  // Fetch event data
-  const { data: event, isError: eventError, error: eventErrorObj } = useQuery({
-    queryKey: ["event", eventId],
-    queryFn: () => eventsApi.get(eventId!),
-    enabled: !!eventId && isOpen,
-    // A re-run regenerates events with new ids, so a stale id 404s.
+  // Fetch sequence data
+  const { data: sequence, isError: sequenceError, error: sequenceErrorObj } = useQuery({
+    queryKey: ["sequence", sequenceId],
+    queryFn: () => sequencesApi.get(sequenceId!),
+    enabled: !!sequenceId && isOpen,
+    // A re-run regenerates sequences with new ids, so a stale id 404s.
     // Don't retry that (it can't succeed); other errors keep one retry.
     retry: (failureCount, err) =>
       !(err instanceof ApiError && err.status === 404) && failureCount < 1,
   });
 
-  // The event no longer exists (its id went stale after a re-run). Close
+  // The sequence no longer exists (its id went stale after a re-run). Close
   // the modal and refresh the lists so the dead row disappears, instead
   // of leaving the user staring at an empty modal.
   useEffect(() => {
     if (
-      eventError &&
-      eventErrorObj instanceof ApiError &&
-      eventErrorObj.status === 404
+      sequenceError &&
+      sequenceErrorObj instanceof ApiError &&
+      sequenceErrorObj.status === 404
     ) {
       onClose();
-      queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["sequences"] });
     }
-  }, [eventError, eventErrorObj, onClose, queryClient]);
+  }, [sequenceError, sequenceErrorObj, onClose, queryClient]);
 
-  // Fetch adjacent events for navigation (scoped to filtered set)
+  // Fetch adjacent sequences for navigation (scoped to filtered set)
   const { data: adjacent } = useQuery({
-    queryKey: ["event-adjacent", eventId, projectId, filters],
-    queryFn: () => eventsApi.getAdjacent(eventId!, projectId, filters),
-    enabled: !!eventId && isOpen,
+    queryKey: ["sequence-adjacent", sequenceId, projectId, filters],
+    queryFn: () => sequencesApi.getAdjacent(sequenceId!, projectId, filters),
+    enabled: !!sequenceId && isOpen,
   });
 
-  // Prefetch the next event, so moving forward through observations
+  // Prefetch the next sequence, so moving forward through observations
   // feels instant.
   useEffect(() => {
     const nextId = adjacent?.next_id;
     if (!nextId || !isOpen) return;
     queryClient.prefetchQuery({
-      queryKey: ["event", nextId],
-      queryFn: () => eventsApi.get(nextId),
+      queryKey: ["sequence", nextId],
+      queryFn: () => sequencesApi.get(nextId),
     });
   }, [adjacent?.next_id, isOpen, queryClient]);
 
@@ -227,18 +227,18 @@ export function EventDetailModal({
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Event summary for the top card: media breakdown + date/time span. This
-  // describes the event you're confirming, not the frame you happen to be on.
-  const eventSummary = useMemo(() => {
-    if (!event) return null;
-    const media = describeEventMedia(event.files);
+  // Sequence summary for the top card: media breakdown + date/time span. This
+  // describes the sequence you're confirming, not the frame you happen to be on.
+  const sequenceSummary = useMemo(() => {
+    if (!sequence) return null;
+    const media = describeSequenceMedia(sequence.files);
 
     let when: string | null = null;
-    if (event.event_start_local) {
+    if (sequence.sequence_start_local) {
       const dateOpts = { day: "numeric", month: "short", year: "numeric" } as const;
       const timeOpts = { hour: "2-digit", minute: "2-digit" } as const;
-      const start = event.event_start_local;
-      const end = event.event_end_local || start;
+      const start = sequence.sequence_start_local;
+      const end = sequence.sequence_end_local || start;
       const startDate = formatCameraDate(start, dateOpts, "en-GB");
       const startTime = formatCameraTime(start, timeOpts, "en-GB");
       const endTime = formatCameraTime(end, timeOpts, "en-GB");
@@ -254,7 +254,7 @@ export function EventDetailModal({
       }
     }
     return { media, when };
-  }, [event]);
+  }, [sequence]);
 
   // The track picked on the timeline; the player dims the others.
   const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
@@ -271,13 +271,13 @@ export function EventDetailModal({
   // moment that matters.
   const [still, setStill] = useState<{ fileId: string; frame: number } | null>(null);
 
-  // On open or event change, focus the busiest file: the one with the
+  // On open or sequence change, focus the busiest file: the one with the
   // most detections (a photo's boxes, a clip's tracks), regardless of
-  // species. Gives multi-species events one unambiguous landing file.
+  // species. Gives multi-species sequences one unambiguous landing file.
   // Threshold 0 on purpose: the pick is threshold-blind, as it always
   // was, and `passesDrawFilter` still leaves rejected boxes out.
   useEffect(() => {
-    const fs = event?.files ?? [];
+    const fs = sequence?.files ?? [];
     const peakCount = (f: FileWithDetections) => cardBoxes(f, 0).length;
     let bestIdx = 0;
     let bestCount = -1;
@@ -288,7 +288,7 @@ export function EventDetailModal({
         bestIdx = i;
       }
     });
-    // Auto-play restarts each event from the beginning; otherwise land on the
+    // Auto-play restarts each sequence from the beginning; otherwise land on the
     // busiest frame.
     setSelectedFileIndex(autoPlayRef.current ? 0 : bestIdx);
     setViewMode("frame");
@@ -297,17 +297,17 @@ export function EventDetailModal({
     setStill(null);
     setPendingVideoExport(false);
     setRelabelDetectionId(null);
-    // Lands once per event. `event.files` is a new array after every
+    // Lands once per sequence. `event.files` is a new array after every
     // refetch, and re-running then would throw the reviewer back to the
     // landing file after each edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [eventId, event?.id]);
+  }, [sequenceId, sequence?.id]);
 
-  const files = useMemo(() => event?.files ?? [], [event?.files]);
+  const files = useMemo(() => sequence?.files ?? [], [sequence?.files]);
   const currentFile = files[selectedFileIndex] as
     | FileWithDetections
     | undefined;
-  // The event carries each file's cards (cover boxes, one box per
+  // The sequence carries each file's cards (cover boxes, one box per
   // track, MaxN); the canvas at any frame, the player and the timeline
   // need every box, so the focused file is fetched in full, the way the
   // Files viewer does. Until it lands, the cards draw the first still.
@@ -360,28 +360,28 @@ export function EventDetailModal({
     [viewport],
   );
 
-  // Event confirmation (the count panel's "Confirm"; also the Enter key).
-  const eventConfirmMutation = useMutation({
+  // Sequence confirmation (the count panel's "Confirm"; also the Enter key).
+  const sequenceConfirmMutation = useMutation({
     mutationFn: (confirmed: boolean) => {
-      if (!event) return Promise.resolve(null);
-      return eventsApi.setConfirmed(event.id, confirmed);
+      if (!sequence) return Promise.resolve(null);
+      return sequencesApi.setConfirmed(sequence.id, confirmed);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-      queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["sequence", sequenceId] });
+      queryClient.invalidateQueries({ queryKey: ["sequences"] });
     },
   });
 
 
-  // Like / flag live at the file level (the Event card badge lights up if
+  // Like / flag live at the file level (the Sequence card badge lights up if
   // any file is set). Keyed by fileId.
   // Flag/like via the shared rail hook; the ["file"] invalidation lives
-  // in the hook, the event caches are this modal's own concern.
-  const invalidateEventCaches = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-    queryClient.invalidateQueries({ queryKey: ["events"] });
-  }, [queryClient, eventId]);
-  const triage = useFileTriage(invalidateEventCaches);
+  // in the hook, the sequence caches are this modal's own concern.
+  const invalidateSequenceCaches = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["sequence", sequenceId] });
+    queryClient.invalidateQueries({ queryKey: ["sequences"] });
+  }, [queryClient, sequenceId]);
+  const triage = useFileTriage(invalidateSequenceCaches);
   // Hold I: every stored box of the still. Off while the player is up.
   const playing = viewMode === "video" && !!currentFile && isPlayableVideo(currentFile);
   const peek = useHoldToPeek(!!currentFile && !playing);
@@ -389,7 +389,7 @@ export function EventDetailModal({
   // In-place single-box relabel: clicking a label pill on the focus image
   // relabels that one detection through the same path the Labels page uses
   // (detectionsApi.bulkRelabel with a one-id array). The backend re-derives
-  // the event's MaxN and clears Event.confirmed if the species/count set
+  // the sequence's MaxN and clears Sequence.confirmed if the species/count set
   // changed, so we just refetch. Mirrors the Labels page's invalidation set
   // (LabelsTab) so the filter tree / cohorts / Labels grid stay consistent.
   const relabelMutation = useMutation({
@@ -404,8 +404,8 @@ export function EventDetailModal({
     }) => detectionsApi.bulkRelabel([id], label, category),
     onSuccess: () => {
       setRelabelDetectionId(null);
-      queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-      queryClient.invalidateQueries({ queryKey: ["events"] });
+      queryClient.invalidateQueries({ queryKey: ["sequence", sequenceId] });
+      queryClient.invalidateQueries({ queryKey: ["sequences"] });
       invalidateLabelQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
     },
@@ -413,29 +413,29 @@ export function EventDetailModal({
   });
 
   // Navigation handlers
-  const navigateEvent = useCallback(
-    (targetEventId: string | null | undefined) => {
-      if (!targetEventId) return;
+  const navigateSequence = useCallback(
+    (targetSequenceId: string | null | undefined) => {
+      if (!targetSequenceId) return;
       window.dispatchEvent(
-        new CustomEvent("navigate-event", { detail: targetEventId })
+        new CustomEvent("navigate-event", { detail: targetSequenceId })
       );
     },
     []
   );
 
-  // Jump to the next event that still needs its species + counts confirmed.
+  // Jump to the next sequence that still needs its species + counts confirmed.
   const handleNextUnconfirmed = useCallback(() => {
-    navigateEvent(adjacent?.next_unconfirmed_id);
-  }, [adjacent, navigateEvent]);
+    navigateSequence(adjacent?.next_unconfirmed_id);
+  }, [adjacent, navigateSequence]);
 
-  // Confirm the event (if not already) and jump to the next unconfirmed one.
+  // Confirm the sequence (if not already) and jump to the next unconfirmed one.
   // Shared by the Enter key and the count panel's Confirm button.
   const handleConfirmAndAdvance = useCallback(() => {
     // Snapshot the visible cohorts for "Same as last", armed only once the
     // confirm is real: a non-empty confirm overwrites it (so confirming a
-    // blank event between two deer events never costs the deer rows), and
+    // blank sequence between two deer sequences never costs the deer rows), and
     // a confirm whose request fails arms nothing.
-    const rows = (event?.observations ?? [])
+    const rows = (sequence?.observations ?? [])
       .filter((o) => o.effective_count > 0)
       .map((o) => ({
         category: o.category,
@@ -449,8 +449,8 @@ export function EventDetailModal({
     const arm = () => {
       if (rows.length > 0) setLastConfirmedRows(rows);
     };
-    if (event && !event.confirmed) {
-      eventConfirmMutation.mutateAsync(true).then(() => {
+    if (sequence && !sequence.confirmed) {
+      sequenceConfirmMutation.mutateAsync(true).then(() => {
         arm();
         handleNextUnconfirmed();
       });
@@ -458,7 +458,7 @@ export function EventDetailModal({
       arm();
       handleNextUnconfirmed();
     }
-  }, [event, eventConfirmMutation, handleNextUnconfirmed]);
+  }, [sequence, sequenceConfirmMutation, handleNextUnconfirmed]);
 
   // Download button. For a video, always produce the annotated VIDEO:
   // switch to video view (mounting the player) and flag a one-shot export
@@ -514,7 +514,7 @@ export function EventDetailModal({
   // passes them to the player.
   const markers = useMemo(
     () =>
-      (event?.max_n_frames ?? [])
+      (sequence?.max_n_frames ?? [])
         .filter(
           (m) => m.file_id === currentFile?.id && m.max_n_frame_number != null && m.label != null,
         )
@@ -524,17 +524,17 @@ export function EventDetailModal({
           label: speciesKey(m),
           count: m.effective_count,
         })),
-    [event?.max_n_frames, currentFile?.id],
+    [sequence?.max_n_frames, currentFile?.id],
   );
   // The frame on screen in frame mode: the still a person asked for,
   // else the landing frame (see `still`).
   const shownFrame = stillFrame ?? markers[0]?.frame ?? null;
 
-  /** Shift+Arrow and Shift+wheel: the small unit inside the event. For
+  /** Shift+Arrow and Shift+wheel: the small unit inside the sequence. For
    *  a clip, the previous or next sampled frame of the focused clip
    *  (`steppedFrame`, the Files viewer's step, so stepping a clip is
    *  one thing on both pages; until 2026-11-03 this moved between the
-   *  event's files, which on a one-clip event was nothing). For photos,
+   *  sequence's files, which on a one-clip sequence was nothing). For photos,
    *  the previous or next picture of the burst. A manual step takes
    *  over from the cine-loop. */
   /** Once a clip's still is on screen, warm the sampled frames either
@@ -548,7 +548,7 @@ export function EventDetailModal({
     },
     [focused, shownFrame],
   );
-  const stepWithinEvent = useCallback(
+  const stepWithinSequence = useCallback(
     (dir: 1 | -1) => {
       setAutoPlay(false);
       setViewMode("frame");
@@ -585,7 +585,7 @@ export function EventDetailModal({
   // And back to the still, by P or by the clip reaching its end.
   const backToStill = useCallback(() => setViewMode("frame"), []);
   const showMaxN = useCallback(
-    (obs: EventObservationItem) => {
+    (obs: SequenceObservationItem) => {
       const index = files.findIndex((f) => f.id === obs.max_n_file_id);
       if (index < 0) return;
       setAutoPlay(false);
@@ -661,7 +661,7 @@ export function EventDetailModal({
 
       // Keys inside a popover (the rail's brightness sliders) belong to
       // the popover: without this, arrow keys on the slider also paged
-      // between events.
+      // between sequences.
       if (
         e.target instanceof HTMLElement &&
         e.target.closest("[data-radix-popper-content-wrapper]")
@@ -674,7 +674,7 @@ export function EventDetailModal({
       // modal's shortcuts firing underneath.
       if (relabelDetectionId) return;
 
-      // Confirm + advance to the next unconfirmed event.
+      // Confirm + advance to the next unconfirmed sequence.
       if (e.key === "Enter") {
         e.preventDefault();
         handleConfirmAndAdvance();
@@ -683,23 +683,23 @@ export function EventDetailModal({
 
       switch (e.key) {
         case " ":
-          // Space toggles auto-play (cine-loop the event's frames).
+          // Space toggles auto-play (cine-loop the sequence's frames).
           e.preventDefault();
           toggleAutoPlay();
           break;
-        // No modifier = move across events; Shift = move within the event
+        // No modifier = move across sequences; Shift = move within the sequence
         // (frames). Shift as the frame-level modifier mirrors Shift+scroll.
-        // Event nav keeps the cine-loop running (session mode); a manual
+        // Sequence nav keeps the cine-loop running (session mode); a manual
         // frame step grabs control and stops it.
         case "ArrowLeft":
           e.preventDefault();
-          if (e.shiftKey) stepWithinEvent(-1);
-          else navigateEvent(adjacent?.previous_id);
+          if (e.shiftKey) stepWithinSequence(-1);
+          else navigateSequence(adjacent?.previous_id);
           break;
         case "ArrowRight":
           e.preventDefault();
-          if (e.shiftKey) stepWithinEvent(1);
-          else navigateEvent(adjacent?.next_id);
+          if (e.shiftKey) stepWithinSequence(1);
+          else navigateSequence(adjacent?.next_id);
           break;
         case "p":
         case "P":
@@ -748,11 +748,11 @@ export function EventDetailModal({
     onClose,
     selectedFileIndex,
     files.length,
-    stepWithinEvent,
+    stepWithinSequence,
     triage,
     viewMode,
     playFocusedVideo,
-    navigateEvent,
+    navigateSequence,
     adjacent,
     relabelDetectionId,
   ]);
@@ -764,7 +764,7 @@ export function EventDetailModal({
       <DialogContent
         className="flex flex-col p-0 pt-3 gap-0 overflow-hidden [&>button.absolute]:hidden"
         onOpenAutoFocus={(e) => e.preventDefault()}
-        // Escape inside the event note closes the note (EventCountPanel
+        // Escape inside the sequence note closes the note (SequenceCountPanel
         // handles it), not the modal. Radix listens in the capture phase,
         // so this is the only place that can stop it.
         onEscapeKeyDown={(e) => {
@@ -802,7 +802,7 @@ export function EventDetailModal({
                 peek={{ ...peek, disabled: playing }}
                 flagKey="T"
               >
-                {/* Loop event — cine-loop the event's frames to see
+                {/* Loop sequence — cine-loop the sequence's frames to see
                     motion. The loop glyph keeps it distinct from the
                     video-play triangle. */}
                 {files.length > 1 && (
@@ -839,7 +839,7 @@ export function EventDetailModal({
                   <RotateCcw className="h-20 w-20 text-white" />
                 </div>
               )}
-              {/* Position-in-event chip + gap since the previous frame —
+              {/* Position-in-sequence chip + gap since the previous frame —
                   glanceable while scrubbing, eyes on the focus. */}
               {files.length > 1 && (
                 <div className="pointer-events-none absolute bottom-2 right-2 z-10 rounded-md bg-black/60 px-2.5 py-1 text-sm font-medium tabular-nums text-white/90">
@@ -888,7 +888,7 @@ export function EventDetailModal({
                     drawMode={false}
                     onDrawModeChange={() => {}}
                     readOnly
-                    onScrubFrame={(d) => stepWithinEvent(d > 0 ? 1 : -1)}
+                    onScrubFrame={(d) => stepWithinSequence(d > 0 ? 1 : -1)}
                     onLoadingChange={warmNeighbourFrames}
                     imageFilter={imageFilter}
                     boxesHidden={boxesHidden}
@@ -993,8 +993,8 @@ export function EventDetailModal({
               />
             </div>
 
-            {/* The filmstrip of the event's files, under a draggable
-                divider; thumbnails mirror the focus. Only for an event of
+            {/* The filmstrip of the sequence's files, under a draggable
+                divider; thumbnails mirror the focus. Only for a sequence of
                 more than one file: with one, it showed a single
                 thumbnail of the picture already on screen and took room
                 from it (every BRUV drop is one clip). */}
@@ -1002,7 +1002,7 @@ export function EventDetailModal({
               <>
                 <ResizeHandle onMouseDown={startDividerDrag} title="Drag to resize the filmstrip" />
                 <div style={{ height: filmstripHeight }} className="shrink-0 min-h-0">
-                  <EventFilmstrip
+                  <SequenceFilmstrip
                     files={files}
                     selectedIndex={selectedFileIndex}
                     onSelectFile={handleSelectFile}
@@ -1026,7 +1026,7 @@ export function EventDetailModal({
                   size="icon"
                   className="h-7 w-7"
                   disabled={prevDisabled}
-                  onClick={() => navigateEvent(adjacent?.previous_id)}
+                  onClick={() => navigateSequence(adjacent?.previous_id)}
                   title="Previous event (←)"
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -1036,7 +1036,7 @@ export function EventDetailModal({
                   size="icon"
                   className="h-7 w-7"
                   disabled={nextDisabled}
-                  onClick={() => navigateEvent(adjacent?.next_id)}
+                  onClick={() => navigateSequence(adjacent?.next_id)}
                   title="Next event (→)"
                 >
                   <ChevronRight className="h-4 w-4" />
@@ -1062,15 +1062,15 @@ export function EventDetailModal({
               </Button>
             </div>
 
-            {/* Event summary — what you're confirming (media, when, where).
+            {/* Sequence summary — what you're confirming (media, when, where).
                 The muted last line names the frame you're currently viewing. */}
-            {event && eventSummary && (
+            {sequence && sequenceSummary && (
               <div className="mx-3 mt-3 shrink-0 rounded-lg border bg-muted/40 px-3 py-2 space-y-0.5 text-xs text-muted-foreground">
                 <div className="font-medium text-foreground">
-                  {eventSummary.media}
+                  {sequenceSummary.media}
                 </div>
-                {eventSummary.when && <div>{eventSummary.when}</div>}
-                {event.site_name && <div>{event.site_name}</div>}
+                {sequenceSummary.when && <div>{sequenceSummary.when}</div>}
+                {sequence.site_name && <div>{sequence.site_name}</div>}
                 {currentFile && (
                   <div className="truncate pt-0.5 text-[11px] text-muted-foreground/70">
                     Viewing {basename(currentFile.file_path)} (
@@ -1080,15 +1080,15 @@ export function EventDetailModal({
               </div>
             )}
 
-            {/* Event-level species + count editor (the ecological record,
+            {/* Sequence-level species + count editor (the ecological record,
                 and the star of this modal). */}
-            {event && (
-              <EventCountPanel
-                eventId={event.id}
+            {sequence && (
+              <SequenceCountPanel
+                sequenceId={sequence.id}
                 projectId={projectId}
-                observations={event.observations}
-                confirmed={event.confirmed}
-                notes={event.notes}
+                observations={sequence.observations}
+                confirmed={sequence.confirmed}
+                notes={sequence.notes}
                 onConfirm={handleConfirmAndAdvance}
                 labelOptions={labelOptions}
                 labelOptionsLoading={labelOptionsLoading}

@@ -1,11 +1,11 @@
 /**
- * Human description of what an event's files consist of:
+ * Human description of what a sequence's files consist of:
  * "1 video", "12 images", or "2 videos and 2 images".
  *
- * Counts files, not frames (the event filmstrip used to mislabel its file
+ * Counts files, not frames (the sequence filmstrip used to mislabel its file
  * count as "frames"). Everything that isn't a video is counted as an image.
  */
-export function describeEventMedia(files: { file_type: string }[]): string {
+export function describeSequenceMedia(files: { file_type: string }[]): string {
   const videos = files.filter((f) => f.file_type === "video").length;
   const images = files.length - videos;
   const parts: string[] = [];

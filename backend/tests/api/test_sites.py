@@ -4,13 +4,13 @@ from datetime import date, datetime
 
 import pytest
 
-from app.models.event_observation import EventObservation
+from app.models.sequence_observation import SequenceObservation
 from tests.conftest import (
     make_deployment,
     make_detection,
-    make_event_with_files,
     make_file,
     make_project,
+    make_sequence_with_files,
     make_site,
 )
 
@@ -122,7 +122,7 @@ def test_delete_site_not_found(client):
 
 def _build_site_info_fixture(db):
     """Site with 2 deployments, mixed file types, a classified
-    detection, a verified below-threshold detection, and one event +
+    detection, a verified below-threshold detection, and one sequence +
     observation. Used by the happy-path test."""
     project = make_project(db, counting_threshold=0.5)
     site = make_site(
@@ -185,16 +185,16 @@ def _build_site_info_fixture(db):
         confidence=0.2,
         verified=True,
     )
-    # One event with one observation (MaxN=2) on dep1.
-    event = make_event_with_files(
+    # One sequence with one observation (MaxN=2) on dep1.
+    sequence = make_sequence_with_files(
         db,
         deployment_id=dep1.id,
-        event_start_local=datetime(2024, 6, 5, 8, 0),
+        sequence_start_local=datetime(2024, 6, 5, 8, 0),
         files_verified=[],  # suppress auto-created file
     )
     db.add(
-        EventObservation(
-            event_id=event.id,
+        SequenceObservation(
+            sequence_id=sequence.id,
             label="lion",
             label_taxonomy_id=None,
             category="animal",
@@ -218,7 +218,7 @@ def test_site_info_happy_path(client, db):
     assert data["habitat_type"] == "forest"
     assert data["deployment_count"] == 2
     assert data["files"] == {"total": 5, "images": 4, "videos": 1}
-    assert data["event_count"] == 1
+    assert data["sequence_count"] == 1
     assert data["observation_count"] == 2
     # Classes by their own name; one the site never saw is not listed.
     assert data["detection_categories"] == {"classes": {"animal": 2}, "empty": 0}
@@ -251,7 +251,7 @@ def test_site_info_empty_site(client, db):
     data = resp.json()
     assert data["deployment_count"] == 0
     assert data["files"] == {"total": 0, "images": 0, "videos": 0}
-    assert data["event_count"] == 0
+    assert data["sequence_count"] == 0
     assert data["observation_count"] == 0
     assert data["trap_nights"] is None
     assert data["observation_rate_per_100_trap_nights"] is None

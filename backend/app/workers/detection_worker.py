@@ -23,9 +23,9 @@ from sqlalchemy.exc import OperationalError
 
 from app.api.crud import deployment as deployment_crud
 from app.api.crud import deployment_queue as queue_crud
-from app.api.crud import event as event_crud
 from app.api.crud import job as job_crud
 from app.api.crud import project as project_crud
+from app.api.crud import sequence as sequence_crud
 from app.core.job_cancellation import JobCancelledError, clear_cancel
 from app.core.logging_config import get_logger
 from app.core.websocket_manager import ws_manager
@@ -1116,7 +1116,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 except Exception as e:
                     logger.warning(f"Failed to link detections to taxonomy: {e}")
 
-                # Events before embeddings. Embeddings are optional and the
+                # Sequences before embeddings. Embeddings are optional and the
                 # one phase that has died on a large video deployment (the
                 # server was killed building the input on 238,941 boxes);
                 # generated here, the counts and MaxN of a finished analysis
@@ -1124,11 +1124,11 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                 # of several folders regenerates on each, which is cheap.
                 # In a thread: the job runs on the event loop that serves the
                 # app, and on a 900K-photo deployment this takes minutes.
-                event_count = await asyncio.to_thread(
-                    event_crud.generate_events_for_project, db, project_id
+                sequence_count = await asyncio.to_thread(
+                    sequence_crud.generate_sequences_for_project, db, project_id
                 )
                 db.commit()
-                logger.info(f"Batch job {job_id}: {event_count} events after {deployment.id}")
+                logger.info(f"Batch job {job_id}: {sequence_count} sequences after {deployment.id}")
 
                 # ============================================================
                 # PHASE 8: Embedding (DINOv2) — fatal if configured
@@ -1344,7 +1344,7 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
         project.postprocessing_settings_hash = compute_postprocessing_settings_hash(project)
         db.commit()
 
-        # Events were generated per deployment, before its embedding phase.
+        # Sequences were generated per deployment, before its embedding phase.
 
         # Refresh SQLite query planner statistics after bulk inserts.
         # In a thread: jobs run on the event loop that serves the app, and

@@ -294,7 +294,7 @@ def get_bulk_stats(
     db: Session = Depends(get_db),
 ) -> dict[str, DeploymentStatsOnly]:
     """
-    Get file/event/detection counts for all deployments in a project.
+    Get file/sequence/detection counts for all deployments in a project.
 
     Returns a dict keyed by deployment ID with stats for each.
     """
@@ -734,7 +734,7 @@ def delete_deployment(deployment_id: str, db: Session = Depends(get_db)) -> None
     Delete a deployment.
 
     Returns 404 if deployment doesn't exist.
-    Cascades deletion to all files and events.
+    Cascades deletion to all files and sequences.
     """
     deleted = crud_deployment.delete_deployment(db, deployment_id)
     if not deleted:
@@ -743,7 +743,7 @@ def delete_deployment(deployment_id: str, db: Session = Depends(get_db)) -> None
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Deployment with id '{deployment_id}' not found",
         )
-    logger.info(f"Deleted deployment: {deployment_id} (cascaded to files and events)")
+    logger.info(f"Deleted deployment: {deployment_id} (cascaded to files and sequences)")
 
 
 @router.get(
@@ -784,8 +784,8 @@ def split_deployment(
     Split a deployment into N children along the folder hierarchy.
 
     Copies the deployment's `.addaxai/projects/<project_id>/` artifacts into
-    each child subfolder, reassigns files / detections / events to the
-    correct child (duplicating events that straddle multiple children),
+    each child subfolder, reassigns files / detections / sequences to the
+    correct child (duplicating sequences that straddle multiple children),
     deletes the parent row, and removes the parent's old `.addaxai` folder.
 
     Returns 404 if the deployment doesn't exist, 409 when an active job or
@@ -818,7 +818,7 @@ def deployment_info(
     Investigation-level payload for the Deployments → Info sheet.
 
     Combines deployment metadata (folder path, site, start / end dates),
-    file-type split, event and observation counts, mean detection and
+    file-type split, sequence and observation counts, mean detection and
     classification confidence (respecting the project's detection
     threshold with the verified override), and the first and last
     capture timestamps. Returns 404 if the deployment does not exist.
@@ -837,7 +837,7 @@ def get_deployment_stats(deployment_id: str, db: Session = Depends(get_db)) -> D
     """
     Get deployment with statistics.
 
-    Returns deployment info plus counts of files, events, and detections.
+    Returns deployment info plus counts of files, sequences, and detections.
     Returns 404 if deployment doesn't exist.
     """
     db_deployment = crud_deployment.get_deployment(db, deployment_id)

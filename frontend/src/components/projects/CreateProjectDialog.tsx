@@ -91,7 +91,7 @@ const projectSchema = z.object({
   country_code: z.string().optional().nullable(),
   state_code: z.string().optional().nullable(),
   counting_threshold: z.number().min(0).max(1),
-  event_smoothing: z.boolean(),
+  sequence_smoothing: z.boolean(),
   smoothing_strength: z.enum(["mild", "normal", "aggressive"]),
   taxonomic_rollup: z.boolean(),
   independence_interval: z.number().min(0),
@@ -165,7 +165,7 @@ export function CreateProjectDialog({
       country_code: lastSelection?.country_code ?? null,
       state_code: lastSelection?.state_code ?? null,
       counting_threshold: DEFAULT_COUNTING_THRESHOLD,
-      event_smoothing: true,
+      sequence_smoothing: true,
       smoothing_strength: "normal" as const,
       taxonomic_rollup: true,
       independence_interval: 1800, // Will be converted from minutes in UI

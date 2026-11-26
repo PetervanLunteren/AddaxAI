@@ -27,6 +27,7 @@ from app.db.migration_check import (
     rows_changed_on_purpose,
     snapshot,
     sqlite_health,
+    tables_renamed,
 )
 from app.db.migrations import _alembic_config, get_current_revision
 from tests.db.conftest import insert_row, upgrade_to
@@ -140,4 +141,6 @@ def test_migration_keeps_every_row(engine, isolated_db_settings, step):
             ).fetchone()[0]
         assert really_null == 0
     assert health == []
-    assert lost_rows(before, snapshot(db_path), rows_changed_on_purpose([rev])) == []
+    assert lost_rows(
+        before, snapshot(db_path), rows_changed_on_purpose([rev]), tables_renamed([rev])
+    ) == []

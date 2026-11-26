@@ -10,7 +10,7 @@
  * sliders, so the bar stays a single row.
  *
  * Page specifics:
- * - Counts (events): all slots; `showLikedFlaggedEmpty = true`.
+ * - Counts (sequences): all slots; `showLikedFlaggedEmpty = true`.
  * - Labels, Detections: same slots, but the More popover only contains
  *   the confidence ranges (`showLikedFlaggedEmpty = false`). Verified
  *   options match (all / unverified / verified).
@@ -21,7 +21,7 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { eventsApi, type LabelCountUnit } from "../../api/events";
+import { sequencesApi, type LabelCountUnit } from "../../api/sequences";
 import { projectQueryOptions } from "../../api/projects";
 import { sitesApi } from "../../api/sites";
 import { useNoSiteDeployments } from "../../hooks/useNoSiteDeployments";
@@ -30,7 +30,7 @@ import { speciesLabelMap } from "../../lib/species-name-mode";
 import { reconcileEmptyFilter } from "../../lib/empty-filter";
 import type {
   EmptyFilter,
-  EventFilterParams,
+  SequenceFilterParams,
   VerificationFilter,
 } from "../../api/types";
 import { DateRangePicker } from "../ui/date-range-picker";
@@ -57,7 +57,7 @@ const DEFAULT_VERIFICATION_OPTIONS: VerificationOption[] = [
   { value: "verified", label: "Verified" },
 ];
 
-// The Counts page (countBy="event") filters on Event.confirmed, so it
+// The Counts page (countBy="sequence") filters on Sequence.confirmed, so it
 // reads "Confirmed" / "Unconfirmed". The shared `verification` param value
 // stays verified/unverified; only the display wording changes.
 const EVENT_VERIFICATION_OPTIONS: VerificationOption[] = [
@@ -71,8 +71,8 @@ const EVENT_VERIFICATION_LABELS: Record<string, string> = {
 };
 
 interface VerifyFilterBarProps {
-  filters: EventFilterParams;
-  onChange: (next: EventFilterParams) => void;
+  filters: SequenceFilterParams;
+  onChange: (next: SequenceFilterParams) => void;
   projectId: string;
   classificationModelId?: string | null;
   /** Project's counting_threshold; clamps the floor of the det slider. */
@@ -85,7 +85,7 @@ interface VerifyFilterBarProps {
    *  selects. False on the Labels page (those don't apply there). */
   showLikedFlaggedEmpty?: boolean;
   /** Render the Empty select on its own, without liked / flagged. The
-   *  Files tab: a file is empty or not, but liked and flagged are event
+   *  Files tab: a file is empty or not, but liked and flagged are sequence
    *  filters there. Defaults to `showLikedFlaggedEmpty`. */
   showEmpty?: boolean;
   /** The page's default empty value, same contract as
@@ -126,15 +126,15 @@ export function VerifyFilterBar({
 }: VerifyFilterBarProps) {
   // Every control goes through here, so "Empty only" and the label and
   // confidence filters can never end up set together.
-  const onChange = (next: EventFilterParams) =>
+  const onChange = (next: SequenceFilterParams) =>
     onChangeRaw(reconcileEmptyFilter(filters, next));
 
-  // Event scope (Counts page) confirms; detection/file scope (Labels)
+  // Sequence scope (Counts page) confirms; detection/file scope (Labels)
   // verifies. Drives the verification filter's wording.
-  const isEventScope = countBy === "event";
+  const isSequenceScope = countBy === "sequence";
   const verOptions =
     verificationOptions ??
-    (isEventScope ? EVENT_VERIFICATION_OPTIONS : DEFAULT_VERIFICATION_OPTIONS);
+    (isSequenceScope ? EVENT_VERIFICATION_OPTIONS : DEFAULT_VERIFICATION_OPTIONS);
 
   // Folder runs are a single deployment with no site, so the Sites
   // filter is meaningless there. Detect the mode from the project
@@ -153,8 +153,8 @@ export function VerifyFilterBar({
   const { data: noSite } = useNoSiteDeployments(projectId);
 
   const { data: filterOptions } = useQuery({
-    queryKey: ["event-filter-options", projectId],
-    queryFn: () => eventsApi.getFilterOptions(projectId),
+    queryKey: ["sequence-filter-options", projectId],
+    queryFn: () => sequencesApi.getFilterOptions(projectId),
     enabled: !!projectId,
   });
 
@@ -239,7 +239,7 @@ export function VerifyFilterBar({
         )}
 
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">{isEventScope ? "Confirmed" : "Verified"}</label>
+          <label className="text-xs font-medium text-muted-foreground">{isSequenceScope ? "Confirmed" : "Verified"}</label>
           <Select
             value={filters.verification ?? verificationDefault}
             onValueChange={(v) =>
@@ -303,7 +303,7 @@ export function VerifyFilterBar({
         siteNames={siteNames}
         displayLabels={filterOptions ? speciesLabelMap(filterOptions) : undefined}
         detectionFloor={detectionFloor}
-        verificationLabels={isEventScope ? EVENT_VERIFICATION_LABELS : undefined}
+        verificationLabels={isSequenceScope ? EVENT_VERIFICATION_LABELS : undefined}
       />
     </div>
   );

@@ -493,7 +493,7 @@ export function ActivityOverlapPage() {
         subtitle="Compare daily activity patterns between two labels"
         actions={
           // A picture only: the curves are smoothed estimates, and the
-          // event times behind them are on the Export page.
+          // sequence times behind them are on the Export page.
           <DownloadMenu
             items={
               chart

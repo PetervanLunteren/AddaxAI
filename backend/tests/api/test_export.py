@@ -24,9 +24,9 @@ from app.models.label_taxonomy import LabelTaxonomy
 from tests.conftest import (
     make_deployment,
     make_detection,
-    make_event_with_files,
     make_file,
     make_project,
+    make_sequence_with_files,
     make_site,
     make_track,
     make_video_box,
@@ -176,7 +176,7 @@ def test_export_detections_csv_happy_path(client, db):
     rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     headers = rows[0]
     # One row per box, and every row reads on its own: the row's id, then
-    # the context block (site, deployment, event, file) broad to specific,
+    # the context block (site, deployment, sequence, file) broad to specific,
     # then the detection's own fields. The block is the same, in the same
     # order, in files.csv and counts.csv.
     assert headers == [
@@ -937,17 +937,17 @@ def test_files_export_species_follow_the_export_scope(client, db):
     assert _species(headers, by_id[f.id]) == ["", "Person", "Person"]
 
 
-def test_event_id_is_blank_when_a_file_has_no_event(client, db):
-    """`event_id` must never stand in a file id for a missing event: a
-    consumer joining files.csv to counts.csv on event_id would match
-    nothing and never know why. Blank says "no event", which is true.
+def test_sequence_id_is_blank_when_a_file_has_no_sequence(client, db):
+    """`sequence_id` must never stand in a file id for a missing sequence: a
+    consumer joining files.csv to counts.csv on sequence_id would match
+    nothing and never know why. Blank says "no sequence", which is true.
 
-    In practice every image / video is clustered into exactly one event
-    (date-less files become singleton events), so this only fires when
-    events have not been generated yet.
+    In practice every image / video is clustered into exactly one sequence
+    (date-less files become singleton sequences), so this only fires when
+    sequences have not been generated yet.
     """
     project, _site, deployment = _build_simple_project(db)
-    f_no_event = make_file(
+    f_no_sequence = make_file(
         db,
         deployment_id=deployment.id,
         captured_at_local=datetime(2024, 6, 1, 12, 0, 0),
@@ -962,22 +962,22 @@ def test_event_id_is_blank_when_a_file_has_no_event(client, db):
     fid_i = headers.index("file_id")
     eid_i = headers.index("event_id")
 
-    row = next(r for r in rows[1:] if r[fid_i] == f_no_event.id)
+    row = next(r for r in rows[1:] if r[fid_i] == f_no_sequence.id)
     assert row[eid_i] == ""
-    assert row[eid_i] != f_no_event.id
+    assert row[eid_i] != f_no_sequence.id
 
 
-def test_detections_event_id_is_blank_when_a_file_has_no_event(client, db):
+def test_detections_sequence_id_is_blank_when_a_file_has_no_sequence(client, db):
     """Same contract as the files export: the detections table must not
-    stand a file id in for a missing event either."""
+    stand a file id in for a missing sequence either."""
     project, _site, deployment = _build_simple_project(db)
-    f_no_event = make_file(
+    f_no_sequence = make_file(
         db,
         deployment_id=deployment.id,
         captured_at_local=datetime(2024, 6, 1, 12, 0, 0),
         observation_type="animal",
     )
-    make_detection(db, file_id=f_no_event.id, confidence=0.9)
+    make_detection(db, file_id=f_no_sequence.id, confidence=0.9)
     db.commit()
 
     resp = _export(client, project.id, "detections", "csv")
@@ -987,20 +987,20 @@ def test_detections_event_id_is_blank_when_a_file_has_no_event(client, db):
     fid_i = headers.index("file_id")
     eid_i = headers.index("event_id")
 
-    row = next(r for r in rows[1:] if r[fid_i] == f_no_event.id)
+    row = next(r for r in rows[1:] if r[fid_i] == f_no_sequence.id)
     assert row[eid_i] == ""
-    assert row[eid_i] != f_no_event.id
+    assert row[eid_i] != f_no_sequence.id
 
 
-def test_event_id_carries_the_real_event_id_when_clustered(client, db):
+def test_sequence_id_carries_the_real_sequence_id_when_clustered(client, db):
     """The other half of the contract: a clustered file reports its
-    actual event id, in both the files and the detections table, so a
+    actual sequence id, in both the files and the detections table, so a
     join against counts.csv resolves."""
     project, _site, deployment = _build_simple_project(db)
-    event = make_event_with_files(
+    sequence = make_sequence_with_files(
         db,
         deployment_id=deployment.id,
-        event_start_local=datetime(2024, 6, 1, 12, 0, 0),
+        sequence_start_local=datetime(2024, 6, 1, 12, 0, 0),
     )
     clustered = (
         db.query(File).filter(File.deployment_id == deployment.id).one()
@@ -1014,7 +1014,7 @@ def test_event_id_carries_the_real_event_id_when_clustered(client, db):
     frow = next(
         r for r in files_rows[1:] if r[fh.index("file_id")] == clustered.id
     )
-    assert frow[fh.index("event_id")] == event.id
+    assert frow[fh.index("event_id")] == sequence.id
 
     det_resp = _export(client, project.id, "detections")
     det_rows = list(csv.reader(io.StringIO(det_resp.content.decode("utf-8"))))
@@ -1022,7 +1022,7 @@ def test_event_id_carries_the_real_event_id_when_clustered(client, db):
     drow = next(
         r for r in det_rows[1:] if r[dh.index("file_id")] == clustered.id
     )
-    assert drow[dh.index("event_id")] == event.id
+    assert drow[dh.index("event_id")] == sequence.id
 
 
 def test_export_detections_tsv_and_xlsx(client, db):
@@ -1117,24 +1117,24 @@ def test_export_detections_project_not_found(client):
     assert resp.status_code == 404
 
 
-def test_export_observations_event_level(client, db):
-    """Event-level Observations: one row per species per event with the
+def test_export_observations_sequence_level(client, db):
+    """Event-level Observations: one row per species per sequence with the
     effective (human-confirmed, else AI) count."""
-    from app.api.crud.event_observation import (
-        calculate_max_n_for_event,
+    from app.api.crud.sequence_observation import (
+        calculate_max_n_for_sequence,
         set_human_count,
     )
 
     project, _site, deployment = _build_simple_project(db, timezone="UTC")
-    ev = make_event_with_files(
+    ev = make_sequence_with_files(
         db,
         deployment_id=deployment.id,
-        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+        sequence_start_local=datetime(2024, 6, 15, 9, 0, 0),
     )
-    # Two deer on the same frame → AI MaxN of 2 for the event.
+    # Two deer on the same frame → AI MaxN of 2 for the sequence.
     make_detection(db, file_id=ev.files[0].id, category="animal", confidence=0.9, label="deer")
     make_detection(db, file_id=ev.files[0].id, category="animal", confidence=0.8, label="deer")
-    obs = calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    obs = calculate_max_n_for_sequence(db, ev.id, project.counting_threshold)
     # The rows above are still pending; `set_human_count` looks its row up
     # by id in SQL and silently returns None when it is not there yet.
     db.flush()
@@ -1169,7 +1169,7 @@ def test_export_observations_project_not_found(client):
 # The context block: where and when a row came from
 #
 # Counts, detections and files repeat the site, the deployment and the
-# event on every row, in the same columns and the same order, so a person
+# sequence on every row, in the same columns and the same order, so a person
 # reading one table in Excel needs no join. The ids stay for those who do.
 # ---------------------------------------------------------------------------
 
@@ -1194,18 +1194,18 @@ _CONTEXT_HEADERS = [
 
 
 def test_every_table_carries_the_site_and_deployment_on_each_row(client, db):
-    from app.api.crud.event_observation import calculate_max_n_for_event
+    from app.api.crud.sequence_observation import calculate_max_n_for_sequence
 
     project, site, deployment = _build_simple_project(db, timezone="Europe/Amsterdam")
     site.tags = {"tenure": "park"}
     deployment.tags = {"camera": "A1", "bait": "none"}
-    ev = make_event_with_files(
+    ev = make_sequence_with_files(
         db,
         deployment_id=deployment.id,
-        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+        sequence_start_local=datetime(2024, 6, 15, 9, 0, 0),
     )
     make_detection(db, file_id=ev.files[0].id, category="animal", confidence=0.9, label="deer")
-    calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    calculate_max_n_for_sequence(db, ev.id, project.counting_threshold)
     db.commit()
 
     expected = {
@@ -1229,7 +1229,7 @@ def test_every_table_carries_the_site_and_deployment_on_each_row(client, db):
         assert len(rows) == 1, table
         assert {k: rows[0][k] for k in expected} == expected, table
         assert rows[0]["event_id"] == ev.id, table
-        # Event times carry the per-row DST offset like every other datetime.
+        # Sequence times carry the per-row DST offset like every other datetime.
         assert rows[0]["event_start"].endswith("+02:00"), table
         assert rows[0]["event_end"].endswith("+02:00"), table
 
@@ -1261,27 +1261,27 @@ def test_counts_export_keeps_the_ai_count_next_to_the_human_count(client, db):
     review still tells the AI's number from the person's. ``trap_nights``
     repeats the Deployments table, so count per trap night is one formula
     on the row."""
-    from app.api.crud.event_observation import (
-        calculate_max_n_for_event,
+    from app.api.crud.sequence_observation import (
+        calculate_max_n_for_sequence,
         set_human_count,
     )
 
     project, _site, deployment = _build_simple_project(db)
-    ev = make_event_with_files(
+    ev = make_sequence_with_files(
         db,
         deployment_id=deployment.id,
-        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+        sequence_start_local=datetime(2024, 6, 15, 9, 0, 0),
     )
     make_detection(db, file_id=ev.files[0].id, category="animal", confidence=0.9, label="deer")
     make_detection(db, file_id=ev.files[0].id, category="animal", confidence=0.8, label="deer")
-    ev2 = make_event_with_files(
+    ev2 = make_sequence_with_files(
         db,
         deployment_id=deployment.id,
-        event_start_local=datetime(2024, 6, 16, 9, 0, 0),
+        sequence_start_local=datetime(2024, 6, 16, 9, 0, 0),
     )
     make_detection(db, file_id=ev2.files[0].id, category="animal", confidence=0.9, label="fox")
-    obs = calculate_max_n_for_event(db, ev.id, project.counting_threshold)
-    calculate_max_n_for_event(db, ev2.id, project.counting_threshold)
+    obs = calculate_max_n_for_sequence(db, ev.id, project.counting_threshold)
+    calculate_max_n_for_sequence(db, ev2.id, project.counting_threshold)
     db.flush()
     set_human_count(db, obs[0].id, 5)
     db.commit()
@@ -1342,7 +1342,7 @@ def test_exports_write_the_scientific_name_in_full(client, db):
     fails name matching. Rows that were never abbreviated (a rollup to
     family, a custom label) keep their stored name, and a variant keeps
     its qualifier."""
-    from app.api.crud.event_observation import calculate_max_n_for_event
+    from app.api.crud.sequence_observation import calculate_max_n_for_sequence
 
     project, _site, deployment = _build_simple_project(db)
 
@@ -1371,10 +1371,10 @@ def test_exports_write_the_scientific_name_in_full(client, db):
         common_name="Red fox juvenile", scientific_name="V. vulpes (juvenile)",
     )
     for day, taxonomy in enumerate((fox, canids, cub), start=1):
-        ev = make_event_with_files(
+        ev = make_sequence_with_files(
             db,
             deployment_id=deployment.id,
-            event_start_local=datetime(2024, 6, day, 9, 0, 0),
+            sequence_start_local=datetime(2024, 6, day, 9, 0, 0),
         )
         make_detection(
             db,
@@ -1384,7 +1384,7 @@ def test_exports_write_the_scientific_name_in_full(client, db):
             common_name=taxonomy.common_name,
             label_taxonomy_id=taxonomy.id,
         )
-        calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+        calculate_max_n_for_sequence(db, ev.id, project.counting_threshold)
     db.commit()
 
     expected = {
@@ -1408,16 +1408,16 @@ def test_export_spreadsheet_is_multi_sheet_workbook(client, db):
     to."""
     from openpyxl import load_workbook
 
-    from app.api.crud.event_observation import calculate_max_n_for_event
+    from app.api.crud.sequence_observation import calculate_max_n_for_sequence
 
     project, _site, deployment = _build_simple_project(db, timezone="UTC")
-    ev = make_event_with_files(
+    ev = make_sequence_with_files(
         db,
         deployment_id=deployment.id,
-        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+        sequence_start_local=datetime(2024, 6, 15, 9, 0, 0),
     )
     make_detection(db, file_id=ev.files[0].id, category="animal", confidence=0.9, label="deer")
-    calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    calculate_max_n_for_sequence(db, ev.id, project.counting_threshold)
     db.commit()
 
     resp = _export(client, project.id, "spreadsheet", "xlsx")
@@ -1465,38 +1465,38 @@ def _detection_rows(client, project_id: str) -> list[dict]:
     return list(csv.DictReader(io.StringIO(resp.content.decode("utf-8"))))
 
 
-def test_summary_counts_images_videos_detections_events_individuals(client, db):
+def test_summary_counts_images_videos_detections_sequences_individuals(client, db):
     """One row per species, and every count column counts one other table:
     n_detections the Detections rows, n_images / n_videos the files those
-    rows sit on, n_events the events those files belong to, n_individuals
+    rows sit on, n_events the sequences those files belong to, n_individuals
     the Counts table total."""
-    from app.api.crud.event_observation import calculate_max_n_for_event
+    from app.api.crud.sequence_observation import calculate_max_n_for_sequence
 
     project, _site, deployment = _build_simple_project(db)
-    # Event A: two images, three deer boxes (two on one image).
-    ev_a = make_event_with_files(
+    # Sequence A: two images, three deer boxes (two on one image).
+    ev_a = make_sequence_with_files(
         db,
         deployment_id=deployment.id,
-        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+        sequence_start_local=datetime(2024, 6, 15, 9, 0, 0),
         files_verified=[False, False],
     )
     img_1, img_2 = ev_a.files
     make_detection(db, file_id=img_1.id, confidence=0.9, label="deer")
     make_detection(db, file_id=img_1.id, confidence=0.8, label="deer")
     make_detection(db, file_id=img_2.id, confidence=0.7, label="deer")
-    calculate_max_n_for_event(db, ev_a.id, project.counting_threshold)
-    # Event B: one video, one deer card.
-    ev_b = make_event_with_files(
+    calculate_max_n_for_sequence(db, ev_a.id, project.counting_threshold)
+    # Sequence B: one video, one deer card.
+    ev_b = make_sequence_with_files(
         db,
         deployment_id=deployment.id,
-        event_start_local=datetime(2024, 6, 16, 9, 0, 0),
+        sequence_start_local=datetime(2024, 6, 16, 9, 0, 0),
     )
     video = ev_b.files[0]
     video.file_type = "video"
     video.file_format = "mp4"
     video.best_frame_number = 3
     make_video_box(db, file_id=video.id, confidence=0.9, label="deer", frame_number=3)
-    calculate_max_n_for_event(db, ev_b.id, project.counting_threshold)
+    calculate_max_n_for_sequence(db, ev_b.id, project.counting_threshold)
     db.commit()
 
     deer = _summary_rows(client, project.id)[("animal", "deer")]
@@ -1504,7 +1504,7 @@ def test_summary_counts_images_videos_detections_events_individuals(client, db):
     assert deer["n_videos"] == "1"
     assert deer["n_detections"] == "4"
     assert deer["n_events"] == "2"
-    # MaxN is the most deer in one file per event: 2 in event A, 1 in B.
+    # MaxN is the most deer in one file per sequence: 2 in sequence A, 1 in B.
     assert deer["n_individuals"] == "3"
 
     # The same number the Detections table shows for deer.
@@ -1517,13 +1517,13 @@ def test_summary_person_vehicle_and_unclassified_animal_rows(client, db):
     named Person / Vehicle / Animal like the Files table. n_individuals
     still lines up, although the Counts table names those rows by their
     category instead of a blank label."""
-    from app.api.crud.event_observation import calculate_max_n_for_event
+    from app.api.crud.sequence_observation import calculate_max_n_for_sequence
 
     project, _site, deployment = _build_simple_project(db)
-    ev = make_event_with_files(
+    ev = make_sequence_with_files(
         db,
         deployment_id=deployment.id,
-        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+        sequence_start_local=datetime(2024, 6, 15, 9, 0, 0),
     )
     f = ev.files[0]
     make_detection(db, file_id=f.id, category="person", confidence=0.9,
@@ -1532,7 +1532,7 @@ def test_summary_person_vehicle_and_unclassified_animal_rows(client, db):
                    common_name="Vehicle", scientific_name="Vehicle")
     make_detection(db, file_id=f.id, category="animal", confidence=0.9,
                    common_name="Animal", scientific_name="Animal")
-    calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    calculate_max_n_for_sequence(db, ev.id, project.counting_threshold)
     db.commit()
 
     rows = _summary_rows(client, project.id)
@@ -1552,13 +1552,13 @@ def test_summary_folds_a_literal_animal_label_onto_the_unclassified_row(client, 
     as ``animal`` (COALESCE(label, category)), so the Summary must too, or
     the individuals land on a row the detections are not on. Seen on a real
     project: 7 boxes labelled "animal", n_individuals 0."""
-    from app.api.crud.event_observation import calculate_max_n_for_event
+    from app.api.crud.sequence_observation import calculate_max_n_for_sequence
 
     project, _site, deployment = _build_simple_project(db)
-    ev = make_event_with_files(
+    ev = make_sequence_with_files(
         db,
         deployment_id=deployment.id,
-        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+        sequence_start_local=datetime(2024, 6, 15, 9, 0, 0),
         files_verified=[False, False],
     )
     f_literal, f_null = ev.files
@@ -1572,7 +1572,7 @@ def test_summary_folds_a_literal_animal_label_onto_the_unclassified_row(client, 
                    common_name="Animal", scientific_name="Animal")
     make_detection(db, file_id=f_null.id, confidence=0.9, label=None,
                    common_name="Animal", scientific_name="Animal")
-    calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    calculate_max_n_for_sequence(db, ev.id, project.counting_threshold)
     db.commit()
 
     rows = _summary_rows(client, project.id)
@@ -1644,17 +1644,17 @@ def test_summary_skips_a_species_that_only_exists_in_the_counts_table(client, db
     """A species added by hand on the Counts page has no detection, so it
     has no Summary row: the table follows the Detections table, and every
     row can be traced back to a box."""
-    from app.models import EventObservation
+    from app.models import SequenceObservation
 
     project, _site, deployment = _build_simple_project(db)
-    ev = make_event_with_files(
+    ev = make_sequence_with_files(
         db,
         deployment_id=deployment.id,
-        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+        sequence_start_local=datetime(2024, 6, 15, 9, 0, 0),
     )
     make_detection(db, file_id=ev.files[0].id, confidence=0.9, label="deer")
-    db.add(EventObservation(
-        id=str(uuid.uuid4()), event_id=ev.id, label="wolf", category="animal",
+    db.add(SequenceObservation(
+        id=str(uuid.uuid4()), sequence_id=ev.id, label="wolf", category="animal",
         max_n=0, human_count=2,
     ))
     db.commit()
@@ -2086,20 +2086,20 @@ def test_files_without_date_count_endpoint(client, db):
     assert resp.json() == {"count": 1}
 
 
-def test_export_camtrap_dp_emits_media_and_event_rows(client, db):
+def test_export_camtrap_dp_emits_media_and_sequence_rows(client, db):
     """Camtrap-DP dual model: one media-level row per bounding box, plus
     one event-level row per species carrying the effective (human) count
     with no bbox. Replaces the retired box-less observation flow."""
-    from app.api.crud.event_observation import (
-        calculate_max_n_for_event,
+    from app.api.crud.sequence_observation import (
+        calculate_max_n_for_sequence,
         set_human_count,
     )
 
     project, _site, deployment = _build_simple_project(db, timezone="UTC")
-    ev = make_event_with_files(
+    ev = make_sequence_with_files(
         db,
         deployment_id=deployment.id,
-        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+        sequence_start_local=datetime(2024, 6, 15, 9, 0, 0),
     )
     det = make_detection(
         db,
@@ -2124,7 +2124,7 @@ def test_export_camtrap_dp_emits_media_and_event_rows(client, db):
     # to reach the database first (the session runs autoflush=False, like
     # the app's; every production caller has committed by this point).
     db.flush()
-    obs = calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    obs = calculate_max_n_for_sequence(db, ev.id, project.counting_threshold)
     db.flush()
     # Human bumps the deer count to 3 (more than any single frame showed).
     set_human_count(db, obs[0].id, 3)
@@ -2143,17 +2143,17 @@ def test_export_camtrap_dp_emits_media_and_event_rows(client, db):
     sci_i = headers.index("scientificName")
 
     media = [r for r in obs_rows if r[level_i] == "media"]
-    event = [r for r in obs_rows if r[level_i] == "event"]
+    sequence = [r for r in obs_rows if r[level_i] == "event"]
     # One media-level row per box (the deer detection), bbox set, count 1.
     assert len(media) == 1
     assert media[0][bx_i] != ""
     assert media[0][count_i] == "1"
     # One event-level row per species carrying the effective count (3),
     # no bbox, with the resolved scientific name.
-    assert len(event) == 1
-    assert event[0][count_i] == "3"
-    assert event[0][bx_i] == ""
-    assert event[0][sci_i] == "Cervidae"
+    assert len(sequence) == 1
+    assert sequence[0][count_i] == "3"
+    assert sequence[0][bx_i] == ""
+    assert sequence[0][sci_i] == "Cervidae"
 
 
 # ---------------------------------------------------------------------------
@@ -2263,32 +2263,32 @@ def test_write_xlsx_multi_roundtrip(tmp_path):
     assert list(wb["Beta"].iter_rows(values_only=True)) == [("c",), ("only",)]
 
 
-def test_events_by_file_survives_bound_parameter_limit(db):
+def test_sequences_by_file_survives_bound_parameter_limit(db):
     """Regression: large folder runs crashed the save step with
-    "too many SQL variables" because `_events_by_file` built one
+    "too many SQL variables" because `_sequences_by_file` built one
     `IN (?, ?, ...)` over every scoped file id (Simon's 45k-file run).
 
     Reproduced at small scale by lowering SQLite's bound-parameter limit
     on the shared test connection to the old-build value (999). With more
-    than 999 files in one event scope, the un-chunked query raises; the
+    than 999 files in one sequence scope, the un-chunked query raises; the
     chunked helper (900 per batch) must return the full mapping instead.
     """
     import sqlite3
 
-    from app.api.crud.export import _events_by_file
+    from app.api.crud.export import _sequences_by_file
     from app.db.sql_params import SQL_VAR_CHUNK
 
     project = make_project(db)
     site = make_site(db, project_id=project.id)
     deployment = make_deployment(db, site_id=site.id, project_id=project.id)
 
-    # One event holding more files than the (lowered) parameter limit, so the
+    # One sequence holding more files than the (lowered) parameter limit, so the
     # id list spans more than one chunk.
     n_files = SQL_VAR_CHUNK + 200
-    event = make_event_with_files(
+    sequence = make_sequence_with_files(
         db,
         deployment_id=deployment.id,
-        event_start_local=datetime(2024, 1, 1, 12, 0, 0),
+        sequence_start_local=datetime(2024, 1, 1, 12, 0, 0),
         files_verified=[False] * n_files,
     )
     file_ids = [
@@ -2303,12 +2303,12 @@ def test_events_by_file_survives_bound_parameter_limit(db):
     raw = getattr(raw, "dbapi_connection", raw)
     previous = raw.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, 999)
     try:
-        result = _events_by_file(db, file_ids)
+        result = _sequences_by_file(db, file_ids)
     finally:
         raw.setlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER, previous)
 
     assert len(result) == n_files
-    assert all(ev.id == event.id for ev in result.values())
+    assert all(ev.id == sequence.id for ev in result.values())
 
 
 # ---------------------------------------------------------------------------
@@ -2501,60 +2501,60 @@ def test_export_camtrap_dp_tags_paired_cameras(client, db):
 
 
 # ---------------------------------------------------------------------------
-# Cohorts (sex, life stage, behaviour), event notes and the file marks
+# Cohorts (sex, life stage, behaviour), sequence notes and the file marks
 # ---------------------------------------------------------------------------
 
 
-def _deer_event_with_cohorts(db):
-    """A deer event with a note: the AI row set to male, plus a split-off
-    juvenile female. Returns (project, event)."""
-    from app.api.crud.event_observation import (
-        calculate_max_n_for_event,
-        set_event_notes,
+def _deer_sequence_with_cohorts(db):
+    """A deer sequence with a note: the AI row set to male, plus a split-off
+    juvenile female. Returns (project, sequence)."""
+    from app.api.crud.sequence_observation import (
+        calculate_max_n_for_sequence,
         set_observation_attributes,
+        set_sequence_notes,
         split_observation,
     )
 
     project, _site, deployment = _build_simple_project(db, timezone="UTC")
-    ev = make_event_with_files(
+    ev = make_sequence_with_files(
         db, deployment_id=deployment.id,
-        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+        sequence_start_local=datetime(2024, 6, 15, 9, 0, 0),
     )
     for _ in range(3):
         make_detection(
             db, file_id=ev.files[0].id, category="animal", confidence=0.9,
             label="deer", bbox_x=0.1, bbox_y=0.1, bbox_width=0.2, bbox_height=0.2,
         )
-    (deer,) = calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    (deer,) = calculate_max_n_for_sequence(db, ev.id, project.counting_threshold)
     db.flush()
     set_observation_attributes(db, deer.id, sex="male")
     cohort = split_observation(db, deer.id)
     set_observation_attributes(db, cohort.id, sex="female", life_stage="juvenile")
-    set_event_notes(db, ev.id, "with mother")
+    set_sequence_notes(db, ev.id, "with mother")
     db.commit()
     return project, ev
 
 
 def test_export_observations_one_row_per_cohort(client, db):
-    project, _ev = _deer_event_with_cohorts(db)
+    project, _ev = _deer_sequence_with_cohorts(db)
     resp = _export(client, project.id, "observations", "csv")
     headers, *rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     cols = [
         headers.index(c)
         for c in ("count", "sex", "life_stage", "behavior", "event_notes")
     ]
-    # The event's note repeats on each of its rows.
+    # The sequence's note repeats on each of its rows.
     assert [[r[i] for i in cols] for r in rows] == [
         ["2", "male", "", "", "with mother"],
         ["1", "female", "juvenile", "", "with mother"],
     ]
 
 
-def test_export_camtrap_dp_event_rows_carry_the_cohort_fields(client, db):
+def test_export_camtrap_dp_sequence_rows_carry_the_cohort_fields(client, db):
     """One event-level row per cohort. Unknown is blank, never "unknown":
-    Camtrap DP's sex / lifeStage enums have no such value. The event's note
+    Camtrap DP's sex / lifeStage enums have no such value. The sequence's note
     goes to observationComments of each of its rows."""
-    project, _ev = _deer_event_with_cohorts(db)
+    project, _ev = _deer_sequence_with_cohorts(db)
     resp = _run_camtrap_dp_export(client, db, project.id)
     with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
         headers, *obs_rows = csv.reader(
@@ -2565,24 +2565,24 @@ def test_export_camtrap_dp_event_rows_carry_the_cohort_fields(client, db):
         headers.index(c)
         for c in ("count", "sex", "lifeStage", "behavior", "observationComments")
     ]
-    event = [r for r in obs_rows if r[level_i] == "event"]
-    assert [[r[i] for i in cols] for r in event] == [
+    sequence = [r for r in obs_rows if r[level_i] == "event"]
+    assert [[r[i] for i in cols] for r in sequence] == [
         ["2", "male", "", "", "with mother"],
         ["1", "female", "juvenile", "", "with mother"],
     ]
 
 
 def test_export_camtrap_dp_variant_wins_over_the_row_and_comments_join(client, db):
-    from app.api.crud.event_observation import (
-        calculate_max_n_for_event,
-        set_event_notes,
+    from app.api.crud.sequence_observation import (
+        calculate_max_n_for_sequence,
         set_observation_attributes,
+        set_sequence_notes,
     )
 
     project, _site, deployment = _build_simple_project(db, timezone="UTC")
-    ev = make_event_with_files(
+    ev = make_sequence_with_files(
         db, deployment_id=deployment.id,
-        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+        sequence_start_local=datetime(2024, 6, 15, 9, 0, 0),
     )
     det = make_detection(
         db, file_id=ev.files[0].id, category="animal", confidence=0.9,
@@ -2597,10 +2597,10 @@ def test_export_camtrap_dp_variant_wins_over_the_row_and_comments_join(client, d
     db.flush()
     det.label_taxonomy_id = tax.id
     db.flush()
-    (obs,) = calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    (obs,) = calculate_max_n_for_sequence(db, ev.id, project.counting_threshold)
     db.flush()
     set_observation_attributes(db, obs.id, life_stage="adult")
-    set_event_notes(db, ev.id, "odd one")
+    set_sequence_notes(db, ev.id, "odd one")
     db.commit()
 
     resp = _run_camtrap_dp_export(client, db, project.id)
@@ -2609,10 +2609,10 @@ def test_export_camtrap_dp_variant_wins_over_the_row_and_comments_join(client, d
             io.StringIO(zf.read("observations.csv").decode())
         )
     level_i = headers.index("observationLevel")
-    (event,) = [r for r in obs_rows if r[level_i] == "event"]
+    (sequence,) = [r for r in obs_rows if r[level_i] == "event"]
     # "pup" is not in the enum, so it rides in the comment, before the note.
-    assert event[headers.index("lifeStage")] == "adult"
-    assert event[headers.index("observationComments")] == "variant: pup; odd one"
+    assert sequence[headers.index("lifeStage")] == "adult"
+    assert sequence[headers.index("observationComments")] == "variant: pup; odd one"
 
 
 def test_files_export_carries_the_favourite_and_flag_marks(client, db):
@@ -3511,9 +3511,9 @@ def test_export_observations_carry_the_max_n_frame_and_times(client, db):
     """Five columns after the count and the two it is made of: the file
     the MaxN was counted on, its frame and the seconds into it (both blank
     for a photo), the wall-clock time it stands for, and when the species
-    was first seen in the event. A human-only cohort has no AI frame, so
+    was first seen in the sequence. A human-only cohort has no AI frame, so
     everything but the first arrival is blank."""
-    project, ev = _deer_event_with_cohorts(db)
+    project, ev = _deer_sequence_with_cohorts(db)
     resp = _export(client, project.id, "observations", "csv")
     headers, *rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     assert headers[headers.index("count") + 1 : headers.index("count") + 3] == [
@@ -3538,14 +3538,14 @@ def test_export_observations_carry_the_max_n_frame_and_times(client, db):
 
 
 def test_export_observations_name_the_max_n_file_and_seconds_into_it(client, db):
-    """In an event of two clips the MaxN frame alone is ambiguous; the row
+    """In a sequence of two clips the MaxN frame alone is ambiguous; the row
     names the clip it was counted on and how many seconds into it."""
-    from app.api.crud.event_observation import calculate_max_n_for_event
+    from app.api.crud.sequence_observation import calculate_max_n_for_sequence
 
     project, _site, deployment = _build_simple_project(db, timezone="UTC")
-    ev = make_event_with_files(
+    ev = make_sequence_with_files(
         db, deployment_id=deployment.id, files_verified=[False, False],
-        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+        sequence_start_local=datetime(2024, 6, 15, 9, 0, 0),
     )
     first, second = ev.files
     for clip in (first, second):
@@ -3555,7 +3555,7 @@ def test_export_observations_name_the_max_n_file_and_seconds_into_it(client, db)
         make_video_box(db, file_id=second.id, frame_number=90, confidence=0.9,
                        label="deer")
     db.flush()
-    calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    calculate_max_n_for_sequence(db, ev.id, project.counting_threshold)
     db.commit()
 
     resp = _export(client, project.id, "observations", "csv")
@@ -3571,16 +3571,16 @@ def test_export_camtrap_dp_writes_one_observation_per_track(client, db):
     """A tracked clip is one media-level observation per track: placed in
     time by the track's own span inside the clip, identified by
     individualID, its representative box as the bbox, its frames as
-    tags (the standard has no frame field). The event row per species
+    tags (the standard has no frame field). The sequence row per species
     says the count is MaxN and where it was made."""
-    from app.api.crud.event_observation import calculate_max_n_for_event
+    from app.api.crud.sequence_observation import calculate_max_n_for_sequence
     from tests.conftest import make_track
 
     project, _site, deployment = _build_simple_project(db, timezone="UTC")
-    ev = make_event_with_files(
+    ev = make_sequence_with_files(
         db,
         deployment_id=deployment.id,
-        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+        sequence_start_local=datetime(2024, 6, 15, 9, 0, 0),
     )
     video = ev.files[0]
     video.file_type = "video"
@@ -3594,7 +3594,7 @@ def test_export_camtrap_dp_writes_one_observation_per_track(client, db):
                        category="animal", confidence=0.9, label="deer",
                        bbox_x=0.1, bbox_y=0.1, bbox_width=0.2, bbox_height=0.2)
     db.flush()
-    calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    calculate_max_n_for_sequence(db, ev.id, project.counting_threshold)
     db.commit()
 
     resp = _run_camtrap_dp_export(client, db, project.id)
@@ -3615,10 +3615,13 @@ def test_export_camtrap_dp_writes_one_observation_per_track(client, db):
     assert row[h["observationTags"]] == "frameStart:60|frameEnd:300|bboxFrame:150|frameRate:30.0"
     assert row[h["bboxX"]] == "0.1"
 
-    event = [r for r in obs_rows if r[h["observationLevel"]] == "event"]
-    assert len(event) == 1
-    assert event[0][h["count"]] == "1"
-    assert event[0][h["observationTags"]] == f"countMethod:MaxN|maxnMediaID:{video.id}|maxnFrame:60"
+    sequence = [r for r in obs_rows if r[h["observationLevel"]] == "event"]
+    assert len(sequence) == 1
+    assert sequence[0][h["count"]] == "1"
+    assert (
+        sequence[0][h["observationTags"]]
+        == f"countMethod:MaxN|maxnMediaID:{video.id}|maxnFrame:60"
+    )
 
 
 def test_export_detections_csv_carries_the_track_key(client, db):
@@ -3658,14 +3661,14 @@ def test_export_camtrap_dp_names_a_drawn_box_by_its_negative_key(client, db):
     """A box a person drew on a clip is a one-frame track keyed -1; its
     observation carries that key in individualID like any track's, and
     its span is the one frame."""
-    from app.api.crud.event_observation import calculate_max_n_for_event
+    from app.api.crud.sequence_observation import calculate_max_n_for_sequence
     from tests.conftest import make_video_box
 
     project, _site, deployment = _build_simple_project(db, timezone="UTC")
-    ev = make_event_with_files(
+    ev = make_sequence_with_files(
         db,
         deployment_id=deployment.id,
-        event_start_local=datetime(2024, 6, 15, 9, 0, 0),
+        sequence_start_local=datetime(2024, 6, 15, 9, 0, 0),
     )
     video = ev.files[0]
     video.file_type = "video"
@@ -3676,7 +3679,7 @@ def test_export_camtrap_dp_names_a_drawn_box_by_its_negative_key(client, db):
                    confidence=1.0, verified=True, category="animal", label="deer",
                    bbox_x=0.1, bbox_y=0.1, bbox_width=0.2, bbox_height=0.2)
     db.flush()
-    calculate_max_n_for_event(db, ev.id, project.counting_threshold)
+    calculate_max_n_for_sequence(db, ev.id, project.counting_threshold)
     db.commit()
 
     resp = _run_camtrap_dp_export(client, db, project.id)

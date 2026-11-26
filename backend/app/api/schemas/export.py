@@ -52,9 +52,9 @@ class MediaOptions(BaseModel):
     # nests Class/Order/Family/Genus/species; ``flat`` is one folder
     # per species label; ``none`` copies everything flat at the root.
     separate_group_by: SeparateGroupBy = "flat"
-    # Keep a burst together: every file in an event lands in one folder
-    # (the event's main species) instead of being filed per file.
-    group_events: bool = True
+    # Keep a burst together: every file in a sequence lands in one folder
+    # (the sequence's main species) instead of being filed per file.
+    group_sequences: bool = True
     # Flip the layering to ``<source subfolder>/<species>/`` instead of
     # ``<species>/<source subfolder>/``. Keeps the user's original folders
     # on top and species inside them (the layout camtrapR expects). No

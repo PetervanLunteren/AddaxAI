@@ -30,7 +30,7 @@ def _seed(db, tmp_path: Path, *, folder_path: str | None = "") -> tuple[str, Pat
     ``folder_path=None`` makes the deployment carry no folder at all, which
     the API allows and which used to crash the worker.
     """
-    project = make_project(db, taxonomic_rollup=True, event_smoothing=False)
+    project = make_project(db, taxonomic_rollup=True, sequence_smoothing=False)
     folder = tmp_path / "deployment-01"
     folder.mkdir(parents=True, exist_ok=True)
     dep = make_deployment(
@@ -210,7 +210,7 @@ def test_deployment_without_a_folder_is_skipped_not_fatal(
 
 
 def test_the_slow_steps_run_off_the_event_loop(db, tmp_path, monkeypatch):
-    """Jobs run on the event loop that serves the app. Regenerating events
+    """Jobs run on the event loop that serves the app. Regenerating sequences
     and ANALYZE take minutes on a large project, and on the loop they froze
     every request, /health included, at the end of each job."""
     import app.workers.postprocessing_worker as worker
@@ -229,9 +229,9 @@ def test_the_slow_steps_run_off_the_event_loop(db, tmp_path, monkeypatch):
         return wrapped
 
     monkeypatch.setattr(
-        worker.event_crud,
-        "generate_events_for_project",
-        recording("events", worker.event_crud.generate_events_for_project),
+        worker.sequence_crud,
+        "generate_sequences_for_project",
+        recording("sequences", worker.sequence_crud.generate_sequences_for_project),
     )
     monkeypatch.setattr(
         worker,
@@ -243,4 +243,4 @@ def test_the_slow_steps_run_off_the_event_loop(db, tmp_path, monkeypatch):
 
     _run_job(db, monkeypatch, project_id)
 
-    assert on_loop == {"events": False, "analyze": False}
+    assert on_loop == {"sequences": False, "analyze": False}

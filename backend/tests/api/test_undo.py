@@ -12,14 +12,14 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.ml.taxonomy_db import ensure_builtin_labels, resolve_taxonomy_id
-from app.models import Detection, EventObservation, File
-from app.models.event import event_files
+from app.models import Detection, File, SequenceObservation
+from app.models.sequence import sequence_files
 from tests.conftest import (
     make_deployment,
     make_detection,
-    make_event_with_files,
     make_file,
     make_project,
+    make_sequence_with_files,
     make_site,
     make_track,
 )
@@ -181,11 +181,11 @@ def test_undo_rederives_counts_and_observation_type_past_the_request(client, db)
     p = make_project(db, counting_threshold=0.2)
     s = make_site(db, project_id=p.id)
     d = make_deployment(db, site_id=s.id)
-    ev = make_event_with_files(
-        db, deployment_id=d.id, event_start_local=datetime(2024, 1, 1, 12, 0)
+    ev = make_sequence_with_files(
+        db, deployment_id=d.id, sequence_start_local=datetime(2024, 1, 1, 12, 0)
     )
     file_id = db.execute(
-        select(event_files.c.file_id).where(event_files.c.event_id == ev.id)
+        select(sequence_files.c.file_id).where(sequence_files.c.sequence_id == ev.id)
     ).scalar_one()
     weak = make_detection(db, file_id=file_id, confidence=0.05, label="deer")
     db.commit()
@@ -197,14 +197,14 @@ def test_undo_rederives_counts_and_observation_type_past_the_request(client, db)
     assert resp.status_code == 200, resp.text
     db.expire_all()
     assert db.get(File, file_id).observation_type == "animal"
-    assert db.query(EventObservation).filter_by(event_id=ev.id).count() == 1
+    assert db.query(SequenceObservation).filter_by(sequence_id=ev.id).count() == 1
 
     _undo(client, resp.json()["before"])
     # Discards exactly what close() discards; whatever is left was committed.
     db.rollback()
     assert db.get(Detection, weak.id).verified is False
     assert db.get(File, file_id).observation_type == "blank"
-    assert db.query(EventObservation).filter_by(event_id=ev.id).count() == 0
+    assert db.query(SequenceObservation).filter_by(sequence_id=ev.id).count() == 0
 
 
 def test_undo_to_no_label_lands_on_the_builtin_animal_row(client, db):

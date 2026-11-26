@@ -74,7 +74,7 @@ def test_a_user_min_does_not_lower_the_floor_for_suggestions(db):
 
 def test_the_other_sorts_keep_every_filter(db):
     p = make_project(db, counting_threshold=0.2)
-    for sort in ("similarity", "events"):
+    for sort in ("similarity", "sequences"):
         params = _build_sort_params(
             p.id, SortRequest(filters=_EVERY_FILTER, sort=sort), db
         )

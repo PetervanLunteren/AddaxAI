@@ -26,7 +26,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import __version__ as APP_VERSION
-from app.api.crud.event import get_event_counts
+from app.api.crud.sequence import get_sequence_counts
 from app.core.confidence import ROLLUP_THRESHOLD, format_confidence_pct
 from app.core.config import get_settings
 from app.core.logging_config import get_logger
@@ -201,12 +201,12 @@ def _verification_stats(
 def _count_confirmation_stats(
     db: Session, project: Project
 ) -> tuple[int, int]:
-    """(confirmed_event_count, total_event_count) for the project: the
-    events whose counts were signed off on the Counts step. The same
-    helper and floor as that step's progress pill, so an event with
+    """(confirmed_sequence_count, total_sequence_count) for the project: the
+    sequences whose counts were signed off on the Counts step. The same
+    helper and floor as that step's progress pill, so a sequence with
     nothing to count is in neither number and the file agrees with the
     screen."""
-    counts = get_event_counts(
+    counts = get_sequence_counts(
         db, project.id, project_floor=project.counting_threshold
     )
     return counts.confirmed, counts.total
@@ -268,7 +268,7 @@ def _build_readme_text(
     string ready to write to disk."""
     image_count, video_count, earliest, latest = file_counts
     verified_files, total_files = verification
-    confirmed_events, total_events = count_confirmation
+    confirmed_sequences, total_sequences = count_confirmation
 
     lines: list[str] = []
     lines.append("=" * 72 + "\n")
@@ -362,7 +362,7 @@ def _build_readme_text(
             project.classification_batch_size or "(auto)",
         )
     )
-    lines.append(_kv("Event smoothing", project.event_smoothing))
+    lines.append(_kv("Sequence smoothing", project.sequence_smoothing))
     lines.append(_kv("Smoothing strength", project.smoothing_strength))
     lines.append(_kv("Taxonomic rollup", project.taxonomic_rollup))
     lines.append(
@@ -396,7 +396,7 @@ def _build_readme_text(
     # the Labels step, counts on the Counts step.
     lines.append(_kv("Files verified", _ratio(verified_files, total_files)))
     lines.append(
-        _kv("Counts confirmed", _ratio(confirmed_events, total_events))
+        _kv("Counts confirmed", _ratio(confirmed_sequences, total_sequences))
     )
 
     if top_species:

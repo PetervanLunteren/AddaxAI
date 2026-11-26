@@ -20,9 +20,9 @@ from app.api.crud.statistics import (
 from tests.api.test_export import _export, _run_camtrap_dp_export
 from tests.conftest import (
     make_deployment,
-    make_event_with_files,
     make_file,
     make_project,
+    make_sequence_with_files,
     make_site,
 )
 
@@ -41,10 +41,10 @@ def _seed_project_with_mixed_sites(db):
             deployment_id=dep.id,
             captured_at_local=datetime(2024, 6, 1, 12, 0, 0),
         )
-        make_event_with_files(
+        make_sequence_with_files(
             db,
             deployment_id=dep.id,
-            event_start_local=datetime(2024, 6, 1, 12, 0, 0),
+            sequence_start_local=datetime(2024, 6, 1, 12, 0, 0),
             files_verified=[False],
         )
 

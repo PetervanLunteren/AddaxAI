@@ -34,10 +34,10 @@ from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session
 
 from app.api.crud import deployment_queue as crud_queue
-from app.api.crud import event as crud_event
 from app.api.crud import file as crud_file
 from app.api.crud import job as job_crud
 from app.api.crud import project as crud_project
+from app.api.crud import sequence as crud_sequence
 from app.api.schemas.deployment_queue import (
     DeploymentQueueCreate,
     DeploymentQueueResponse,
@@ -270,11 +270,11 @@ class FolderRunLookupResponse(BaseModel):
     species_count: int
     verified_file_count: int
     verified_label_count: int
-    # Count-confirmation progress (events confirmed on the Counts page),
+    # Count-confirmation progress (sequences confirmed on the Counts page),
     # the second half of the app's "Labels verified" + "Counts confirmed"
-    # split. ``event_count`` is the denominator for the confirmed percentage.
-    event_count: int
-    confirmed_event_count: int
+    # split. ``sequence_count`` is the denominator for the confirmed percentage.
+    sequence_count: int
+    confirmed_sequence_count: int
     # How far image detection got before the run was interrupted, when
     # there is something to continue from. None for every other run.
     detection_resume: DetectionResume | None = None
@@ -293,7 +293,7 @@ class SaveOutputsResponse(BaseModel):
     """Job-id handle returned when the user kicks off Save outputs.
 
     The actual per-module results land on the job's WebSocket
-    completion event (``data`` payload) — same shape the
+    completion sequence (``data`` payload) — same shape the
     synchronous endpoint used to return inline. The frontend
     subscribes to the job via ``useTaskProgress`` to render the
     blocking progress modal and capture the final result.
@@ -681,11 +681,11 @@ def lookup_folder_run(
         .where(Detection.label.isnot(None))
     ) or 0
     # Count confirmation is the second half of the verification work
-    # (events whose count was confirmed on the Counts step), mirroring the
+    # (sequences whose count was confirmed on the Counts step), mirroring the
     # dashboard's "Labels verified" + "Counts confirmed" split. Read off
-    # the same helper as the Counts step's progress pill, so an event with
+    # the same helper as the Counts step's progress pill, so a sequence with
     # nothing to count is in neither number and the two always agree.
-    event_counts = crud_event.get_event_counts(
+    sequence_counts = crud_sequence.get_sequence_counts(
         db, existing.id, project_floor=threshold
     )
 
@@ -711,8 +711,8 @@ def lookup_folder_run(
         species_count=species_count,
         verified_file_count=progress.files_verified,
         verified_label_count=progress.verified,
-        event_count=event_counts.total,
-        confirmed_event_count=event_counts.confirmed,
+        sequence_count=sequence_counts.total,
+        confirmed_sequence_count=sequence_counts.confirmed,
         detection_resume=_detection_resume(db, existing, folder, image_count),
     )
 
@@ -776,7 +776,7 @@ def rerun_folder_run(
 ) -> FolderRunResponse:
     """Reset a folder run for re-analysis.
 
-    Wipes the deployment / file / detection / event / embedding rows
+    Wipes the deployment / file / detection / sequence / embedding rows
     plus the on-disk ``.addaxai/projects/<id>/`` cache, and moves the
     queue entry back to ``status='pending'`` so the existing process
     endpoint picks it up. The project row and the queue entry id

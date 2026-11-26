@@ -45,8 +45,8 @@ def test_keeps_n_events_and_n_individuals():
     assert list(out_rows) == rows
 
 
-def test_keeps_event_id():
-    """event_id survives the trim: it is the only column saying which
+def test_keeps_sequence_id():
+    """sequence_id survives the trim: it is the only column saying which
     files share a burst."""
     headers = ["file_id", "event_id", "deployment_id"]
     rows = [["f1", "e1", "d1"]]

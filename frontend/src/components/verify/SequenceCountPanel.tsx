@@ -1,10 +1,10 @@
 /**
- * Event count panel — the Counts-page count editor and the star of the
- * modal. The right-hand panel of EventDetailModal.
+ * Sequence count panel — the Counts-page count editor and the star of the
+ * modal. The right-hand panel of SequenceDetailModal.
  *
- * Owns everything about the event's counts: the species rows (effective
+ * Owns everything about the sequence's counts: the species rows (effective
  * count = human override, else AI MaxN), the +/- steppers and inline count
- * input, removing a species, the event-wide "reset to AI", and the
+ * input, removing a species, the sequence-wide "reset to AI", and the
  * keyboard accelerators (up/down to pick a row, a digit to set its count).
  * Confirm+advance is handed in from the modal (`onConfirm`) so the Enter key
  * and this button share one path.
@@ -18,7 +18,7 @@
  * for the individuals on that row; Split makes a second row of the same
  * species so 4 males and 2 females can be two rows with their own counts.
  * The species total is the sum. A note is about the visit, so there is one
- * per event, under the list.
+ * per sequence, under the list.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -33,7 +33,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { eventsApi } from "../../api/events";
+import { sequencesApi } from "../../api/sequences";
 import { cn } from "../../lib/utils";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -45,7 +45,7 @@ import { OBSERVATION_ATTRIBUTES } from "../../lib/observation-attributes";
 import { LabelPicker } from "./LabelPicker";
 import type { LabelOption } from "../../hooks/useLabelOptions";
 import type {
-  EventObservationItem,
+  SequenceObservationItem,
   HumanObservationRow,
   ObservationAttributesPatch,
 } from "../../api/types";
@@ -70,25 +70,25 @@ const ATTRIBUTE_KEYS: Record<
   f: { field: "sex", value: "female" },
 };
 
-interface EventCountPanelProps {
-  eventId: string;
+interface SequenceCountPanelProps {
+  sequenceId: string;
   projectId: string;
   /** Full observation list (including hidden count-0 rows). */
-  observations: EventObservationItem[];
+  observations: SequenceObservationItem[];
   confirmed: boolean;
-  /** The event's free text (Event.notes). */
+  /** The sequence's free text (Sequence.notes). */
   notes: string | null;
-  /** Confirm the event and jump to the next unconfirmed one (modal owns it,
+  /** Confirm the sequence and jump to the next unconfirmed one (modal owns it,
    *  shared with the Enter key). */
   onConfirm: () => void;
   labelOptions: LabelOption[];
   labelOptionsLoading: boolean;
-  /** "Same as last": the rows of the last non-empty event confirmed in
+  /** "Same as last": the rows of the last non-empty sequence confirmed in
    *  this modal session, or null before any confirm. */
   sameAsLastRows: HumanObservationRow[] | null;
   /** Show the frame the AI counted this row's MaxN on (the modal owns the
    *  file switch and the video seek). Absent when the panel has no viewer. */
-  onShowMaxN?: (obs: EventObservationItem) => void;
+  onShowMaxN?: (obs: SequenceObservationItem) => void;
 }
 
 /** "12:41:05" in the camera's clock, seconds included: a peak in a
@@ -101,8 +101,8 @@ function clock(iso: string): string {
   );
 }
 
-export function EventCountPanel({
-  eventId,
+export function SequenceCountPanel({
+  sequenceId,
   projectId,
   observations,
   confirmed,
@@ -112,13 +112,13 @@ export function EventCountPanel({
   labelOptionsLoading,
   onShowMaxN,
   sameAsLastRows,
-}: EventCountPanelProps) {
+}: SequenceCountPanelProps) {
   // Repaint when the project's colour map lands or changes.
   useSpeciesColorsVersion();
   const queryClient = useQueryClient();
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ["event", eventId] });
-    queryClient.invalidateQueries({ queryKey: ["events"] });
+    queryClient.invalidateQueries({ queryKey: ["sequence", sequenceId] });
+    queryClient.invalidateQueries({ queryKey: ["sequences"] });
     // Counts and cohort fields feed the dashboard's observation totals
     // and demographics; mark them stale so the next visit refetches.
     queryClient.invalidateQueries({ queryKey: ["statistics"] });
@@ -128,13 +128,13 @@ export function EventCountPanel({
 
   const setCount = useMutation({
     mutationFn: ({ obsId, count }: { obsId: string; count: number }) =>
-      eventsApi.setObservationCount(eventId, obsId, count),
+      sequencesApi.setObservationCount(sequenceId, obsId, count),
     onSuccess: invalidate,
     onError: onError("set the count"),
   });
   const addSpecies = useMutation({
     mutationFn: (opt: LabelOption) =>
-      eventsApi.addObservation(eventId, {
+      sequencesApi.addObservation(sequenceId, {
         category: opt.category,
         count: 1,
         label: opt.label ?? null,
@@ -144,7 +144,7 @@ export function EventCountPanel({
   });
   const relabelSpecies = useMutation({
     mutationFn: ({ obsId, opt }: { obsId: string; opt: LabelOption }) =>
-      eventsApi.relabelObservation(eventId, obsId, {
+      sequencesApi.relabelObservation(sequenceId, obsId, {
         category: opt.category,
         label: opt.label ?? null,
       }),
@@ -152,12 +152,12 @@ export function EventCountPanel({
     onError: onError("change the species"),
   });
   const removeObs = useMutation({
-    mutationFn: (obsId: string) => eventsApi.deleteObservation(eventId, obsId),
+    mutationFn: (obsId: string) => sequencesApi.deleteObservation(sequenceId, obsId),
     onSuccess: invalidate,
     onError: onError("remove the species"),
   });
   const resetCounts = useMutation({
-    mutationFn: () => eventsApi.resetCounts(eventId),
+    mutationFn: () => sequencesApi.resetCounts(sequenceId),
     onSuccess: invalidate,
     onError: onError("reset the counts"),
   });
@@ -168,23 +168,23 @@ export function EventCountPanel({
     }: {
       obsId: string;
       patch: ObservationAttributesPatch;
-    }) => eventsApi.setObservationAttributes(eventId, obsId, patch),
+    }) => sequencesApi.setObservationAttributes(sequenceId, obsId, patch),
     onSuccess: invalidate,
     onError: onError("save the details"),
   });
   const splitObs = useMutation({
-    mutationFn: (obsId: string) => eventsApi.splitObservation(eventId, obsId),
+    mutationFn: (obsId: string) => sequencesApi.splitObservation(sequenceId, obsId),
     onSuccess: invalidate,
     onError: onError("split the row"),
   });
   const setNotes = useMutation({
-    mutationFn: (next: string | null) => eventsApi.setNotes(eventId, next),
+    mutationFn: (next: string | null) => sequencesApi.setNotes(sequenceId, next),
     onSuccess: invalidate,
     onError: onError("save the note"),
   });
   const sameAsLast = useMutation({
     mutationFn: (rows: HumanObservationRow[]) =>
-      eventsApi.setHumanObservations(eventId, rows),
+      sequencesApi.setHumanObservations(sequenceId, rows),
     onSuccess: invalidate,
     onError: onError("copy the last counts"),
   });
@@ -221,7 +221,7 @@ export function EventCountPanel({
 
   // Set a count, treating 0 as "remove": an AI row goes to count 0 (survives
   // recompute), a human-only row is deleted outright.
-  const applyCount = (obs: EventObservationItem, count: number) => {
+  const applyCount = (obs: SequenceObservationItem, count: number) => {
     const next = Math.max(0, count);
     if (next === 0 && obs.max_n === 0) {
       removeObs.mutate(obs.id);
@@ -232,7 +232,7 @@ export function EventCountPanel({
 
   const [addOpen, setAddOpen] = useState(false);
   // The note is collapsed by default (a preview, or "+ Add notes") and
-  // opens into a textarea. Closes again when the event changes. The text
+  // opens into a textarea. Closes again when the sequence changes. The text
   // is a local draft while open: binding the textarea to the saved value
   // remounted it on every save, which put the caret at the start and
   // pulled focus back from whatever the user clicked next.
@@ -242,11 +242,11 @@ export function EventCountPanel({
     setDraft(notes ?? "");
     setNotesExpanded(true);
   };
-  useEffect(() => setNotesExpanded(false), [eventId]);
+  useEffect(() => setNotesExpanded(false), [sequenceId]);
   // Row whose species is being changed. Clicking a row's name opens the
   // picker; picking a species relabels the row (count-level: the count moves
   // to the target species, summing if it already has a row). Null = closed.
-  const [relabelObs, setRelabelObs] = useState<EventObservationItem | null>(
+  const [relabelObs, setRelabelObs] = useState<SequenceObservationItem | null>(
     null,
   );
 
@@ -263,13 +263,13 @@ export function EventCountPanel({
   const digitBufferRef = useRef<{ obsId: string; digits: string } | null>(null);
   const digitTimerRef = useRef<number | null>(null);
 
-  // Keep the active row in range and reset it when the event changes.
+  // Keep the active row in range and reset it when the sequence changes.
   useEffect(() => {
     setActiveIndex(0);
     if (digitTimerRef.current) clearTimeout(digitTimerRef.current);
     digitTimerRef.current = null;
     digitBufferRef.current = null;
-  }, [eventId]);
+  }, [sequenceId]);
   useEffect(() => {
     if (activeIndex > visible.length - 1) {
       setActiveIndex(Math.max(0, visible.length - 1));
@@ -307,7 +307,7 @@ export function EventCountPanel({
         setAddOpen(true);
         return;
       }
-      // "Same as last" — also before the guard: copying onto an event the
+      // "Same as last" — also before the guard: copying onto a sequence the
       // AI called empty is the main use.
       if (e.key === "c" || e.key === "C") {
         const last = sameAsLastRef.current;
@@ -585,7 +585,7 @@ export function EventCountPanel({
           <Plus className="h-3.5 w-3.5" />
           Add species
         </button>
-        {/* "Same as last": make this event's rows the rows of the last
+        {/* "Same as last": make this sequence's rows the rows of the last
             non-empty event confirmed in this modal session. Replace, not
             merge; Reset to AI is the undo. Always shown, disabled until
             something was confirmed, matching Connect. */}
@@ -632,7 +632,7 @@ export function EventCountPanel({
         />
       </div>
 
-      {/* Footer: the event's note, reset to the AI proposal, then the
+      {/* Footer: the sequence's note, reset to the AI proposal, then the
           primary Confirm. Pinned to the panel bottom so Confirm holds a
           stable position. The note follows AddaxAI Connect: collapsed it
           is an "Add notes" link or a two-line preview, expanded it is a

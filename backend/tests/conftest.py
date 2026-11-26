@@ -40,10 +40,10 @@ from app.core.config import get_settings
 from app.db.base import Base, get_db
 from app.models.deployment import Deployment
 from app.models.detection import Detection
-from app.models.event import Event, event_files
 from app.models.file import File
 from app.models.job import Job
 from app.models.project import Project
+from app.models.sequence import Sequence, sequence_files
 from app.models.site import Site
 from app.models.track import Track
 
@@ -292,13 +292,13 @@ def make_detection(
 def label_tree(db: Session, project_id: str) -> dict | None:
     """The project's label filter tree as `filter-options` serves it:
     shape only, None when the project has no labels."""
-    from app.api.crud.event import get_filter_options
+    from app.api.crud.sequence import get_filter_options
 
     return get_filter_options(db, project_id)["label_tree"]
 
 
 def label_counts(
-    db: Session, project_id: str, count_by: str = "event", **filters
+    db: Session, project_id: str, count_by: str = "sequence", **filters
 ) -> dict[str, int]:
     """Count per taxonomy id under the page's filters, as `label-counts`
     serves it. A label that is missing counts 0."""
@@ -383,16 +383,16 @@ def make_job(db: Session, *, job_type: str = "deployment_analysis", **kw) -> Job
     return obj
 
 
-def make_event_with_files(
+def make_sequence_with_files(
     db: Session,
     *,
     deployment_id: str,
-    event_start_local: datetime,
+    sequence_start_local: datetime,
     files_verified: list[bool] | None = None,
-    event_id: str | None = None,
-) -> Event:
+    sequence_id: str | None = None,
+) -> Sequence:
     """
-    Create an event with associated files.
+    Create a sequence with associated files.
 
     files_verified: list of verified flags, one per file to create.
                     Defaults to [False] (one unverified file).
@@ -400,12 +400,12 @@ def make_event_with_files(
     if files_verified is None:
         files_verified = [False]
 
-    eid = event_id or str(uuid.uuid4())
-    ev = Event(
+    eid = sequence_id or str(uuid.uuid4())
+    ev = Sequence(
         id=eid,
         deployment_id=deployment_id,
-        event_start_local=event_start_local,
-        event_end_local=event_start_local,
+        sequence_start_local=sequence_start_local,
+        sequence_end_local=sequence_start_local,
         file_count=len(files_verified),
     )
     db.add(ev)
@@ -415,14 +415,14 @@ def make_event_with_files(
         f = make_file(
             db,
             deployment_id=deployment_id,
-            captured_at_local=event_start_local,
+            captured_at_local=sequence_start_local,
             verified=verified,
         )
         db.execute(
-            event_files.insert().values(
-                event_id=eid,
+            sequence_files.insert().values(
+                sequence_id=eid,
                 file_id=f.id,
-                sequence_number=seq,
+                position=seq,
             )
         )
 
