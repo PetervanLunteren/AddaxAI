@@ -951,21 +951,24 @@ def get_independent_observation_stats(
     db: Session = Depends(get_db),
 ) -> dict:
     """
-    Sum the effective per-sequence count across sequences, per label.
+    Sum the count of every independent event, per label: the same
+    observations the dashboard shows.
 
-    Reads the materialized ``sequence_observations`` (the same source the
-    dashboard "Observations" and exports use), so it honours human counts
-    (``effective_count`` = ``human_count`` if set, else the AI ``max_n``)
-    and human-added/removed species. Interval and threshold are baked
-    into that materialized state at analysis/reprocess time, so they are
-    not query parameters here. Animal labels only (person/vehicle are not
-    part of label refinement). Returns ``{total, labels}``.
+    Honours human counts (``effective_count`` = ``human_count`` if set,
+    else the AI ``max_n``) and human-added/removed species. Animal labels
+    only (person/vehicle are not part of label refinement). Returns
+    ``{total, labels}``.
     """
+    from app.api.crud.independent_events import independent_events, speaks_for
+
+    ie = independent_events(db, project_id)
     rows = (
         db.query(
             SequenceObservation.label,
             func.sum(SequenceObservation.effective_count).label("count"),
         )
+        .select_from(SequenceObservation)
+        .join(ie, speaks_for(ie))
         .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
         .join(Deployment, Sequence.deployment_id == Deployment.id)
         .filter(Deployment.project_id == project_id)

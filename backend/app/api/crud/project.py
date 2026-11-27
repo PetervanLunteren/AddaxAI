@@ -479,27 +479,34 @@ def get_project_stats(db: Session, project_id: str) -> dict[str, int] | None:
         or 0
     )
 
-    # Count observations (sum of effective_count from sequence_observations:
-    # human_count when set, else the AI max_n).
-    observation_count = (
-        db.scalar(
-            select(func.coalesce(func.sum(SequenceObservation.effective_count), 0))
-            .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
-            .join(Deployment, Sequence.deployment_id == Deployment.id)
-            .where(Deployment.project_id == project_id)
-        )
-        or 0
-    )
-
     trap_nights = get_trap_nights(db, project_id)
 
     return {
         "site_count": site_count,
         "deployment_count": deployment_count,
         "file_count": file_count,
-        "observation_count": observation_count,
+        "observation_count": _observation_total(db, project_id),
         "trap_nights": trap_nights,
     }
+
+
+def _observation_total(db: Session, project_id: str) -> int:
+    """The project's observations: the count of every independent event,
+    the same total as the dashboard's."""
+    from app.api.crud.independent_events import independent_events, speaks_for
+
+    ie = independent_events(db, project_id)
+    return int(
+        db.scalar(
+            select(func.coalesce(func.sum(SequenceObservation.effective_count), 0))
+            .select_from(SequenceObservation)
+            .join(ie, speaks_for(ie))
+            .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
+            .join(Deployment, Sequence.deployment_id == Deployment.id)
+            .where(Deployment.project_id == project_id)
+        )
+        or 0
+    )
 
 
 def get_all_projects_stats(
@@ -541,17 +548,6 @@ def get_all_projects_stats(
         .where(*project_filter)
         .group_by(Deployment.project_id)
     ).all()
-    obs_rows = db.execute(
-        select(
-            Deployment.project_id,
-            func.coalesce(func.sum(SequenceObservation.effective_count), 0),
-        )
-        .join(Sequence, Sequence.deployment_id == Deployment.id)
-        .join(SequenceObservation, SequenceObservation.sequence_id == Sequence.id)
-        .join(Project, Project.id == Deployment.project_id)
-        .where(*project_filter)
-        .group_by(Deployment.project_id)
-    ).all()
 
     stats: dict[str, dict[str, int]] = {}
 
@@ -573,10 +569,8 @@ def get_all_projects_stats(
         _bucket(project_id)["deployment_count"] = int(count)
     for project_id, count in file_rows:
         _bucket(project_id)["file_count"] = int(count)
-    for project_id, count in obs_rows:
-        _bucket(project_id)["observation_count"] = int(count)
-
     for project_id in list(stats.keys()):
+        stats[project_id]["observation_count"] = _observation_total(db, project_id)
         stats[project_id]["trap_nights"] = get_trap_nights(db, project_id)
 
     return stats

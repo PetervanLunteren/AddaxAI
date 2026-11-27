@@ -44,6 +44,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.crud.deployment import site_ids_filter
+from app.api.crud.independent_events import independent_events
 from app.api.crud.statistics import _scoped_observations_query
 from app.api.crud.trap_nights import (
     compute_intervals_for_deployments,
@@ -61,7 +62,6 @@ from app.api.schemas.statistics import (
 from app.core.rate_statistics import RateStats, summarise_rates
 from app.models.deployment import Deployment
 from app.models.label_taxonomy import LabelTaxonomy
-from app.models.sequence import Sequence
 from app.models.sequence_observation import SequenceObservation
 
 # A site counts in a period of the Trend chart when it was active on at
@@ -214,9 +214,11 @@ def _load_scope(
         if intervals:
             data.nights[site_by_dep[dep_id]].update(nights_per_day(intervals))
 
-    day_expr = func.strftime("%Y-%m-%d", Sequence.sequence_start_local)
+    ie = independent_events(db, project_id)
+    day_expr = func.strftime("%Y-%m-%d", ie.c.event_start_local)
     query = (
         _scoped_observations_query(
+            ie,
             [
                 Deployment.site_id,
                 day_expr.label("day"),
@@ -233,8 +235,8 @@ def _load_scope(
             LabelTaxonomy,
             LabelTaxonomy.id == SequenceObservation.label_taxonomy_id,
         )
-        # Date-less sequences (NULL bounds) have no day; exclude them.
-        .where(Sequence.sequence_start_local.isnot(None))
+        # Date-less events have no day; exclude them.
+        .where(ie.c.event_start_local.isnot(None))
         .where(Deployment.site_id.isnot(None))
         .group_by(
             Deployment.site_id,
@@ -297,14 +299,16 @@ def get_detection_trend(
     the date filter, or else the first and last day with an observation,
     and a period without one is there as 0.
     """
-    day_expr = func.strftime("%Y-%m-%d", Sequence.sequence_start_local)
+    ie = independent_events(db, project_id)
+    day_expr = func.strftime("%Y-%m-%d", ie.c.event_start_local)
     rows = db.execute(
         _scoped_observations_query(
+            ie,
             [day_expr.label("day"), func.sum(SequenceObservation.effective_count).label("count")],
             project_id, label_taxonomy_ids, site_ids, date_from, date_to,
         )
-        # Date-less sequences (NULL bounds) have no day; exclude them.
-        .where(Sequence.sequence_start_local.isnot(None))
+        # Date-less events have no day; exclude them.
+        .where(ie.c.event_start_local.isnot(None))
         .group_by(day_expr)
     ).all()
     counts_by_day = {date.fromisoformat(row.day): int(row.count or 0) for row in rows}

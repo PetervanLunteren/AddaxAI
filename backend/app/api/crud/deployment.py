@@ -572,6 +572,7 @@ def get_deployment_info(db: Session, deployment_id: str):
     """
     from sqlalchemy import case
 
+    from app.api.crud.independent_events import independent_events, speaks_for
     from app.api.crud.sequence_observation import count_individuals_by_class
     from app.api.crud.statistics import _apply_threshold, _get_counting_threshold
     from app.api.schemas.deployment import (
@@ -623,18 +624,20 @@ def get_deployment_info(db: Session, deployment_id: str):
         or 0
     )
 
-    # Sum of MaxN across sequence observations belonging to this deployment.
+    # The count of every independent event in this deployment.
+    ie = independent_events(db, project_id)
     observation_count = (
         db.scalar(
             select(func.coalesce(func.sum(SequenceObservation.effective_count), 0))
             .select_from(SequenceObservation)
+            .join(ie, speaks_for(ie))
             .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
             .where(Sequence.deployment_id == deployment_id)
         )
         or 0
     )
 
-    class_counts = count_individuals_by_class(db, [deployment_id])
+    class_counts = count_individuals_by_class(db, ie, [deployment_id])
 
     # Empty = files whose all detections were skipped (observation_type
     # == "blank"). Scoped to this deployment.
@@ -659,6 +662,7 @@ def get_deployment_info(db: Session, deployment_id: str):
             func.sum(SequenceObservation.effective_count),
         )
         .select_from(SequenceObservation)
+        .join(ie, speaks_for(ie))
         .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
         .outerjoin(
             LabelTaxonomy, LabelTaxonomy.id == SequenceObservation.label_taxonomy_id

@@ -17,9 +17,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import FromClause, delete, func, select, text
 from sqlalchemy.orm import Session
 
+from app.api.crud.independent_events import speaks_for
 from app.core.logging_config import get_logger
 from app.ml.label_exclusion import is_a_real_detection, threshold_or_verified
 from app.models import Deployment, Detection, File, Project, Sequence, Track
@@ -58,14 +59,19 @@ class PriorObs:
     behavior: str | None = None
 
 
-def count_individuals_by_class(db: Session, deployment_ids: list[str]) -> dict[str, int]:
-    """Individuals per detector class over these deployments' sequences
-    (the confirmed count where a person set one, else the AI's MaxN),
-    largest first, classes with nothing left out. For the deployment and
-    site info sheets (`ClassCounts.classes`)."""
+def count_individuals_by_class(
+    db: Session, ie: FromClause, deployment_ids: list[str]
+) -> dict[str, int]:
+    """Individuals per detector class over these deployments' independent
+    events (`ie`, from `independent_events`; each event's count is the
+    confirmed count where a person set one, else the AI's MaxN), largest
+    first, classes with nothing left out. For the deployment and site info
+    sheets (`ClassCounts.classes`)."""
     total = func.sum(SequenceObservation.effective_count)
     rows = db.execute(
         select(SequenceObservation.category, total)
+        .select_from(SequenceObservation)
+        .join(ie, speaks_for(ie))
         .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
         .where(Sequence.deployment_id.in_(deployment_ids))
         .group_by(SequenceObservation.category)

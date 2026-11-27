@@ -178,6 +178,7 @@ def get_site_info(db: Session, site_id: str):
     """
     from sqlalchemy import case
 
+    from app.api.crud.independent_events import independent_events, speaks_for
     from app.api.crud.sequence_observation import count_individuals_by_class
     from app.api.schemas.site import (
         SiteFileCounts,
@@ -245,17 +246,20 @@ def get_site_info(db: Session, site_id: str):
             or 0
         )
 
+        # The count of every independent event at this site.
+        ie = independent_events(db, site.project_id)
         observation_count = (
             db.scalar(
                 select(func.coalesce(func.sum(SequenceObservation.effective_count), 0))
                 .select_from(SequenceObservation)
+                .join(ie, speaks_for(ie))
                 .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
                 .where(Sequence.deployment_id.in_(deployment_ids))
             )
             or 0
         )
 
-        class_counts = count_individuals_by_class(db, deployment_ids)
+        class_counts = count_individuals_by_class(db, ie, deployment_ids)
 
         empty_count = (
             db.scalar(
@@ -274,6 +278,7 @@ def get_site_info(db: Session, site_id: str):
                 func.sum(SequenceObservation.effective_count),
             )
             .select_from(SequenceObservation)
+            .join(ie, speaks_for(ie))
             .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
             .outerjoin(
                 LabelTaxonomy, LabelTaxonomy.id == SequenceObservation.label_taxonomy_id

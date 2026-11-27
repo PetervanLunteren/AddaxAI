@@ -172,7 +172,9 @@ def test_summary_counts_every_label_by_default(db):
 
     summary = stats_crud.get_dashboard_summary(db, project.id)
 
-    assert summary.events == 2
+    # Independent events are per species: the August sequence holds a lion
+    # and a person, two events.
+    assert summary.events == 3
     assert summary.observations == 6
 
 

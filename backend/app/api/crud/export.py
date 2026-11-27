@@ -35,6 +35,7 @@ from sqlalchemy.orm import Session, contains_eager, defer, joinedload
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.api.crud.export_formats import slugify
+from app.api.crud.independent_events import independent_events, speaks_for
 from app.api.crud.ordering import detection_order_in_file, file_time_order
 from app.core.logging_config import get_logger
 from app.core.observation_attributes import LIFE_STAGES, SEXES
@@ -1621,9 +1622,12 @@ def build_summary_rows(
 
     - ``n_detections``: its rows in the Detections table.
     - ``n_images`` / ``n_videos``: the files those rows sit on, by type.
-    - ``n_events``: the sequences those files belong to.
-    - ``n_individuals``: the sum of ``count`` in the Counts table (the
-      confirmed number where one was set, else the AI's MaxN).
+    - ``n_events``: its independent events, as the dashboard counts them.
+    - ``n_individuals``: the sum of those events' counts (each the highest
+      count among its sequences: the confirmed number where one was set,
+      else the AI's MaxN). Not the sum of the Counts table, which has one
+      row per sequence, so an animal seen in three sequences of one event
+      would count three times there.
 
     The rows come from the same ``iter_scoped_files`` stream and scope as
     ``build_detection_rows``, so the two tables cannot disagree. That is
@@ -1641,21 +1645,16 @@ def build_summary_rows(
 
     Built in one pass over the stream, holding one counter per species.
     Each file arrives once, so the files per species are counted per file
-    without keeping their ids; the sequences per species do need a set of
-    ``(species, sequence)`` pairs, which grows with the sequences in scope, not
-    with the boxes.
+    without keeping their ids.
     """
     name_cells: dict[tuple[str, str], list[Any]] = {}
     n_images: dict[tuple[str, str], int] = defaultdict(int)
     n_videos: dict[tuple[str, str], int] = defaultdict(int)
-    sequences: dict[tuple[str, str], set[str]] = defaultdict(set)
     n_detections: dict[tuple[str, str], int] = defaultdict(int)
 
     files = iter_scoped_files(db, project, deployment_ids=deployment_ids)
     for batch in _batched(files):
-        sequence_map = _sequences_by_file(db, [sf.file.id for sf in batch])
         for file_obj, _deployment, _site, detections in batch:
-            sequence = sequence_map.get(file_obj.id)
             keys_in_file: set[tuple[str, str]] = set()
             for detection, taxonomy in detections:
                 if is_non_label(detection.label):
@@ -1672,17 +1671,32 @@ def build_summary_rows(
             per_type = n_videos if file_obj.file_type == "video" else n_images
             for key in keys_in_file:
                 per_type[key] += 1
-                if sequence is not None:
-                    sequences[key].add(sequence.id)
 
+    # Skips count-0 rows like the Counts table: a species a person removed.
     individuals: dict[tuple[str, str], int] = defaultdict(int)
-    obs_headers, obs_rows = build_observation_rows(db, project, deployment_ids)
-    cat_i = obs_headers.index("category")
-    label_i = obs_headers.index("classification_label")
-    count_i = obs_headers.index("count")
-    for obs_row in obs_rows:
-        key = _summary_key(obs_row[cat_i], obs_row[label_i])
-        individuals[key] += obs_row[count_i]
+    events: dict[tuple[str, str], set[int]] = defaultdict(set)
+    ie = independent_events(db, project.id)
+    events_query = (
+        select(
+            SequenceObservation.category,
+            SequenceObservation.label,
+            SequenceObservation.effective_count,
+            ie.c.event_id,
+        )
+        .select_from(SequenceObservation)
+        .join(ie, speaks_for(ie))
+        .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
+        .join(Deployment, Deployment.id == Sequence.deployment_id)
+        .where(Deployment.project_id == project.id)
+        .where(SequenceObservation.effective_count > 0)
+    )
+    if deployment_ids is not None:
+        events_query = events_query.where(Deployment.id.in_(deployment_ids))
+    event_rows = db.execute(events_query)
+    for category, label, count, event_id in event_rows:
+        key = _summary_key(category, label)
+        individuals[key] += count
+        events[key].add(event_id)
 
     rows: list[list[Any]] = []
     for key, names in name_cells.items():
@@ -1695,7 +1709,7 @@ def build_summary_rows(
                 n_images[key],
                 n_videos[key],
                 n_detections[key],
-                len(sequences[key]),
+                len(events[key]),
                 individuals[key],
             ]
         )

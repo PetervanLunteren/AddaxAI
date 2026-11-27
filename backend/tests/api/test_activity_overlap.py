@@ -235,7 +235,9 @@ def _build_two_species_project(db):
     Leopard (nocturnal-ish): 22:00 cluster.
     Domestic cattle (diurnal-ish): 12:00 cluster.
     """
-    project = make_project(db, timezone="Europe/Amsterdam")
+    # Interval 0: every sequence is its own independent event, so the
+    # samples below are the counts these tests are about.
+    project = make_project(db, timezone="Europe/Amsterdam", independence_interval=0)
     site = make_site(
         db, project_id=project.id, name="Camp", latitude=52.37, longitude=4.89
     )
@@ -277,7 +279,7 @@ def test_get_activity_overlap_two_species_basic_shape(db):
     assert resp.species_b.n == 60
     assert len(resp.species_a.kde_density) == 240
     assert len(resp.species_b.kde_density) == 240
-    assert resp.independence_interval_seconds > 0
+    assert resp.independence_interval_seconds == 0  # the project's setting, echoed
     assert resp.project_timezone == "Europe/Amsterdam"
 
 
@@ -344,7 +346,9 @@ def test_get_activity_overlap_overlap_none_when_one_species_empty(db):
 
 def test_get_activity_overlap_sample_size_warnings(db):
     """Add a tiny synthetic species and confirm the warning bucket."""
-    project = make_project(db, timezone="Europe/Amsterdam")
+    # Interval 0: every sequence is its own independent event, so the
+    # samples below are the counts these tests are about.
+    project = make_project(db, timezone="Europe/Amsterdam", independence_interval=0)
     site = make_site(
         db, project_id=project.id, name="Camp", latitude=52.37, longitude=4.89
     )
@@ -499,7 +503,9 @@ def test_get_activity_overlap_sun_mode_fixed_offset_tz(db):
     """Projects with fixed-offset timezones (cameras set to UTC, say)
     should round-trip through the sun-time pipeline without
     zoneinfo resolution issues."""
-    project = make_project(db, timezone="UTC")
+    # Interval 0: every sequence is its own independent event, so the
+    # samples below are the counts these tests are about.
+    project = make_project(db, timezone="UTC", independence_interval=0)
     site = make_site(
         db, project_id=project.id, name="Camp", latitude=-1.28, longitude=36.82
     )
@@ -535,7 +541,9 @@ def test_get_activity_overlap_sun_mode_drops_polar_observations(db):
     polar night, so every observation is dropped. The response still
     falls back cleanly (time_axis="clock" because anchors couldn't be
     computed), and the chart remains renderable."""
-    project = make_project(db, timezone="UTC")
+    # Interval 0: every sequence is its own independent event, so the
+    # samples below are the counts these tests are about.
+    project = make_project(db, timezone="UTC", independence_interval=0)
     site = make_site(
         db, project_id=project.id, name="PolarCamp", latitude=85.0, longitude=0.0
     )
@@ -573,7 +581,9 @@ def test_get_activity_overlap_sun_mode_partial_polar_drops(db):
     June 15 is polar (continuous twilight), so the month split
     cleanly exercises both code paths.
     """
-    project = make_project(db, timezone="UTC")
+    # Interval 0: every sequence is its own independent event, so the
+    # samples below are the counts these tests are about.
+    project = make_project(db, timezone="UTC", independence_interval=0)
     site = make_site(
         db,
         project_id=project.id,
