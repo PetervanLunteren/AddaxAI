@@ -12,7 +12,7 @@ Usage:
         --operation sort \
         --params '{"filters": {...}}'
 
-Output: NDJSON sequence stream on stdout. Each line is one of:
+Output: NDJSON event stream on stdout. Each line is one of:
     {"type": "progress", "phase": "load|sort|neighbors", "done": N, "total": M}
     {"type": "result", "detections": [...], "total_detections": N,
      "total_loaded": N, "total_matching": N}
@@ -54,7 +54,7 @@ MAX_DETECTIONS = 50_000
 # index is exact) and lets the progress bar move during the search.
 NEIGHBOR_SEARCH_CHUNK = 2_000
 
-# How often to emit progress sequences during long loops. Tuned for ~50ms
+# How often to emit progress events during long loops. Tuned for ~50ms
 # between updates at typical scales: 500 rows per SQL emission, 200
 # steps per O(n) loop. Smaller intervals would flood the wire; larger
 # would make the bar feel stuck.
@@ -68,9 +68,9 @@ PROGRESS_LOOP_EVERY = 200
 NEIGHBOR_MAJORITY_FRACTION = 0.6
 
 
-def _emit_event(sequence: dict[str, Any]) -> None:
+def _emit_event(event: dict[str, Any]) -> None:
     """Write one NDJSON line to stdout. Flushed so the parent sees it live."""
-    sys.stdout.write(json.dumps(sequence, default=str) + "\n")
+    sys.stdout.write(json.dumps(event, default=str) + "\n")
     sys.stdout.flush()
 
 
@@ -873,8 +873,8 @@ def _order_sequences_by_similarity(
     """
     from observation_sort import order_sequences_by_deployment
 
-    # Baseline: chronological, grouped by camera (within-sequence by
-    # sequence, no-sequence last). The similarity walk overrides the order
+    # Baseline: chronological, grouped by camera (within a sequence by
+    # position, no-sequence last). The similarity walk overrides the order
     # of sequences that have a representative; sequences without one keep this
     # baseline, so the embedless tail is camera-grouped just like the
     # no-embedding fallback. Single-deployment folder runs reduce to
@@ -882,7 +882,7 @@ def _order_sequences_by_similarity(
     base_order = order_sequences_by_deployment(metas)
 
     # Group baseline indices by sequence, preserving first-seen (= time)
-    # sequence order and within-sequence sequence order.
+    # sequence order and the position within a sequence.
     sequence_to_indices: dict[str, list[int]] = {}
     sequences_in_baseline_order: list[str] = []
     no_sequence: list[int] = []
@@ -1472,7 +1472,7 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        # Surface a structured error sequence so the parent can render it
+        # Surface a structured error event so the parent can render it
         # inline. Stderr is reserved for actual log noise; everything
         # the parent should react to goes via NDJSON on stdout.
         _emit_event({"type": "error", "message": str(e)})

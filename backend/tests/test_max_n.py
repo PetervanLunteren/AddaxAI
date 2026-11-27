@@ -51,6 +51,7 @@ def _make_sequence_with_detections(db, deployment_id, sequence_start_local, file
     from app.models.sequence import Sequence
 
     ev = Sequence(
+        camera_key="",
         id=eid,
         deployment_id=deployment_id,
         sequence_start_local=sequence_start_local,
@@ -707,6 +708,7 @@ def _make_sequence_with_frames(db, deployment_id, sequence_start_local, file_spe
     """
     eid = str(uuid.uuid4())
     ev = Sequence(
+        camera_key="",
         id=eid,
         deployment_id=deployment_id,
         sequence_start_local=sequence_start_local,
@@ -1571,6 +1573,7 @@ def _sequence_over(db, deployment_id, video):
     from app.models.sequence import Sequence
 
     ev = Sequence(
+        camera_key="",
         id=str(uuid.uuid4()),
         deployment_id=deployment_id,
         sequence_start_local=datetime(2024, 1, 1, 12, 0),

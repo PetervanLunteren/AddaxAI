@@ -449,6 +449,7 @@ def test_split_reassigns_single_group_sequence(client, db, tmp_path):
     )
     from app.models.sequence import sequence_files
     ev = Sequence(
+        camera_key="",
         deployment_id=d.id,
         sequence_start_local=datetime(2024, 1, 5, 10, 0),
         sequence_end_local=datetime(2024, 1, 5, 10, 30),
@@ -507,6 +508,7 @@ def test_split_duplicates_straddling_sequence(client, db, tmp_path):
     # Attach a sequence that straddles both children.
     from app.models.sequence import sequence_files
     ev = Sequence(
+        camera_key="",
         deployment_id=d.id,
         sequence_start_local=datetime(2024, 1, 5, 10, 0),
         sequence_end_local=datetime(2024, 1, 5, 10, 30),
@@ -581,6 +583,60 @@ def test_split_duplicates_straddling_sequence(client, db, tmp_path):
     assert obs_b[0].max_n_file_id is None
 
 
+def test_split_of_paired_cameras_gives_each_child_one_camera(client, db, tmp_path):
+    """A paired parent's sequences have the camera key "". After the split a
+    child is one camera again, so a sequence that moved whole and one cut
+    out of a straddling sequence must carry the same key: the independence
+    interval is applied per key, and two keys would count the deer that
+    lingers at siteA as two events. A child sequence ends when its last
+    file ends, a video at its start plus its length."""
+    from app.models.sequence import sequence_files
+
+    root, d = _seed_deployment_with_files(db, tmp_path, {"siteA": 2, "siteB": 1})
+    by_path = {f.file_path: f for f in db.execute(select(File)).scalars()}
+    a0 = by_path[str(root / "siteA" / "img_000.jpg")]
+    a1 = by_path[str(root / "siteA" / "img_001.jpg")]
+    b0 = by_path[str(root / "siteB" / "img_000.jpg")]
+    a0.captured_at_local = b0.captured_at_local = datetime(2024, 1, 5, 10, 0)
+    a0.duration_seconds = 60
+    a1.captured_at_local = datetime(2024, 1, 5, 10, 5)
+    for files in ([a0, b0], [a1]):  # seen by both cameras, then by A only
+        s = Sequence(
+            deployment_id=d.id, camera_key="", file_count=len(files),
+            sequence_start_local=files[0].captured_at_local,
+            sequence_end_local=files[0].captured_at_local,
+        )
+        db.add(s)
+        db.flush()
+        for position, f in enumerate(files):
+            db.execute(sequence_files.insert().values(
+                sequence_id=s.id, file_id=f.id, position=position,
+            ))
+        db.add(SequenceObservation(
+            sequence_id=s.id, label="deer", category="animal", max_n=1,
+        ))
+    db.commit()
+    _seed_parent_results_json(root, d.project_id, list(by_path.values()))
+
+    assert client.post(f"/api/deployments/{d.id}/split", json={"depth": 1}).status_code == 200
+
+    child_a = db.execute(
+        select(Deployment).where(Deployment.folder_path == str(root / "siteA"))
+    ).scalar_one()
+    in_a = list(db.execute(
+        select(Sequence)
+        .where(Sequence.deployment_id == child_a.id)
+        .order_by(Sequence.sequence_start_local)
+    ).scalars())
+    assert [s.camera_key for s in in_a] == [f"{root}/siteA/"] * 2
+    assert in_a[0].sequence_end_local == datetime(2024, 1, 5, 10, 1)
+    # One event at siteA (the deer lingers) and one at siteB.
+    summary = client.get(
+        "/api/statistics/summary", params={"project_id": d.project_id}
+    ).json()
+    assert summary["events"] == 2
+
+
 def test_split_preserves_human_count_and_confirmation(client, db, tmp_path):
     """Human counts and the confirmed flag are holy: a split copies
     observations, so a confirmed sequence with a human count override must
@@ -591,6 +647,7 @@ def test_split_preserves_human_count_and_confirmation(client, db, tmp_path):
     files = list(db.execute(select(File)).scalars())
     from app.models.sequence import sequence_files
     ev = Sequence(
+        camera_key="",
         deployment_id=d.id,
         sequence_start_local=datetime(2024, 1, 5, 10, 0),
         sequence_end_local=datetime(2024, 1, 5, 10, 30),

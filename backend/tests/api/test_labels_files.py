@@ -704,7 +704,7 @@ def test_sequence_sort_keeps_bursts_together(client, db):
                       captured_at_local=start)
             for n in names
         ]
-        ev = Sequence(deployment_id=d.id, sequence_start_local=start,
+        ev = Sequence(camera_key="", deployment_id=d.id, sequence_start_local=start,
                    sequence_end_local=start)
         db.add(ev)
         db.flush()

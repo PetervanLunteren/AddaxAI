@@ -804,6 +804,7 @@ def _video_sequence(db, project, frames, card_frame=10, verified_frames=()):
         )
 
     ev = Sequence(
+        camera_key="",
         id=f"ev-{uuid.uuid4().hex[:8]}",
         deployment_id=d.id,
         sequence_start_local=datetime(2024, 1, 1, 12, 0),
@@ -886,6 +887,7 @@ def test_verification_stats_keep_every_image_detection(client, db):
         make_detection(db, file_id=f.id, confidence=0.9)
 
     ev = Sequence(
+        camera_key="",
         id="ev-img-verification-stats",
         deployment_id=d.id,
         sequence_start_local=datetime(2024, 1, 1, 12, 0),
@@ -934,6 +936,7 @@ def _blank_sequence(db, project, when=datetime(2024, 1, 2, 12, 0)):
     f = make_file(db, deployment_id=d.id, observation_type="blank")
 
     ev = Sequence(
+        camera_key="",
         id=f"ev-blank-{uuid.uuid4().hex[:8]}",
         deployment_id=d.id,
         sequence_start_local=when,

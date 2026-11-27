@@ -292,7 +292,7 @@ export function ActivityOverlapChart({
     const xMax = 24 - sunShift;
     // Phase tick positions in the shifted sun-time frame. In sun mode
     // we show only these (no numeric hour labels), because hours are
-    // fictional on the synthetic anchor day; the sun sequences are the
+    // fictional on the synthetic anchor day; the sun events are the
     // only markers that carry biological meaning.
     const dayLength = rawBands ? rawBands.sunset - rawBands.sunrise : 0;
     const dawnPos = bandsForMode?.dawn ?? 0;

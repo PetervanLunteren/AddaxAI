@@ -417,6 +417,7 @@ def make_sequence_with_files(
 
     eid = sequence_id or str(uuid.uuid4())
     ev = Sequence(
+        camera_key="",
         id=eid,
         deployment_id=deployment_id,
         sequence_start_local=sequence_start_local,

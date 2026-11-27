@@ -24,7 +24,14 @@ const LS_KEY = "addaxai:labelsSettings";
 
 export function readLabelsSettings(): Record<string, unknown> {
   const value = readSetting(LS_KEY);
-  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  if (!value || typeof value !== "object") return {};
+  const settings = { ...(value as Record<string, unknown>) };
+  // The sort by sequence was stored as "events" before sequences had
+  // their name. Read it as the same choice.
+  for (const key of ["sort", "filesSort"]) {
+    if (settings[key] === "events") settings[key] = "sequences";
+  }
+  return settings;
 }
 
 /** Read-modify-write (`lib/local-settings.ts`), so two settings written

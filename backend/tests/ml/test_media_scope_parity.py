@@ -47,6 +47,7 @@ def _jpeg(path: Path) -> str:
 
 def _link_sequence(db, deployment_id: str, file_ids: list[str]) -> Sequence:
     ev = Sequence(
+        camera_key="",
         id=str(uuid.uuid4()),
         deployment_id=deployment_id,
         sequence_start_local=datetime(2024, 1, 1, 8, 0, 0),

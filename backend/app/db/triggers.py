@@ -17,7 +17,7 @@ These are the only triggers in the database. They are defined here, once,
 and created by `init_db` at every start rather than by a migration: a
 migration that rebuilds a table drops its triggers silently, and a shipped
 migration cannot be corrected later. `init_db` drops them before a pending
-upgrade and creates them again after it. See DEVELOPERS.md, "The
+upgrade, with the cache's rows, and creates them again after it. See DEVELOPERS.md, "The
 independent events cache".
 """
 
@@ -104,12 +104,28 @@ def create_event_triggers(conn: Connection) -> None:
         conn.exec_driver_sql(sql)
 
 
-def forget_event_cache(conn: Connection) -> None:
-    """Empty the cache and mark every camera stale.
+def empty_event_cache(conn: Connection) -> None:
+    """Empty the cache, where the database has one yet.
 
-    After a migration: a migration may rebuild a table, which renumbers the
-    rowids the cache is keyed on. Each project fills again on its next
-    statistics request.
+    Before a migration, in the transaction that drops the triggers: a
+    migration may rebuild a table, which renumbers the rowids the cache is
+    keyed on, so no cache row may outlive one. `mark_stale_if_cache_empty`
+    does the other half after it.
     """
-    conn.exec_driver_sql("DELETE FROM independent_event_cache")
+    has_cache = conn.exec_driver_sql(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'independent_event_cache'"
+    ).first()
+    if has_cache:
+        conn.exec_driver_sql("DELETE FROM independent_event_cache")
+
+
+def mark_stale_if_cache_empty(conn: Connection) -> None:
+    """Mark every camera stale when the cache holds nothing.
+
+    At every start. An empty cache is never taken for a fresh one, so it
+    does not matter whether the start that emptied it got this far: each
+    project fills again on its next statistics request.
+    """
+    if conn.exec_driver_sql("SELECT 1 FROM independent_event_cache LIMIT 1").first():
+        return
     conn.exec_driver_sql(f"{_MARK}SELECT DISTINCT deployment_id, camera_key FROM sequences")

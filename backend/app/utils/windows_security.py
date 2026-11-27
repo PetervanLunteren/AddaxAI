@@ -15,7 +15,7 @@ The app cannot fix the blocking itself: the files only exist after setup
 and signing them would need a private key we cannot ship. The one useful
 thing is to *name* SAC when an unexplained analysis failure happens on a
 machine where it is enforced, so the user reads "Smart App Control" in
-the error instead of digging through Sequence Viewer. The user-facing fix
+the error instead of digging through Event Viewer. The user-facing fix
 lives in docs/help/locked-down-computers.mdx.
 
 The state is one registry value, readable without admin rights. These

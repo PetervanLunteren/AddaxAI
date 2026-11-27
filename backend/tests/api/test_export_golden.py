@@ -72,6 +72,7 @@ def _taxonomy(db, name: str, level: str = "species", **ranks: str) -> LabelTaxon
 
 def _sequence(db, name: str, deployment_id: str, start: datetime, files: list) -> Sequence:
     ev = Sequence(
+        camera_key="",
         id=_id(f"ev-{name}"),
         deployment_id=deployment_id,
         sequence_start_local=start,

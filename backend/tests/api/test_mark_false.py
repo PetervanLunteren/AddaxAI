@@ -128,6 +128,7 @@ def test_it_never_becomes_a_counted_observation(client, db):
     project, f = _scaffold(db)
     det = make_detection(db, file_id=f.id, category="animal", confidence=0.9)
     sequence = Sequence(
+        camera_key="",
         id="ev-false",
         deployment_id=f.deployment_id,
         sequence_start_local=f.captured_at_local,

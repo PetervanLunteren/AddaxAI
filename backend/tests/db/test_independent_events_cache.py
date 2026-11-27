@@ -68,6 +68,46 @@ def test_startup_keeps_the_cache_unless_a_migration_ran(engine) -> None:
     assert _count(engine, "independent_event_stale") == 1
 
 
+def test_a_start_that_dies_after_the_migration_leaves_no_trusted_cache(
+    engine, monkeypatch
+) -> None:
+    """The upgrade commits on its own, so a start can die right after it.
+    The next start finds nothing to migrate; it must still not read the old
+    cache rows, whose rowids the migration may have given to other rows."""
+    import app.db.migrations as migrations
+    from app.api.crud.independent_events import refresh
+
+    init_db()
+    project_id = _seed_sequence(engine)
+    db = get_session_factory()()
+    refresh(db, project_id)
+    db.close()
+    assert _count(engine, "independent_event_cache") == 1
+
+    with engine.begin() as conn:
+        conn.exec_driver_sql("UPDATE alembic_version SET version_num = 'd9f1b3c5e7a1'")
+
+    def die(*args, **kwargs):
+        raise KeyboardInterrupt
+
+    with monkeypatch.context() as m:
+        m.setattr(migrations, "schema_problems", die)
+        try:
+            init_db()
+        except KeyboardInterrupt:
+            pass
+    init_db()  # the next launch: nothing to migrate
+    assert _count(engine, "independent_event_cache") == 0
+    assert _count(engine, "independent_event_stale") == 1
+
+    # Whatever the migration marked itself: an empty cache is never taken
+    # for a fresh one.
+    with engine.begin() as conn:
+        conn.exec_driver_sql("DELETE FROM independent_event_stale")
+    init_db()
+    assert _count(engine, "independent_event_stale") == 1
+
+
 def test_a_migration_runs_without_the_triggers(engine, monkeypatch) -> None:
     """They are dropped before the upgrade, so a migration that rebuilds a
     table never trips over them, and created again after it."""
@@ -121,7 +161,8 @@ def test_a_locked_database_answers_live(engine) -> None:
 def test_nothing_vacuums_the_main_database() -> None:
     """VACUUM may renumber rowids, and the cache is keyed on them. Only the
     package file is vacuumed (a separate database). Vacuuming the main
-    database needs `forget_event_cache` first; this test is the reminder."""
+    database needs the cache emptied and every camera marked stale first
+    (`app/db/triggers.py`); this test is the reminder."""
     from pathlib import Path
 
     app_dir = Path(__file__).resolve().parents[2] / "app"

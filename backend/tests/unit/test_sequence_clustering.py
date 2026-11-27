@@ -139,3 +139,17 @@ def test_the_gap_runs_from_the_latest_end_not_the_previous_file(db):
     )
     clusters = cluster_files_into_sequences([clip, early, late], paired_cameras=True)
     assert clusters == [[clip, early, late]]
+
+
+def test_a_sequence_without_a_camera_key_is_refused(db):
+    """"" is a real key (paired cameras), so a creator that forgets it must
+    fail, not store "" and have its events chained as one camera."""
+    import pytest
+
+    from app.models.sequence import Sequence
+
+    dep = make_deployment(db, project_id=make_project(db).id)
+    db.add(Sequence(deployment_id=dep.id, file_count=0))
+    with pytest.raises(Exception, match="camera_key is not set"):
+        db.flush()
+    db.rollback()

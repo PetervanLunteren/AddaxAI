@@ -106,6 +106,7 @@ def _detection_in_sequence(
     if ev is None:
         session.add(
             Sequence(
+                camera_key="",
                 id=sequence_id,
                 deployment_id=deployment_id,
                 sequence_start_local=start,

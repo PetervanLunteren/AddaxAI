@@ -906,7 +906,7 @@ def get_activity_overlap(
     # uses it for the clock-mode overlay. The tz name is echoed back
     # so the footer can show which clock the chart is in. The reference
     # date (filter midpoint) is also echoed so the chart can caption
-    # which day's sun sequences the bands represent.
+    # which day's sun events the bands represent.
     sun_bands: SunBands | None = None
     sun_bands_reference_date: date | None = None
     tz_name = (

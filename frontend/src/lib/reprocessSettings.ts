@@ -23,6 +23,14 @@ export const REPROCESS_TRIGGER_FIELDS = [
   "taxa_mapping",
 ] as const;
 
+/** Settings the save itself applies, without a job: the backend recounts
+ * on a new threshold in the PATCH, and the statistics apply the
+ * independence interval when they are asked for. */
+export const APPLIED_ON_SAVE_FIELDS = [
+  "counting_threshold",
+  "independence_interval",
+] as const;
+
 /** True when any reprocess-triggering setting differs between two form
  * snapshots. Fields absent from both snapshots are skipped: not every
  * form carries every trigger field (the folder-run panel has no
@@ -31,7 +39,27 @@ export function hasReprocessChanges(
   before: Record<string, unknown>,
   after: Record<string, unknown>,
 ): boolean {
-  for (const key of REPROCESS_TRIGGER_FIELDS) {
+  return differs(REPROCESS_TRIGGER_FIELDS, before, after);
+}
+
+/** True when there is anything to save: a reprocess-triggering setting or
+ * one the save applies itself. What enables Apply in the folder-run panel. */
+export function hasSettingsChanges(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+): boolean {
+  return (
+    hasReprocessChanges(before, after) ||
+    differs(APPLIED_ON_SAVE_FIELDS, before, after)
+  );
+}
+
+function differs(
+  fields: readonly string[],
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+): boolean {
+  for (const key of fields) {
     if (!(key in before) && !(key in after)) continue;
     const a = before[key];
     const b = after[key];

@@ -80,11 +80,11 @@ def sort_detections(
 ):
     """Sort detections by visual similarity (greedy nearest-neighbor chain).
 
-    Returns an `application/x-ndjson` sequence stream from the worker
+    Returns an `application/x-ndjson` event stream from the worker
     subprocess: progress lines while loading and computing, then a
     final `{"type":"result", ...}` line whose payload matches the
     legacy SortResponse shape. The frontend renders a progress bar
-    from progress sequences and uses the result for the grid. When the
+    from progress events and uses the result for the grid. When the
     client disconnects mid-stream (refresh, tab close, navigation)
     the subprocess is killed promptly, so the browser's per-host
     connection slot is freed and the next page load isn't queued.
@@ -106,7 +106,7 @@ def search_similar(
 ):
     """Find detections visually similar to an anchor detection.
 
-    Same NDJSON sequence-stream shape as the sort endpoint; the final
+    Same NDJSON event-stream shape as the sort endpoint; the final
     `result` payload matches SearchResponse.
     """
     _set_project_tz(db, project_id)
@@ -130,11 +130,11 @@ def cohorts(
 ):
     """Group descendant-promotion suggestions for the Edit-step review panel.
 
-    Returns an `application/x-ndjson` sequence stream identical in shape to
+    Returns an `application/x-ndjson` event stream identical in shape to
     the sort endpoint: progress lines during the FAISS + neighbour walk,
     then a final `{"type":"result", "cohorts":[...]}` line whose payload
     matches CohortsResponse. The panel renders a skeleton from progress
-    sequences and uses the result to render its cards. Only the scope
+    events and uses the result to render its cards. Only the scope
     applies, sites and dates: the vote runs inside it, and no other
     filter exists here (see `LabelFilters.scope_only`).
     """
@@ -371,7 +371,7 @@ def get_label_stats(
     embedding_model_id = project.embedding_model_id if project else None
 
     # Embeddability gate. A detection is embeddable when:
-    #  - it has a bbox (box-less labels are bbox-less and have
+    #  - it has a bbox (sequence-level labels are bbox-less and have
     #    no crop to embed), AND
     #  - it is a card (an image box, or a track's representative box),
     #    which is what `build_embedding_input` embeds.

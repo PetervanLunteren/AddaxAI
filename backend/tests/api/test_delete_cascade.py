@@ -65,7 +65,7 @@ def _make_run(db, *, files: int = 2):
         )
         made_files.append(f)
 
-    ev = Sequence(id=str(uuid.uuid4()), deployment_id=dep.id, file_count=files)
+    ev = Sequence(camera_key="", id=str(uuid.uuid4()), deployment_id=dep.id, file_count=files)
     db.add(ev)
     db.flush()
     for seq, f in enumerate(made_files):

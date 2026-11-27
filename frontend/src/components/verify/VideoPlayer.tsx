@@ -522,7 +522,7 @@ export function VideoPlayer({
     };
 
     // Seek to start before recording. If already at 0, start directly
-    // since the seeked sequence won't fire.
+    // since the seeked event won't fire.
     if (video.currentTime === 0) {
       beginRecording();
     } else {

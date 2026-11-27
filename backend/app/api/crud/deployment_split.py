@@ -50,7 +50,7 @@ from app.models import (
     SequenceObservation,
 )
 from app.models.sequence import sequence_files
-from app.services.sequence_clustering import camera_key
+from app.services.sequence_clustering import camera_key, file_end
 from app.utils.fs_hidden import mkdir_hidden_addaxai
 
 logger = get_logger(__name__)
@@ -650,7 +650,14 @@ def _reassign_sequences(
             only_folder = next(iter(groups))
             # Use the relationship attribute (not the FK column) so the
             # sequence is removed from parent.sequences via back_populates sync.
-            sequence.deployment = child_deployments[only_folder]
+            child_dep = child_deployments[only_folder]
+            sequence.deployment = child_dep
+            # A paired parent's sequences have the key "" and the child is
+            # one camera again: without this a child holds two keys for one
+            # camera and its events never chain across them.
+            sequence.camera_key = camera_key(
+                groups[only_folder][0], paired_cameras=child_dep.paired_cameras
+            )
             continue
 
         # Straddle case: create one new Sequence per child, duplicate
@@ -660,18 +667,20 @@ def _reassign_sequences(
         for folder_str, files_here in groups.items():
             child_dep = child_deployments[folder_str]
             here_ids = {f.id for f in files_here}
-            timestamps = [
+            starts = [
                 f.captured_at_local
                 for f in files_here
                 if f.captured_at_local is not None
             ]
+            # A video ends at its start plus its length, as everywhere.
+            ends = [file_end(f) for f in files_here if f.captured_at_local is not None]
             new_sequence = Sequence(
                 deployment_id=child_dep.id,
                 sequence_start_local=(
-                    min(timestamps) if timestamps else sequence.sequence_start_local
+                    min(starts) if starts else sequence.sequence_start_local
                 ),
                 sequence_end_local=(
-                    max(timestamps) if timestamps else sequence.sequence_end_local
+                    max(ends) if ends else sequence.sequence_end_local
                 ),
                 file_count=len(files_here),
                 camera_key=camera_key(

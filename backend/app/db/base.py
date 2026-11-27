@@ -264,7 +264,8 @@ def init_db() -> None:
     from app.db.triggers import (
         create_event_triggers,
         drop_event_triggers,
-        forget_event_cache,
+        empty_event_cache,
+        mark_stale_if_cache_empty,
     )
 
     engine = get_engine()
@@ -280,9 +281,12 @@ def init_db() -> None:
 
         # A migration runs without the cache triggers: one that rebuilds a
         # table, or drops a column a trigger names, would trip over them.
+        # And it starts from an empty cache: a rebuild renumbers the rowids
+        # the cache is keyed on.
         if migrating:
             with engine.begin() as conn:
                 drop_event_triggers(conn)
+                empty_event_cache(conn)
 
         logger.info("Running alembic upgrade head")
         upgrade_to_head()
@@ -296,12 +300,11 @@ def init_db() -> None:
             raise SchemaError(schema_mismatch_message(problems))
 
         # Every start, so the triggers are always the ones defined in
-        # db/triggers.py. After a migration the cache is forgotten too: a
-        # table rebuild renumbers the rowids it is keyed on.
+        # db/triggers.py, and an empty cache is never read as a fresh one,
+        # also when the start that emptied it died before it got here.
         with engine.begin() as conn:
             create_event_triggers(conn)
-            if migrating:
-                forget_event_cache(conn)
+            mark_stale_if_cache_empty(conn)
 
         _seed_builtin_labels()
         with engine.connect() as conn:

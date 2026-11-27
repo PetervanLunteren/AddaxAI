@@ -33,6 +33,7 @@ import { invalidateProjectData } from "../../lib/invalidate-project";
 import { saveLastUsedSettings } from "../../lib/folderRunSettings";
 import {
   hasReprocessChanges,
+  hasSettingsChanges,
   startReprocessIfNeeded,
   warnIfDeploymentsSkipped,
 } from "../../lib/reprocessSettings";
@@ -155,17 +156,12 @@ export function AnalysisSettingsButton({
   });
   const labelCaption = useLabelSelectionCaption(classifierId ?? "");
 
-  // The threshold is deliberately not a REPROCESS_TRIGGER_FIELD: it needs
-  // no reprocess job, because the backend recalculates the materialised
-  // MaxN and observation_type on the PATCH itself. It still has to enable
-  // Apply, so it is checked separately here rather than added to that list.
-  const thresholdChanged =
-    values.counting_threshold !== project.counting_threshold;
-  const reprocessNeeded = hasReprocessChanges(
-    valuesFromProject(project) as unknown as Record<string, unknown>,
-    values as unknown as Record<string, unknown>,
-  );
-  const dirty = thresholdChanged || reprocessNeeded;
+  // The threshold and the independence interval need no reprocess job
+  // (APPLIED_ON_SAVE_FIELDS), but a change to one still has to enable Apply.
+  const before = valuesFromProject(project) as unknown as Record<string, unknown>;
+  const after = values as unknown as Record<string, unknown>;
+  const reprocessNeeded = hasReprocessChanges(before, after);
+  const dirty = hasSettingsChanges(before, after);
 
   // Invalidate queries and re-sort the grid onto the reprocessed labels.
   // The caller shows the toast (summary or plain), so this stays quiet.

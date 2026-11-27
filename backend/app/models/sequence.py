@@ -51,6 +51,13 @@ sequence_files = Table(
 )
 
 
+def _camera_key_missing() -> str:
+    raise ValueError(
+        "Sequence.camera_key is not set: state it with "
+        "services/sequence_clustering.camera_key"
+    )
+
+
 class Sequence(Base):
     """
     Sequence - time-clustered group of files.
@@ -74,8 +81,11 @@ class Sequence(Base):
     # files, or "" for a paired-cameras deployment (one camera). The
     # statistics apply the independence interval per camera with it
     # (services/sequence_clustering.camera_key).
+    # "" is a real value, so there is no default to fall back on: whoever
+    # creates a sequence states the key. The server default exists only for
+    # the migration that added the column.
     camera_key: Mapped[str] = mapped_column(
-        String, nullable=False, server_default="", default=""
+        String, nullable=False, server_default="", default=_camera_key_missing
     )
     # Human confirmation that the sequence's species and counts are correct
     # (the "Confirm" action on the Observations page). Distinct from

@@ -3,7 +3,8 @@
  *
  * Use this only for cascade events that touch multiple entity types:
  * analysis completion, re-embedding, postprocessing reprocess,
- * deployment delete/split, site delete. For narrow edits (rename,
+ * deployment delete/split, site delete, a saved project setting that
+ * every statistic reads. For narrow edits (rename,
  * notes, tags) keep the targeted `invalidateQueries` calls.
  */
 
@@ -45,4 +46,11 @@ export function invalidateProjectData(
   for (const queryKey of keys) {
     void queryClient.invalidateQueries({ queryKey });
   }
+  // The site and deployment info sheets show counts too, and are keyed on
+  // their own id (["sites", siteId, "info"]), not on the project.
+  void queryClient.invalidateQueries({
+    predicate: ({ queryKey }) =>
+      (queryKey[0] === "sites" || queryKey[0] === "deployments") &&
+      queryKey[2] === "info",
+  });
 }

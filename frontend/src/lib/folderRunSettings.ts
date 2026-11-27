@@ -46,6 +46,16 @@ const KEY = "addaxai.folderRun.lastSettings";
  *  older record loses the rate and the form falls back to its default. */
 const VERSION = 3;
 
+/** A stored record with a choice saved under the name it had before
+ * events became sequences, read under its new name. The user's choice
+ * survives the update; the old name is never written again. */
+function renamed<T extends object>(stored: T, from: string, to: keyof T & string): T {
+  const record = stored as Record<string, unknown>;
+  if (!(from in record)) return stored;
+  const { [from]: value, ...rest } = record;
+  return { [to]: value, ...rest } as T;
+}
+
 export interface PersistedAnalysisSettings {
   detection_model_id?: string;
   classification_model_id?: string | null;
@@ -104,7 +114,7 @@ export function loadLastUsedSettings(): PersistedAnalysisSettings | null {
       delete stored.excluded_classes;
     }
     if (saved < 3) delete stored.video_fps;
-    return stored;
+    return renamed(stored, "event_smoothing", "sequence_smoothing");
   } catch {
     return null;
   }
@@ -169,7 +179,11 @@ export function loadLastUsedSaveOutputs(): PersistedSaveOutputsSettings | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === "object") {
-      return parsed as PersistedSaveOutputsSettings;
+      return renamed(
+        parsed as PersistedSaveOutputsSettings,
+        "groupEvents",
+        "groupSequences",
+      );
     }
     return null;
   } catch {

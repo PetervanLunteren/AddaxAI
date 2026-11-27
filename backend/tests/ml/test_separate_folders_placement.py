@@ -46,6 +46,7 @@ def _ctx(output_root: Path) -> OutputContext:
 def _link_sequence(db, deployment_id: str, file_ids: list[str]) -> Sequence:
     """Create a sequence and attach existing files to it."""
     ev = Sequence(
+        camera_key="",
         id=str(uuid.uuid4()),
         deployment_id=deployment_id,
         sequence_start_local=datetime(2024, 1, 1, 8, 0, 0),

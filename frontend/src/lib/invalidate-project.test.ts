@@ -20,4 +20,25 @@ describe("invalidateProjectData", () => {
 
     expect(client.getQueryState(queryKey)?.isInvalidated).toBe(true);
   });
+
+  // A new independence interval changes every count. The map and the info
+  // sheets kept the old numbers for minutes when this refresh missed them.
+  it("refreshes the map and the site and deployment info sheets", () => {
+    const client = new QueryClient();
+    const keys = [
+      ["statistics", "summary", "p1"],
+      ["observation-rate-map", "p1"],
+      ["sites", "site-1", "info"],
+      ["deployments", "dep-1", "info"],
+    ];
+    for (const key of keys) client.setQueryData(key, {});
+    client.setQueryData(["sites", "site-1", "photo"], {});
+
+    invalidateProjectData(client, "p1");
+
+    for (const key of keys) {
+      expect(client.getQueryState(key)?.isInvalidated, key.join("/")).toBe(true);
+    }
+    expect(client.getQueryState(["sites", "site-1", "photo"])?.isInvalidated).toBe(false);
+  });
 });

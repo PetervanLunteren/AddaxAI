@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { loadLastUsedSettings, saveLastUsedSettings } from "./folderRunSettings";
+import {
+  loadLastUsedSaveOutputs,
+  loadLastUsedSettings,
+  saveLastUsedSaveOutputs,
+  saveLastUsedSettings,
+} from "./folderRunSettings";
 
 const KEY = "addaxai.folderRun.lastSettings";
 
@@ -82,5 +87,31 @@ describe("loadLastUsedSettings", () => {
       country_code: "AUS",
       excluded_classes: ["capybara"],
     });
+  });
+});
+
+describe("choices saved before events became sequences", () => {
+  it("keeps smoothing off", () => {
+    localStorage.setItem(KEY, JSON.stringify({ event_smoothing: false, version: 3 }));
+    expect(loadLastUsedSettings()).toEqual({ sequence_smoothing: false });
+  });
+
+  it("keeps the files of a sequence apart", () => {
+    const SAVE_KEY = "addaxai.folderRun.lastSaveOutputs";
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ groupEvents: false, blur: true }));
+    expect(loadLastUsedSaveOutputs()).toEqual({ groupSequences: false, blur: true });
+  });
+
+  it("lets a newer choice win and stops writing the old name", () => {
+    localStorage.setItem(KEY, JSON.stringify({ event_smoothing: false, version: 3 }));
+    saveLastUsedSettings({ sequence_smoothing: true });
+    expect(loadLastUsedSettings()).toEqual({ sequence_smoothing: true });
+    expect(localStorage.getItem(KEY)).not.toContain("event_smoothing");
+
+    const SAVE_KEY = "addaxai.folderRun.lastSaveOutputs";
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ groupEvents: false }));
+    saveLastUsedSaveOutputs({ groupSequences: true });
+    expect(loadLastUsedSaveOutputs()).toEqual({ groupSequences: true });
+    expect(localStorage.getItem(SAVE_KEY)).not.toContain("groupEvents");
   });
 });

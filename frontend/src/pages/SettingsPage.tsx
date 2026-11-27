@@ -491,11 +491,11 @@ export default function SettingsPage() {
     mutationFn: (data: ProjectUpdate) => projectsApi.update(projectId!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
-      queryClient.invalidateQueries({ queryKey: ["projects", projectId] });
       queryClient.invalidateQueries({ queryKey: ["postprocessing-status", projectId] });
       // The independence interval is applied when a statistic is asked
-      // for, so a change shows on every chart at once, without a reprocess.
-      queryClient.invalidateQueries({ queryKey: ["statistics"] });
+      // for, so a change shows at once on every chart, the map and the
+      // info sheets, without a reprocess.
+      invalidateProjectData(queryClient, projectId!);
       // Reset form dirty state
       form.reset(form.getValues());
     },

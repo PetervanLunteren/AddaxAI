@@ -136,6 +136,7 @@ def main() -> int:
             if sequence_time is None:
                 continue
             sequence = Sequence(
+                camera_key="",
                 deployment_id=deployment.id,
                 sequence_start_local=sequence_time,
                 sequence_end_local=sequence_time + timedelta(minutes=1),
