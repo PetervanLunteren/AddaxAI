@@ -6,7 +6,9 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
 
-from app.api.crud.independent_events import independent_events
+from app.api.crud.independent_events import _events as _live
+from app.api.crud.independent_events import independent_events, speaks_for
+from app.models import independent_event_cache
 from app.models.sequence import Sequence
 from app.models.sequence_observation import SequenceObservation
 from tests.conftest import make_deployment, make_project
@@ -34,14 +36,34 @@ def _sequence(db, dep, start_min, end_min=None, *, camera="", rows=()):
     return s
 
 
+def _speaking_rows(db, ie, project_id):
+    from app.models import Deployment
+
+    return set(db.execute(
+        select(ie.c.observation_rowid, ie.c.event_id, ie.c.event_start_local)
+        .select_from(SequenceObservation)
+        .join(ie, speaks_for(ie))
+        .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
+        .join(Deployment, Deployment.id == Sequence.deployment_id)
+        .where(Deployment.project_id == project_id)
+    ).all())
+
+
 def _events(db, project_id):
-    """{label: [(event start, count, [sexes]), ...]} in time order."""
-    ie = independent_events(project_id)
+    """{label: [(event start, count, [sexes]), ...]} in time order.
+
+    Commits first, so the answer comes from the cache, and checks it is
+    exactly the live answer."""
+    db.commit()
+    ie = independent_events(db, project_id)
+    assert ie is independent_event_cache, "a clean session must get the cache"
+    live = _live(project_id, stale_only=False).subquery()
+    assert _speaking_rows(db, ie, project_id) == _speaking_rows(db, live, project_id)
     rows = db.execute(
         select(
             ie.c.event_id, ie.c.event_start_local, SequenceObservation.label,
             SequenceObservation.effective_count, SequenceObservation.sex,
-        ).join(SequenceObservation, SequenceObservation.id == ie.c.observation_id)
+        ).select_from(SequenceObservation).join(ie, speaks_for(ie))
     ).all()
     by_event = defaultdict(lambda: [None, None, 0, []])
     for event_id, start, label, count, sex in rows:
@@ -184,9 +206,21 @@ def test_old_long_groups_stay_one_event_each(db):
 
 
 def test_another_project_is_not_counted(db):
+    """Each project's events come from its own rows, cached or live."""
+    from app.models import Deployment
+
     project, dep = _setup(db)
     other, other_dep = _setup(db)
     _sequence(db, dep, 0, rows=[("deer", 1)])
     _sequence(db, other_dep, 0, rows=[("deer", 1)])
-    ie = independent_events(project.id)
-    assert db.execute(select(func.count()).select_from(ie)).scalar() == 1
+    for pid in (other.id, project.id):
+        ie = independent_events(db, pid)
+        n = db.execute(
+            select(func.count())
+            .select_from(SequenceObservation)
+            .join(ie, speaks_for(ie))
+            .join(Sequence, Sequence.id == SequenceObservation.sequence_id)
+            .join(Deployment, Deployment.id == Sequence.deployment_id)
+            .where(Deployment.project_id == pid)
+        ).scalar()
+        assert n == 1

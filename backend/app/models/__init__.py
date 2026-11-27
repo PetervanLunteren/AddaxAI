@@ -7,6 +7,7 @@ from .deployment_queue import DeploymentQueue
 from .detection import Detection
 from .detection_embedding import DetectionEmbedding
 from .file import File
+from .independent_event_cache import independent_event_cache, independent_event_stale
 from .job import Job
 from .label_taxonomy import LabelTaxonomy
 from .project import Project
@@ -30,5 +31,7 @@ __all__ = [
     "Site",
     "LabelTaxonomy",
     "Track",
+    "independent_event_cache",
+    "independent_event_stale",
     "sequence_files",
 ]

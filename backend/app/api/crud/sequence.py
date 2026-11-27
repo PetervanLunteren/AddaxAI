@@ -532,6 +532,11 @@ def generate_sequences_for_project(db: Session, project_id: str) -> int:
 
     db.flush()
     db.commit()
+    # Fill the events cache now, not on the next page visit: a project-wide
+    # regroup would otherwise make that visit wait for all of it.
+    from app.api.crud.independent_events import refresh
+
+    refresh(db, project_id)
     return total_sequences
 
 

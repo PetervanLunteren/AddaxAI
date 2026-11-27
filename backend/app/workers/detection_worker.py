@@ -23,6 +23,7 @@ from sqlalchemy.exc import OperationalError
 
 from app.api.crud import deployment as deployment_crud
 from app.api.crud import deployment_queue as queue_crud
+from app.api.crud import independent_events
 from app.api.crud import job as job_crud
 from app.api.crud import project as project_crud
 from app.api.crud import sequence as sequence_crud
@@ -1129,6 +1130,9 @@ async def _process_batch_job(job_id: str, project_id: str, queue_entry_ids: list
                     sequence_crud.generate_sequences_for_deployment, db, deployment
                 )
                 db.commit()
+                # The events cache of the new sequences, now rather than on
+                # the next page visit.
+                await asyncio.to_thread(independent_events.refresh, db, project_id)
                 logger.info(f"Batch job {job_id}: {sequence_count} sequences after {deployment.id}")
 
                 # ============================================================

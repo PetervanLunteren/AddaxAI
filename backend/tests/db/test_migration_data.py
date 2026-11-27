@@ -1354,3 +1354,30 @@ def test_d9f1b3c5e7a1_fills_the_camera_of_every_sequence(engine) -> None:
     for name in ("posix", "windows"):
         first = SimpleNamespace(file_path=paths[name][0])
         assert keys[ids[name]] == camera_key(first, paired_cameras=False)
+
+
+# ---------------------------------------------------------------------------
+# e0a2c4e6f8b2 — the independent events cache
+# ---------------------------------------------------------------------------
+
+
+def test_e0a2c4e6f8b2_marks_every_camera_stale_and_fills_nothing(engine) -> None:
+    """The cache starts empty and every camera with sequences is stale, so
+    each project fills on its first statistics request, not at the update."""
+    upgrade_to("d9f1b3c5e7a1")
+    with engine.begin() as conn:
+        project_id, dep = seed_deployment(conn)
+        other = insert_row(conn, "deployments", project_id=project_id)
+        for deployment_id, camera in ((dep, "/d/a/"), (dep, "/d/a/"), (dep, "/d/b/"),
+                                      (other, "")):
+            insert_row(conn, "sequences", deployment_id=deployment_id, camera_key=camera)
+
+    upgrade_to("e0a2c4e6f8b2")
+
+    with engine.connect() as conn:
+        stale = set(conn.execute(text(
+            "SELECT deployment_id, camera_key FROM independent_event_stale"
+        )).all())
+        cached = conn.execute(text("SELECT count(*) FROM independent_event_cache")).scalar()
+    assert stale == {(dep, "/d/a/"), (dep, "/d/b/"), (other, "")}
+    assert cached == 0

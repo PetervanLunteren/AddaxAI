@@ -309,6 +309,37 @@ Pre-init backups in lifespan are best-effort. If `~/AddaxAI/` is read-only or th
 
 A streaming endpoint is a `def` too: it does its queries and returns a `StreamingResponse` over an async generator, which Starlette runs on the loop. The generator itself must not query (`stream_sort_async` and friends in `services/label_service.py` build their parameters before they return the stream). `tests/api/test_no_db_on_event_loop.py` fails when an `async def` route takes a session from `get_db`.
 
+## The independent events cache
+
+Statistics count independent events: sequences of one species at one camera, chained by the project's independence interval, each event counted by its highest sequence (`api/crud/independent_events.py`, where the rule is written out). Working that out takes a few window-function passes over every count row of a project. On a 900K-photo project that is 5 s in SQLite, where a plain sum takes 0.8 s, and a dashboard asks about six times. So the answer is kept in a table, and the database itself says when it is out of date.
+
+**Two tables, both derived and safe to empty** (`models/independent_event_cache.py`):
+
+- `independent_event_cache`: one row per `sequence_observations` row that speaks for an event, with the event's id and start.
+- `independent_event_stale`: the cameras (deployment plus `Sequence.camera_key`) whose rows are out of date.
+
+**Six triggers mark what changed** (`db/triggers.py`). They fire on writes to count rows, to sequences and to `projects.independence_interval`, and add the camera to the stale table. Writes come from a dozen places, some of them raw SQL (package import, taxa list relink, foreign key cascades and `SET NULL`), so a call to "mark stale" in Python would be forgotten somewhere. These are the only triggers in the database:
+
+- They are not in a migration. A migration that rebuilds a table drops its triggers without a word, and a shipped migration cannot be corrected later.
+- `init_db` creates them at every start, and drops them before a pending upgrade so a migration never trips over them.
+- The test suite creates them too (`tests/conftest.py`), so every test writes through them as the app does.
+
+**A refresh recalculates only stale cameras.** `independent_events(db, project_id)` calls `refresh` first:
+
+- If the project has a stale camera, `refresh` deletes those cameras' cache rows and inserts them again with the same query that runs live, in one transaction.
+- Then the statistic reads the cache. Because the camera is the unit, one verify in a 900K-photo deployment of 100 camera folders recalculates one folder (under 0.5 s).
+- Jobs that regroup a whole project (reprocess, the end of an analysis, a package import) call `refresh` themselves, so the next page visit does not pay for it.
+- The first statistics request of each project after the update fills its cache: 0.3 s for an ordinary project, about 20 s for Simon's 900K-photo one.
+
+**A statistics request may write, but never someone else's work.** `refresh` commits on the caller's session, so it only runs when that session has nothing pending and no transaction open. An export or import that reads statistics inside its own long transaction therefore gets the live answer, and its work is never committed or rolled back halfway. When another connection holds SQLite's write lock (a job saving results can hold it for minutes), `refresh` waits 250 ms, gives up, and the statistic is calculated live. A number never depends on the cache, only its speed does.
+
+**The cache is keyed on the count row's SQLite rowid, not its text id.** A join on the integer costs about what a plain sum does; a join on the text id made statistics 3.5 times slower. Rowids are stable except through a table rebuild or a `VACUUM`, so:
+
+- `init_db` empties the cache and marks every camera stale whenever a migration ran (`forget_event_cache`).
+- Nothing vacuums the main database. `tests/db/test_independent_events_cache.py` fails when code does; vacuuming it would need `forget_event_cache` first. The project package file is a separate database and is vacuumed as before.
+
+Tests: `tests/api/test_independent_events.py` checks every case of the rule against the cache and the live query at once, and `tests/api/test_independent_events_cache.py` checks the cache equals the live answer after every kind of write. Removing any one trigger fails at least one of them.
+
 ## Removing the legacy AddaxAI install
 
 AddaxAI 7 installs to different locations than AddaxAI 6, so upgrading leaves two full apps on the machine, the old one holding 10 to 30 GB of conda envs and model weights. The app finds the old install and offers to delete it.

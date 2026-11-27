@@ -230,7 +230,7 @@ def init_db() -> None:
     replay re-ran one-time data migrations over already-migrated data
     and destroyed user verifications on 2026-05-27.
 
-    Four steps:
+    Five steps:
 
     1. `ensure_upgradable` refuses a database alembic cannot be trusted
        to migrate (an early beta with no version row, an ambiguous
@@ -239,7 +239,9 @@ def init_db() -> None:
        install that builds the whole schema from base.
     3. `schema_problems` checks the result against the models. Anything
        missing means the stamp lied, so we stop rather than guess.
-    4. Seed builtin labels, and refresh planner statistics when a
+    4. Create the independent events cache triggers (dropped before a
+       migration, see db/triggers.py), and empty the cache when one ran.
+    5. Seed builtin labels, and refresh planner statistics when a
        migration ran or there are none. Otherwise the statistics from the
        last job still hold: `ANALYZE` reads the whole database (34 s on a
        4.6 GB one) and used to run before every launch could serve.
@@ -259,6 +261,11 @@ def init_db() -> None:
         schema_problems,
         upgrade_to_head,
     )
+    from app.db.triggers import (
+        create_event_triggers,
+        drop_event_triggers,
+        forget_event_cache,
+    )
 
     engine = get_engine()
 
@@ -271,6 +278,12 @@ def init_db() -> None:
         ensure_upgradable(engine)
         migrating = needs_upgrade(engine)
 
+        # A migration runs without the cache triggers: one that rebuilds a
+        # table, or drops a column a trigger names, would trip over them.
+        if migrating:
+            with engine.begin() as conn:
+                drop_event_triggers(conn)
+
         logger.info("Running alembic upgrade head")
         upgrade_to_head()
 
@@ -281,6 +294,14 @@ def init_db() -> None:
                 + "; ".join(problems)
             )
             raise SchemaError(schema_mismatch_message(problems))
+
+        # Every start, so the triggers are always the ones defined in
+        # db/triggers.py. After a migration the cache is forgotten too: a
+        # table rebuild renumbers the rowids it is keyed on.
+        with engine.begin() as conn:
+            create_event_triggers(conn)
+            if migrating:
+                forget_event_cache(conn)
 
         _seed_builtin_labels()
         with engine.connect() as conn:

@@ -28,6 +28,8 @@ from app.models import (  # noqa: F401
     Sequence,
     SequenceObservation,
     Site,
+    independent_event_cache,
+    independent_event_stale,
     sequence_files,
 )
 

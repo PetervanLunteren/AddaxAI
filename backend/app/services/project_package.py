@@ -52,6 +52,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app import __version__
+from app.api.crud import independent_events as events_cache
 from app.api.crud.deployment import (
     check_all_deployment_folders,
     purge_deployment_data,
@@ -864,6 +865,9 @@ def import_package(
     check_all_deployment_folders(db, manifest.project_id)
     refresh_query_statistics(db)
     db.commit()
+    # The imported sequences' events cache, now rather than on the next
+    # page visit.
+    events_cache.refresh(db, manifest.project_id)
 
     result = PackageImportResult(
         project_id=manifest.project_id,

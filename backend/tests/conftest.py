@@ -41,6 +41,10 @@ from app.db.base import Base, get_db
 from app.models.deployment import Deployment
 from app.models.detection import Detection
 from app.models.file import File
+from app.models.independent_event_cache import (
+    independent_event_cache,
+    independent_event_stale,
+)
 from app.models.job import Job
 from app.models.project import Project
 from app.models.sequence import Sequence, sequence_files
@@ -85,6 +89,13 @@ import app.models  # noqa: F401, E402
 
 Base.metadata.create_all(bind=_engine)
 
+# The app creates these at every start (init_db); so does the suite, so
+# every test writes through them as the app does.
+from app.db.triggers import create_event_triggers  # noqa: E402
+
+with _engine.begin() as _conn:
+    create_event_triggers(_conn)
+
 # `autoflush=False` mirrors the app's session factory (`db/base.py`).
 # It is not a preference: with autoflush on, every query silently writes
 # pending ORM changes first, so a test reads values production never sees.
@@ -106,6 +117,10 @@ def db():
     # Clean up all data for full isolation between tests
     with _engine.connect() as conn:
         for table in reversed(Base.metadata.sorted_tables):
+            conn.execute(table.delete())
+        # Last: the deletes above fire the cache triggers, which mark
+        # cameras stale again.
+        for table in (independent_event_cache, independent_event_stale):
             conn.execute(table.delete())
         conn.commit()
 
