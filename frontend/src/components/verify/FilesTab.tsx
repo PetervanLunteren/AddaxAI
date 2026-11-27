@@ -98,7 +98,7 @@ const FILES_SHORTCUTS: readonly Shortcut[] = [
   ["Click outside", "Deselect all"],
   ["Enter", "Verify"],
   [`${MOD} + A`, "Select all on this page"],
-  ["E", "Select next event to check (event sort)"],
+  ["E", "Select next sequence to check (sequence sort)"],
   ["X / Backspace", "Mark false detection"],
   ["U", "Mark unknown (unidentifiable)"],
   ["R", "Relabel"],
@@ -814,7 +814,7 @@ export function FilesTab({
             // targets the divider row with align "start"), so the two
             // tabs land the eye in the same place.
             const divider = document.querySelector(
-              `[data-event-divider="${sequenceId ?? "none"}"]`,
+              `[data-sequence-divider="${sequenceId ?? "none"}"]`,
             );
             (divider ?? document.querySelector(`[data-file-id="${ids[0]}"]`))
               ?.scrollIntoView({ block: "start" });
@@ -994,7 +994,7 @@ export function FilesTab({
           />
 
           {/* Count and paging share one row, the Counts grid's idiom
-              ("Showing 1-50 of 1040 events"). The count used to be its
+              ("Showing 1-50 of 1040 sequences"). The count used to be its
               own line above the grid, which duplicated the tab chip a
               few pixels higher and pushed the tiles down for one
               number. Always rendered: on a single filtered page,

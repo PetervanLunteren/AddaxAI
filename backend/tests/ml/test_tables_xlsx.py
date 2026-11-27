@@ -74,7 +74,7 @@ def test_writes_four_sheet_workbook(db, tmp_path):
         headers = [c.value for c in wb[sheet][1]]
         assert "deployment_id" not in headers
         assert "notes" not in headers
-        assert "event_id" in headers
+        assert "sequence_id" in headers
     for sheet in ("Files", "Detections"):
         headers = [c.value for c in wb[sheet][1]]
         assert "file_id" in headers

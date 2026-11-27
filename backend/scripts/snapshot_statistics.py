@@ -34,7 +34,12 @@ from _seed_sandbox import open_seed_sandbox
 
 # Header names a later version renamed, mapped back to the names of the
 # baseline, so the diff shows changed numbers, not changed spellings.
-RENAMED_KEYS: dict[str, str] = {}
+RENAMED_KEYS: dict[str, str] = {
+    "sequence_id": "event_id",
+    "sequence_start": "event_start",
+    "sequence_end": "event_end",
+    "sequence_notes": "event_notes",
+}
 
 TIMING_RUNS = 3
 

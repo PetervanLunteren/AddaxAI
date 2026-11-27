@@ -417,7 +417,7 @@ export function SequenceDetailModal({
     (targetSequenceId: string | null | undefined) => {
       if (!targetSequenceId) return;
       window.dispatchEvent(
-        new CustomEvent("navigate-event", { detail: targetSequenceId })
+        new CustomEvent("navigate-sequence", { detail: targetSequenceId })
       );
     },
     []
@@ -778,7 +778,7 @@ export function SequenceDetailModal({
         }}
         aria-describedby={undefined}
       >
-        <DialogTitle className="sr-only">Event detail viewer</DialogTitle>
+        <DialogTitle className="sr-only">Sequence viewer</DialogTitle>
 
         {/* Main content */}
         <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -811,7 +811,7 @@ export function SequenceDetailModal({
                     size="icon"
                     className="h-8 w-8"
                     onClick={toggleAutoPlay}
-                    title={autoPlay ? "Stop (Space)" : "Loop event (Space)"}
+                    title={autoPlay ? "Stop (Space)" : "Loop sequence (Space)"}
                   >
                     {autoPlay ? (
                       <Pause className="h-4 w-4" />
@@ -1027,7 +1027,7 @@ export function SequenceDetailModal({
                   className="h-7 w-7"
                   disabled={prevDisabled}
                   onClick={() => navigateSequence(adjacent?.previous_id)}
-                  title="Previous event (←)"
+                  title="Previous sequence (←)"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
@@ -1037,7 +1037,7 @@ export function SequenceDetailModal({
                   className="h-7 w-7"
                   disabled={nextDisabled}
                   onClick={() => navigateSequence(adjacent?.next_id)}
-                  title="Next event (→)"
+                  title="Next sequence (→)"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </Button>
@@ -1047,7 +1047,7 @@ export function SequenceDetailModal({
                   className="h-7 w-7"
                   disabled={nextUnconfirmedDisabled}
                   onClick={handleNextUnconfirmed}
-                  title="Next unconfirmed event"
+                  title="Next unconfirmed sequence"
                 >
                   <ChevronsRight className="h-4 w-4" />
                 </Button>
@@ -1105,7 +1105,7 @@ export function SequenceDetailModal({
                 <div className="absolute bottom-10 right-6 mb-2 rounded-lg border bg-background shadow-lg px-4 py-3 z-50 whitespace-nowrap">
                   <div className="text-[11px] font-semibold text-muted-foreground mb-1">Shortcuts</div>
                   {[
-                    ["Enter", "Confirm + next event"],
+                    ["Enter", "Confirm + next sequence"],
                     ["↑ / ↓", "Select species row"],
                     ["0-9", "Set count (type fast for 12, 130…)"],
                     ["+ / −", "Adjust count by 1"],
@@ -1114,9 +1114,9 @@ export function SequenceDetailModal({
                     ["C", "Same as last confirmed"],
                     ["N", "Add species"],
                     ["R", "Change species"],
-                    ["← / →", "Previous / next event"],
+                    ["← / →", "Previous / next sequence"],
                     ["Shift + ← / →", "Previous / next frame"],
-                    ["Space", "Loop event"],
+                    ["Space", "Loop sequence"],
                     ["Shift + scroll", "Previous / next frame"],
                     ["Scroll", "Zoom the picture"],
                     ["Click", "Focus a thumbnail"],

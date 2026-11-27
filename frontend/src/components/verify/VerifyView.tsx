@@ -208,8 +208,8 @@ export function VerifyView({ projectId }: VerifyViewProps) {
       const targetId = (e as CustomEvent).detail;
       if (targetId) setSelectedSequenceId(targetId);
     };
-    window.addEventListener("navigate-event", handler);
-    return () => window.removeEventListener("navigate-event", handler);
+    window.addEventListener("navigate-sequence", handler);
+    return () => window.removeEventListener("navigate-sequence", handler);
   }, []);
 
   const queryClient = useQueryClient();
@@ -372,13 +372,13 @@ export function VerifyView({ projectId }: VerifyViewProps) {
             <Layers className="h-12 w-12 text-muted-foreground/50 mb-4" />
             <p className="text-lg font-medium text-muted-foreground">
               {totalSequences === 0
-                ? "No events yet"
-                : "No events match your filters"}
+                ? "No sequences yet"
+                : "No sequences match your filters"}
             </p>
             <p className="text-sm text-muted-foreground mt-1 max-w-md">
               {totalSequences === 0
-                ? "Events are generated automatically when you run a deployment analysis. They group your camera trap images by time based on the project's independence interval."
-                : "Try adjusting or clearing your filters to see more events."}
+                ? "Sequences are generated automatically when you run a deployment analysis. They group your camera trap images by time."
+                : "Try adjusting or clearing your filters to see more sequences."}
             </p>
             {totalSequences > 0 && (
               <Button
@@ -597,7 +597,7 @@ function SequenceCard({
         {/* Same 3-row footer pattern as FileCard:
               row 2 — site name (font-medium, own row, omitted when absent)
               row 3 — date · time on the left, content-summary chip on the right
-            The chip shows what's inside the event: image/video count.
+            The chip shows what's inside the sequence: image/video count.
             Mixed sequences drop the icon and use the compact "N img + M vid"
             form because both icons in one chip looks crowded. */}
         {sequence.site_name && (

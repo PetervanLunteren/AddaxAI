@@ -38,7 +38,7 @@ const COLUMNS: CsvColumnHelp[] = [
   {
     name: "paired_cameras",
     optional: true,
-    help: "true when the folder holds one subfolder per camera and the cameras are dependent, triggering on the same animals. Their files form one event and the trap nights count once. Leave it empty for false.",
+    help: "true when the folder holds one subfolder per camera and the cameras are dependent, triggering on the same animals. Their files form one sequence and the trap nights count once. Leave it empty for false.",
   },
   {
     // A pattern, not a literal column: any column whose name starts with

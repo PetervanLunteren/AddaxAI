@@ -28,6 +28,6 @@ export const SMOOTHING_LEVELS: readonly CaptionedOption[] = [
     value: "aggressive",
     label: "Aggressive",
     caption:
-      "Replaces more outliers with the dominant species. Best when multi-species events are rare.",
+      "Replaces more outliers with the dominant species. Best when multi-species sequences are rare.",
   },
 ];

@@ -117,7 +117,7 @@ def test_counts_table_has_one_row_per_observation_without_deployment_id(
     with open(target / COUNTS_FILENAME, newline="") as f:
         counts = list(csv.DictReader(f))
     assert len(counts) == 1
-    assert counts[0]["event_id"] == ev.id
+    assert counts[0]["sequence_id"] == ev.id
     assert counts[0]["classification_label"] == "deer"
     assert counts[0]["count"] == "3"
     assert "deployment_id" not in counts[0]
@@ -167,7 +167,7 @@ def test_folder_run_headers_omit_deployment_id_and_notes(db, tmp_path):
         ):
             assert name not in headers
         # The sequence part stays: it is what says which files share a burst.
-        for name in ("file_id", "event_id", "event_start", "event_end"):
+        for name in ("file_id", "sequence_id", "sequence_start", "sequence_end"):
             assert name in headers
 
     assert "detection_id" in det_headers
@@ -285,7 +285,7 @@ def test_sequence_id_is_blank_for_unclustered_files(db, tmp_path):
         lines = (target / filename).read_text().splitlines()
         headers = lines[0].split(",")
         row = lines[1].split(",")
-        sequence_idx = headers.index("event_id")
+        sequence_idx = headers.index("sequence_id")
         file_idx = headers.index("file_id")
 
         assert row[file_idx] != "", filename
@@ -317,7 +317,7 @@ def test_sequence_id_carries_the_real_sequence_id_when_clustered(db, tmp_path):
         lines = (target / filename).read_text().splitlines()
         headers = lines[0].split(",")
         row = lines[1].split(",")
-        assert row[headers.index("event_id")] == sequence.id, filename
+        assert row[headers.index("sequence_id")] == sequence.id, filename
 
 
 def test_row_count_totals_all_tables(db, tmp_path):

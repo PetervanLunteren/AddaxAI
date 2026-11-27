@@ -175,10 +175,10 @@ export function FilesGrid({
             >
               <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">
                 {group.key === "none"
-                  ? "No event"
+                  ? "No sequence"
                   : group.items[0].captured_at_local
                     ? `${formatCameraDate(group.items[0].captured_at_local)} · ${formatCameraTime(group.items[0].captured_at_local)}`
-                    : "Event"}{" "}
+                    : "Sequence"}{" "}
                 ({group.items.length})
               </span>
               <div className="h-px flex-1 bg-border" />

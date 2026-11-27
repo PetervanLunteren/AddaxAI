@@ -85,9 +85,9 @@ export const SETTING_CAPTIONS = {
     "between frames more often, so one animal gets split into several " +
     "detections and verifying takes longer.",
   independenceInterval:
-    "Files at the same camera within this window are merged into one event. The default is 30 minutes.",
+    "Sequences of the same species at the same camera within this window are counted as one event. The default is 30 minutes.",
   smoothing:
-    "Looks at all photos grouped into one event and changes an odd-one-out label to match the rest. Example: a burst that is mostly red deer with one stray roe deer gets the stray corrected to red deer.",
+    "Looks at all photos grouped into one sequence and changes an odd-one-out label to match the rest. Example: a burst that is mostly red deer with one stray roe deer gets the stray corrected to red deer.",
   taxonomicRollup:
     "When the model can't confidently name the exact species, it labels the animal with a broader group instead, such as genus or family. Example: unsure between two deer species, it labels the animal 'deer' rather than guessing one. On by default.",
   detectionImageSize:

@@ -249,8 +249,8 @@ export function EditDeploymentDialog({
               />
               {needsReprocess && (
                 <Callout variant="warning" size="compact">
-                  Saving regroups this deployment's events. Confirmed
-                  counts stay only on events whose files stay together.
+                  Saving regroups this deployment's sequences. Confirmed
+                  counts stay only on sequences whose files stay together.
                 </Callout>
               )}
             </div>

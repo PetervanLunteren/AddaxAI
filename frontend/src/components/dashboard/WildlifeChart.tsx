@@ -159,7 +159,7 @@ export function WildlifeChart({ projectId, trapNights }: WildlifeChartProps) {
               blank or false detection are left out. Frequency counts
               the independent events containing the taxon (the basis
               for RAI). Abundance counts individuals, using each
-              sequence's confirmed count, or the AI's count where not yet
+              event's confirmed count, or the AI's count where not yet
               confirmed.
             </p>
             <p>

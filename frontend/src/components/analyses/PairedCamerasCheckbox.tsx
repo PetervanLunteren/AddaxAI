@@ -11,7 +11,7 @@ import { ExternalLink } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 
 export const PAIRED_CAMERAS_CAPTION =
-  "One subfolder per camera, for dependent cameras that trigger on the same animals. Their files form one event and the trap nights count once.";
+  "One subfolder per camera, for dependent cameras that trigger on the same animals. Their files form one sequence and the trap nights count once.";
 
 /** The docs section that explains the folder layout and what the tick changes. */
 export const PAIRED_CAMERAS_DOCS_URL =

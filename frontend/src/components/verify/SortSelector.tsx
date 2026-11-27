@@ -28,7 +28,7 @@ const SORT_LABELS: Record<VerifySort, string> = {
   newest: "Sort by newest first",
   oldest: "Sort by oldest first",
   random: "Sort in random order",
-  sequences: "Sort by event",
+  sequences: "Sort by sequence",
   path: "Sort by folder",
 };
 

@@ -1104,8 +1104,8 @@ export function DetectionDetailModal({
                   crop being verified. */}
               {sequenceFiles.length > 1 && (
                 <ContextCard
-                  title="Event context"
-                  caption="Other frames in this event"
+                  title="Sequence context"
+                  caption="Other frames in this sequence"
                   columns={4}
                   items={sequenceFiles.map((file) => {
                     const isCurrent = file.id === detection.file_id;

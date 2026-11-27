@@ -109,7 +109,7 @@ _DEPLOYMENT_CONTEXT_HEADERS = [
     "deployment_end",
     "deployment_tags",
 ]
-_SEQUENCE_CONTEXT_HEADERS = ["event_id", "event_start", "event_end"]
+_SEQUENCE_CONTEXT_HEADERS = ["sequence_id", "sequence_start", "sequence_end"]
 # What a row says about its file, after the file's own id: the path inside
 # the deployment folder, the capture time and the pixel size. The size is
 # what turns the fractional box columns into pixels without opening the
@@ -1412,15 +1412,15 @@ def _all_labels_cell(
 # sequence sign-off. This is the analysis-ready "record table" and the Counts
 # page output, distinct from the per-detection Detections export above.
 _OBSERVATIONS_HEADERS = [
-    "event_id",
+    "sequence_id",
     *_SITE_CONTEXT_HEADERS,
     *_DEPLOYMENT_CONTEXT_HEADERS,
     # The deployment's effort, so count per trap night is one formula on
     # the row. Counts only: on a per-box or per-file row it would invite
     # sums that mean nothing.
     "trap_nights",
-    "event_start",
-    "event_end",
+    "sequence_start",
+    "sequence_end",
     "category",
     "classification_label",
     "taxon_class",
@@ -1456,7 +1456,7 @@ _OBSERVATIONS_HEADERS = [
     "life_stage",
     "behavior",
     # The sequence's note, repeated on each of its rows.
-    "event_notes",
+    "sequence_notes",
     "is_confirmed",
 ]
 

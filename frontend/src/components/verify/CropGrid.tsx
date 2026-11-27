@@ -614,7 +614,7 @@ export const CropGrid = forwardRef<CropGridHandle, CropGridProps>(
 
 function sequenceKey(d: DetectionSummary): string {
   // Detections without a sequence (clustering not run) all fall into one
-  // trailing group; the "By event" sort places them last.
+  // trailing group; the "By sequence" sort places them last.
   return d.sequence_id ?? "__no_sequence__";
 }
 
@@ -622,7 +622,7 @@ function sequenceKey(d: DetectionSummary): string {
 /** Header text for a sequence divider: the sequence start (camera-local) and
  *  site, matching how sequence cards label themselves on the Counts page. */
 function sequenceDividerLabel(d: DetectionSummary): string {
-  if (!d.sequence_start_local) return d.site_name || "No event";
+  if (!d.sequence_start_local) return d.site_name || "No sequence";
   const date = formatCameraDate(d.sequence_start_local, {
     day: "numeric",
     month: "short",

@@ -586,7 +586,7 @@ export function SequenceCountPanel({
           Add species
         </button>
         {/* "Same as last": make this sequence's rows the rows of the last
-            non-empty event confirmed in this modal session. Replace, not
+            non-empty sequence confirmed in this modal session. Replace, not
             merge; Reset to AI is the undo. Always shown, disabled until
             something was confirmed, matching Connect. */}
         <button
@@ -594,7 +594,7 @@ export function SequenceCountPanel({
           disabled={busy || !sameAsLastRows}
           title={
             sameAsLastRows
-              ? "Same rows as the last confirmed event (C)"
+              ? "Same rows as the last confirmed sequence (C)"
               : "Nothing confirmed yet in this session"
           }
           className="flex w-full items-center justify-center gap-1.5 rounded border border-dashed px-2 py-1.5 text-sm text-muted-foreground hover:border-primary/50 hover:text-foreground disabled:opacity-60 disabled:hover:border-border disabled:hover:text-muted-foreground"
@@ -644,8 +644,8 @@ export function SequenceCountPanel({
             <Textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder="Add notes about this event..."
-              aria-label="Notes on this event"
+              placeholder="Add notes about this sequence..."
+              aria-label="Notes on this sequence"
               autoFocus
               maxLength={2000}
               className="min-h-[80px] resize-none border-0 bg-transparent px-1 py-1 text-sm focus-visible:ring-0 focus-visible:ring-offset-0"

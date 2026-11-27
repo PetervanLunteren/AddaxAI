@@ -36,7 +36,7 @@ export function DemographicsCard({ projectId, scope }: DemographicsCardProps) {
         caption={
           data && data.observations > 0
             ? `From ${data.observations.toLocaleString()} observations. Set sex, age and behaviour per event on the Counts page.`
-            : "Set sex, age and behaviour per event on the Counts page."
+            : "Set sex, age and behaviour per sequence on the Counts page."
         }
         info={
           <>

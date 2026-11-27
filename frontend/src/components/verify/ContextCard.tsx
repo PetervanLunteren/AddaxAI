@@ -2,7 +2,7 @@
  * ContextCard — one of the two "context" panels in the detection detail
  * modal: Sequence context (the sequence's other frames) and Similarity context
  * (the crop's look-alike neighbours). They are the two ways of seeing a
- * crop in context, mirroring the "By event" and "Similarity" sorts, so
+ * crop in context, mirroring the "By sequence" and "Similarity" sorts, so
  * they share one shape: an optional meter/header, a grid of thumbnails
  * that enlarge on hover, and a caption.
  *

@@ -13,12 +13,12 @@ from app.ml.postprocessing_outputs._table_columns import (
 
 
 def test_drops_deployment_id_and_notes():
-    headers = ["file_id", "deployment_id", "event_id", "file_type", "notes"]
+    headers = ["file_id", "deployment_id", "sequence_id", "file_type", "notes"]
     rows = [["f1", "dep1", "e1", "image", ""]]
 
     out_headers, out_rows = folder_run_table(headers, rows)
 
-    assert out_headers == ["file_id", "event_id", "file_type"]
+    assert out_headers == ["file_id", "sequence_id", "file_type"]
     assert list(out_rows) == [["f1", "e1", "image"]]
 
 
@@ -48,12 +48,12 @@ def test_keeps_n_events_and_n_individuals():
 def test_keeps_sequence_id():
     """sequence_id survives the trim: it is the only column saying which
     files share a burst."""
-    headers = ["file_id", "event_id", "deployment_id"]
+    headers = ["file_id", "sequence_id", "deployment_id"]
     rows = [["f1", "e1", "d1"]]
 
     out_headers, out_rows = folder_run_table(headers, rows)
 
-    assert out_headers == ["file_id", "event_id"]
+    assert out_headers == ["file_id", "sequence_id"]
     assert list(out_rows) == [["f1", "e1"]]
 
 

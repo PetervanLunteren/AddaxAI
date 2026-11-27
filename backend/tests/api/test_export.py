@@ -183,7 +183,7 @@ def test_export_detections_csv_happy_path(client, db):
         "detection_id",
         "site_name", "latitude", "longitude", "site_tags",
         "deployment_id", "deployment_start", "deployment_end", "deployment_tags",
-        "event_id", "event_start", "event_end",
+        "sequence_id", "sequence_start", "sequence_end",
         "file_id", "relative_path", "datetime", "image_width", "image_height",
         "detection_category", "detection_confidence",
         "classification_label", "classification_confidence",
@@ -362,7 +362,7 @@ def test_export_files_includes_empties(client, db):
     headers = rows[0]
     assert headers[0] == "file_id"
     assert "observation_type" in headers
-    assert "event_id" in headers
+    assert "sequence_id" in headers
     assert "file_type" in headers
     fid_i = headers.index("file_id")
     cat_i = headers.index("observation_type")
@@ -960,7 +960,7 @@ def test_sequence_id_is_blank_when_a_file_has_no_sequence(client, db):
     rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     headers = rows[0]
     fid_i = headers.index("file_id")
-    eid_i = headers.index("event_id")
+    eid_i = headers.index("sequence_id")
 
     row = next(r for r in rows[1:] if r[fid_i] == f_no_sequence.id)
     assert row[eid_i] == ""
@@ -985,7 +985,7 @@ def test_detections_sequence_id_is_blank_when_a_file_has_no_sequence(client, db)
     rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     headers = rows[0]
     fid_i = headers.index("file_id")
-    eid_i = headers.index("event_id")
+    eid_i = headers.index("sequence_id")
 
     row = next(r for r in rows[1:] if r[fid_i] == f_no_sequence.id)
     assert row[eid_i] == ""
@@ -1014,7 +1014,7 @@ def test_sequence_id_carries_the_real_sequence_id_when_clustered(client, db):
     frow = next(
         r for r in files_rows[1:] if r[fh.index("file_id")] == clustered.id
     )
-    assert frow[fh.index("event_id")] == sequence.id
+    assert frow[fh.index("sequence_id")] == sequence.id
 
     det_resp = _export(client, project.id, "detections")
     det_rows = list(csv.reader(io.StringIO(det_resp.content.decode("utf-8"))))
@@ -1022,7 +1022,7 @@ def test_sequence_id_carries_the_real_sequence_id_when_clustered(client, db):
     drow = next(
         r for r in det_rows[1:] if r[dh.index("file_id")] == clustered.id
     )
-    assert drow[dh.index("event_id")] == sequence.id
+    assert drow[dh.index("sequence_id")] == sequence.id
 
 
 def test_export_detections_tsv_and_xlsx(client, db):
@@ -1146,7 +1146,7 @@ def test_export_observations_sequence_level(client, db):
     assert resp.status_code == 200
     rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     headers = rows[0]
-    assert headers[0] == "event_id"
+    assert headers[0] == "sequence_id"
     assert "count" in headers
     assert "is_confirmed" in headers
     assert "classification_label" in headers
@@ -1219,7 +1219,7 @@ def test_every_table_carries_the_site_and_deployment_on_each_row(client, db):
         "deployment_tags": "camera:A1 | bait:none",
     }
     for table, own_id in (
-        ("observations", "event_id"),
+        ("observations", "sequence_id"),
         ("detections", "detection_id"),
         ("files", "file_id"),
     ):
@@ -1228,10 +1228,10 @@ def test_every_table_carries_the_site_and_deployment_on_each_row(client, db):
         assert headers[: 1 + len(_CONTEXT_HEADERS)] == [own_id, *_CONTEXT_HEADERS], table
         assert len(rows) == 1, table
         assert {k: rows[0][k] for k in expected} == expected, table
-        assert rows[0]["event_id"] == ev.id, table
+        assert rows[0]["sequence_id"] == ev.id, table
         # Sequence times carry the per-row DST offset like every other datetime.
-        assert rows[0]["event_start"].endswith("+02:00"), table
-        assert rows[0]["event_end"].endswith("+02:00"), table
+        assert rows[0]["sequence_start"].endswith("+02:00"), table
+        assert rows[0]["sequence_end"].endswith("+02:00"), table
 
 
 def test_context_block_is_blank_for_a_deployment_without_a_site(client, db):
@@ -1251,8 +1251,8 @@ def test_context_block_is_blank_for_a_deployment_without_a_site(client, db):
     assert rows[0]["deployment_id"] == deployment.id
     assert rows[0]["deployment_start"] == "2024-06-01"
     assert rows[0]["deployment_end"] == ""
-    assert rows[0]["event_id"] == ""
-    assert rows[0]["event_start"] == ""
+    assert rows[0]["sequence_id"] == ""
+    assert rows[0]["sequence_start"] == ""
 
 
 def test_counts_export_keeps_the_ai_count_next_to_the_human_count(client, db):
@@ -1435,7 +1435,7 @@ def test_export_spreadsheet_is_multi_sheet_workbook(client, db):
     assert deployments[0][0] == "deployment_id"
     assert files[0][0] == "file_id"
     assert det[0][0] == "detection_id"
-    assert counts[0][0] == "event_id"
+    assert counts[0][0] == "sequence_id"
     assert summary[0][0] == "detection_category"
     # The deer appears as a detection row, an event-level count row and a
     # summary row.
@@ -2541,7 +2541,7 @@ def test_export_observations_one_row_per_cohort(client, db):
     headers, *rows = list(csv.reader(io.StringIO(resp.content.decode("utf-8"))))
     cols = [
         headers.index(c)
-        for c in ("count", "sex", "life_stage", "behavior", "event_notes")
+        for c in ("count", "sex", "life_stage", "behavior", "sequence_notes")
     ]
     # The sequence's note repeats on each of its rows.
     assert [[r[i] for i in cols] for r in rows] == [

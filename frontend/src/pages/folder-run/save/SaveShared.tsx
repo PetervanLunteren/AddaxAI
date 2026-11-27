@@ -327,8 +327,8 @@ export function MediaBody({ form }: { form: MediaFormHandles }) {
             <CaptionedCheckbox
               checked={separate.groupSequences}
               onChange={(v) => setSeparate({ ...separate, groupSequences: v })}
-              label="Keep events together"
-              caption="Every file in an event goes to one folder: the species you verified most often, or else the strongest detection"
+              label="Keep sequences together"
+              caption="Every file in a sequence goes to one folder: the species you verified most often, or else the strongest detection"
             />
             <SettingRow
               title="Folder order"

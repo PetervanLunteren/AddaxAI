@@ -263,7 +263,7 @@ export function MapPage() {
               rate = observations / trap_nights, shown in the unit
               chosen under View &gt; Rate unit, summed per site
               across its deployments and restricted to the active date
-              and label filters. Sequences respect the project's detection
+              and label filters. Events respect the project's detection
               threshold with the verified override applied, so verified
               detections count even when they fall below threshold.
               Hexbin colour scaling is per-render, so a hex's shade

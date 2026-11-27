@@ -1038,7 +1038,7 @@ export interface DetectionSummary {
   deployment_id: string | null;
   /** ISO 8601 with the project's local UTC offset. */
   captured_at_local: string | null;
-  /** Sequence this detection's file belongs to. Drives the "By event" sort,
+  /** Sequence this detection's file belongs to. Drives the "By sequence" sort,
    * the sequence dividers, and the detail modal's sequence strip. Null when
    * sequence clustering has not run for the deployment. */
   sequence_id: string | null;

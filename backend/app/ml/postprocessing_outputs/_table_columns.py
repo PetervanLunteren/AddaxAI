@@ -27,9 +27,9 @@ Everything else stays, the Summary's ``n_events`` and ``n_individuals``
 included: a folder run writes the Counts table since its Counts step came
 back (2026-09), so both columns count rows the user can open and check.
 
-``event_id`` is kept, and so are ``event_start`` and ``event_end``: they
+``sequence_id`` is kept, and so are ``sequence_start`` and ``sequence_end``: they
 are the only columns that say which files belong to the same burst and
-when it was, and ``event_id`` points at the rows of the counts table. A
+when it was, and ``sequence_id`` points at the rows of the counts table. A
 key a user can group on is not a figure.
 """
 

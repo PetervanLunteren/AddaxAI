@@ -129,7 +129,7 @@ const CROPS_SHORTCUTS: readonly Shortcut[] = [
   ["R", "Relabel selected"],
   ["M", "Relabel to most common in selection"],
   [`${MOD} + A`, "Select all"],
-  ["E", "Select next event to check (event sort)"],
+  ["E", "Select next sequence to check (sequence sort)"],
   ["T", "Open the frames of the selected animal (videos)"],
   [`${MOD} + Z`, "Undo last action"],
   ["Esc", "Deselect / close"],
@@ -149,7 +149,7 @@ const LABELS_SORT_MODES: readonly VerifySort[] = [
 /**
  * IDs of the first sequence that still has an unverified crop in view.
  *
- * The "By event" sort lays each sequence's crops out contiguously, so we
+ * The "By sequence" sort lays each sequence's crops out contiguously, so we
  * walk the list, take each contiguous run of one sequence_id, and return
  * the first run that contains an unverified crop. Returns every in-view
  * crop of that sequence (matching what the user sees under the filters),
@@ -1203,7 +1203,7 @@ export function LabelsTab({
 
   // The sort the user was on before entering suggestions. Exiting
   // returns them there instead of always dropping them into similarity,
-  // which they may not use (e.g. they came from "By event").
+  // which they may not use (e.g. they came from "By sequence").
   const preSuggestionsSortRef = useRef<LabelSort>("similarity");
   const exitSuggestionsMode = useCallback(
     () => setLblSort(preSuggestionsSortRef.current),
@@ -1450,7 +1450,7 @@ export function LabelsTab({
 
       // "E" selects the first sequence that still needs work, so the bulk
       // shortcuts above (Enter, M, R, X, number keys) can act on the whole sequence.
-      // Only meaningful in "By event" sort, where each sequence's crops are
+      // Only meaningful in "By sequence" sort, where each sequence's crops are
       // contiguous; a no-op in other sorts, and inside an open track,
       // whose cards are one animal's frames from a single sequence: "the
       // next sequence that needs checking" would select all of them and
@@ -1845,10 +1845,10 @@ export function LabelsTab({
             </p>
             <p className="text-sm text-muted-foreground mt-1 max-w-md">
               {project?.embedding_model_id
-                ? "Switch to Sort by event to review these detections, or embed them to enable similarity sorting."
+                ? "Switch to Sort by sequence to review these detections, or embed them to enable similarity sorting."
                 : project?.mode === "folder_run"
-                  ? "Switch to Sort by event to review these detections, or run an analysis with an embedding model to enable similarity sorting."
-                  : "Switch to Sort by event to review these detections, or pick an embedding model in the project settings to enable similarity sorting."}
+                  ? "Switch to Sort by sequence to review these detections, or run an analysis with an embedding model to enable similarity sorting."
+                  : "Switch to Sort by sequence to review these detections, or pick an embedding model in the project settings to enable similarity sorting."}
             </p>
             {project?.embedding_model_id && (
               <Button
