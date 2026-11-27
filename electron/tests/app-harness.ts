@@ -17,28 +17,42 @@ export const REPO = path.join(__dirname, '..', '..');
 export const BACKEND = path.join(REPO, 'backend');
 const VENV_PY = path.join(BACKEND, 'venv', 'bin', 'python');
 
+/** Run backend Python against the database of a throwaway user data dir. */
+function backendPython(dir: string, args: string[]): string {
+  return execFileSync(VENV_PY, args, {
+    cwd: BACKEND,
+    env: {
+      ...process.env,
+      PYTHONPATH: BACKEND,
+      // The DB path derives from ADDAXAI_USER_DATA_DIR (Settings
+      // derivation); no separate ADDAXAI_DATABASE_URL needed.
+      ADDAXAI_USER_DATA_DIR: dir,
+    },
+  })
+    .toString()
+    .trim();
+}
+
 /**
  * A user data dir with a database at head, built by the real migration
  * chain rather than by hand, so the schema under test is the one users
  * get.
  */
 export function makeHealthyDb(dir: string): string {
-  const db = path.join(dir, 'addaxai.db');
-  execFileSync(
-    VENV_PY,
-    ['-c', 'from app.db.migrations import upgrade_to_head; upgrade_to_head()'],
-    {
-      cwd: BACKEND,
-      env: {
-        ...process.env,
-        PYTHONPATH: BACKEND,
-        // The DB path derives from ADDAXAI_USER_DATA_DIR (Settings
-        // derivation); no separate ADDAXAI_DATABASE_URL needed.
-        ADDAXAI_USER_DATA_DIR: dir,
-      },
-    },
-  );
-  return db;
+  backendPython(dir, [
+    '-c',
+    'from app.db.migrations import upgrade_to_head; upgrade_to_head()',
+  ]);
+  return path.join(dir, 'addaxai.db');
+}
+
+/**
+ * A user data dir with a database from before events became sequences,
+ * holding one small project (`seed_db_before_sequences.py`). Returns the
+ * project id.
+ */
+export function makeDbBeforeSequences(dir: string): string {
+  return backendPython(dir, [path.join(__dirname, 'seed_db_before_sequences.py')]);
 }
 
 export interface LaunchOptions {

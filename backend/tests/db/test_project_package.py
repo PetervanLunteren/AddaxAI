@@ -577,6 +577,59 @@ def test_preview_refuses_a_newer_package_and_upgrades_an_older_one(
         assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == older
 
 
+def test_a_package_from_before_sequences_imports_with_its_counts(
+    lead: Machine, member: Machine, tmp_path: Path
+) -> None:
+    """A package exported before events became sequences still has the old
+    tables. The import upgrades a copy, so the project arrives with its
+    confirmed count, each sequence knows its camera, and the statistics
+    count it."""
+    from alembic import command
+    from app.api.crud.statistics import get_dashboard_summary
+    from app.db.migrations import _alembic_config
+    from app.models import Sequence
+
+    folder = tmp_path / "cams" / "A"
+    with lead.session() as db:
+        seed = seed_project(db, [folder])
+        sequence = db.execute(select(Sequence)).scalar_one()
+        sequence_id = sequence.id
+        sequence.confirmed = True
+        db.execute(select(SequenceObservation)).scalar_one().human_count = 4
+        db.commit()
+    package_dir = export(lead, seed.project_id, seed.deployments, tmp_path)
+    db_path = package_dir / "project.db"
+
+    # Back to the last revision before the rename, as an older AddaxAI
+    # would have written it.
+    command.downgrade(_alembic_config(f"sqlite:///{db_path}"), "fa19b0f2a459")
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("PRAGMA journal_mode=DELETE")
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master")}
+    assert {"events", "event_files", "event_observations"} <= tables
+    assert "sequences" not in tables
+    manifest = json.loads((package_dir / "manifest.json").read_text())
+    manifest["alembic_revision"] = "fa19b0f2a459"
+    manifest["project_db_sha256"] = pkg._sha256(db_path)
+    (package_dir / "manifest.json").write_text(json.dumps(manifest))
+
+    with member.session() as db:
+        preview = pkg.inspect_package(db, package_dir)
+    assert (preview.revision_status, preview.problems) == ("older", [])
+
+    result = import_into(member, package_dir)
+
+    assert result.deployments_created == 1
+    with member.session() as db:
+        imported = db.execute(select(Sequence)).scalar_one()
+        assert imported.id == sequence_id
+        assert imported.confirmed is True
+        assert imported.camera_key == f"{folder}/sub/"
+        assert db.execute(select(SequenceObservation)).scalar_one().human_count == 4
+        summary = get_dashboard_summary(db, seed.project_id, None, None, None, None)
+        assert (summary.events, summary.observations) == (1, 4)
+
+
 def test_import_refuses_a_damaged_or_incomplete_package(
     lead: Machine, member: Machine, tmp_path: Path
 ) -> None:

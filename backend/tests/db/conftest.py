@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import Settings
 from app.db.migrations import upgrade_to_head
+from app.db.triggers import create_event_triggers
 from app.ml.taxonomy_db import CLASSIC_DETECTOR_CLASSES, ensure_builtin_labels
 
 
@@ -156,6 +157,10 @@ def make_machine(root: Path) -> Machine:
     )
     upgrade_to_head(settings.database_url)
     engine = create_engine(settings.database_url, future=True)
+    # As `init_db` leaves a database: without the triggers nothing marks a
+    # camera stale and every statistic reads an empty cache as zero.
+    with engine.begin() as conn:
+        create_event_triggers(conn)
     sessions = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     with sessions() as db:
         ensure_builtin_labels(db, CLASSIC_DETECTOR_CLASSES)
