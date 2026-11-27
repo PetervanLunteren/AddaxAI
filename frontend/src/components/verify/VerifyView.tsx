@@ -224,7 +224,7 @@ export function VerifyView({ projectId }: VerifyViewProps) {
   // the progress pill. Deliberately UNFILTERED: the pill measures
   // progress against the whole project, not the current filter view, so
   // the user can't mistake a narrowed view for "everything confirmed".
-  // Under the ["events"] prefix, so everything that refreshes the sequence
+  // Under the ["sequences"] prefix, so everything that refreshes the sequence
   // list (a confirm, a relabel) refreshes the pill with it.
   const { data: totalCountData } = useQuery({
     queryKey: ["sequences", "count", projectId],

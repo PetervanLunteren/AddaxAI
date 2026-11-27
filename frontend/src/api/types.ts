@@ -654,7 +654,7 @@ export type EmptyFilter = "all" | "show_only" | "hide";
 /** Sort modes shared across the verify tabs.
  *
  * The Sequences / Files galleries use `newest` / `oldest` / `random`; the
- * Observations grid uses `similarity` / `events` (see `LabelSort`). */
+ * Observations grid uses `similarity` / `sequences` (see `LabelSort`). */
 export type VerifySort =
   | "newest"
   | "oldest"
@@ -989,7 +989,7 @@ export interface LabelFilters {
 
 /** Sort modes for the Observations (Labels) grid.
  *
- * The dropdown offers `similarity` and `events`. `suggestions` is a
+ * The dropdown offers `similarity` and `sequences`. `suggestions` is a
  * cohort-grouped review mode reachable only via the toolbar's review
  * pill, never the dropdown. */
 export type LabelSort = "similarity" | "sequences" | "suggestions";

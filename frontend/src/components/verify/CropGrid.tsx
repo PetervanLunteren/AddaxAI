@@ -5,7 +5,7 @@
  * Responsive columns: 4 (sm), 6 (md), 8 (lg), 10 (xl).
  * Optional divider rows: `cohort` groups by
  * `(current_label, neighbor_top_label, category)` and surfaces a
- * "Relabel all (N)" button for the suggestions sort; `event` groups by
+ * "Relabel all (N)" button for the suggestions sort; `sequence` groups by
  * sequence and surfaces a "Select" link to select that sequence's crops.
  */
 

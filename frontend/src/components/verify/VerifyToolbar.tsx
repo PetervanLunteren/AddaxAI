@@ -103,7 +103,7 @@ interface VerifyProgressPillProps {
   /** 0 to 100. Bar width and the percentage label render from this.
    *  Null while the count is still out: an empty bar and "counting…". */
   pct: number | null;
-  /** Trailing text, e.g. "events verified" / "files verified". */
+  /** Trailing text, e.g. "confirmed" / "files verified". */
   label: string;
   /** Optional native tooltip explaining what population the % covers. */
   title?: string;

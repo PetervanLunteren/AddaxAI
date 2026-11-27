@@ -998,7 +998,7 @@ export function LabelsTab({
       queryClient.invalidateQueries({ queryKey: ["cohorts", projectId] });
       // The page's progress bar counts photos, and verifying the last
       // box on one flips File.verified server-side. Its key does not
-      // start with "event", so the predicate below never reaches it: it
+      // start with "sequence", so the predicate below never reaches it: it
       // needs saying explicitly, or the bar only moves on a reload.
       queryClient.invalidateQueries({
         queryKey: ["labels-progress", projectId],

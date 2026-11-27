@@ -297,7 +297,7 @@ export function SequenceDetailModal({
     setStill(null);
     setPendingVideoExport(false);
     setRelabelDetectionId(null);
-    // Lands once per sequence. `event.files` is a new array after every
+    // Lands once per sequence. `sequence.files` is a new array after every
     // refetch, and re-running then would throw the reviewer back to the
     // landing file after each edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
